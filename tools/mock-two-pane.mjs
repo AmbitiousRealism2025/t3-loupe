@@ -1,12 +1,12 @@
 // Static mock of the experimental two-pane (centered) layout, for design review only.
-// Colors come from plugin/lib/Palette.js for a given Omarchy theme; icons from plugin/lib/Icons.js.
+// Colors come from lib/Palette.js for a given Omarchy theme; icons from lib/Icons.js.
 // Usage: node tools/mock-two-pane.mjs <theme-name> > docs/mocks/two-pane-<theme>.html
 import { readFileSync } from "node:fs";
 import { loadQmlJs } from "../tests/lib/qml-js.mjs";
 
 const theme = process.argv[2] ?? "lumon";
-const Palette = loadQmlJs(new URL("../plugin/lib/Palette.js", import.meta.url).pathname);
-const Icons = loadQmlJs(new URL("../plugin/lib/Icons.js", import.meta.url).pathname);
+const Palette = loadQmlJs(new URL("../lib/Palette.js", import.meta.url).pathname);
+const Icons = loadQmlJs(new URL("../lib/Icons.js", import.meta.url).pathname);
 const colorsPath = theme === "current"
   ? `${process.env.HOME}/.local/state/omarchy/current/theme/colors.toml`
   : `/usr/share/omarchy/themes/${theme}/colors.toml`;

@@ -4,7 +4,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadQmlJs } from "./lib/qml-js.mjs";
 
-const Palette = loadQmlJs(new URL("../plugin/lib/Palette.js", import.meta.url).pathname);
+const Palette = loadQmlJs(new URL("../lib/Palette.js", import.meta.url).pathname);
 const THEMES = "/usr/share/omarchy/themes";
 const themes = existsSync(THEMES) ? readdirSync(THEMES).filter((t) => existsSync(join(THEMES, t, "colors.toml"))) : [];
 

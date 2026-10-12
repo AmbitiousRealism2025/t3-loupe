@@ -1,4 +1,4 @@
-# Validation receipt — v2.0.0
+# Validation receipts — v2.0.0 to v2.5.0
 
 Validated on 2026-10-12, on this setup:
 - Omarchy 4.0.2 (Mac lineage), Quickshell 0.3.1 / Qt 6.11.2, ARM64.
@@ -149,7 +149,7 @@ Validated on 2026-10-12, on this setup:
 
 ## Visual polish — v2.4.0 (2026-10-12)
 
-Implements `docs/review/DESIGN-REVIEW.md`.
+Implements the [design review](https://github.com/AmbitiousRealism2025/t3-loupe-media/blob/main/design-review/DESIGN-REVIEW.md).
 
 **What changed:**
 - **Colour budget.** Only needs-you (attention), working (accent) and done-unseen (success) take a hue, and only on icons. State words use ink, except the alarm states (needs input, failed). Coloured edges are gone. Tags are neutral and outlined, except failures and failing checks.
@@ -179,7 +179,7 @@ Implements `docs/review/DESIGN-REVIEW.md`.
 - Mouse hover and click states (they share handlers with keyboard input).
 
 **Also in v2.4.0:**
-- **Focus T3 (`o`).** Now uses `plugin/bin/focus-t3`, which focuses the window through Hyprland by window class. The old `xdg-open t3code://app` route fell back to the browser, and its registered handler pointed at a stale AppImage after a nightly update. Verified live: with another app focused, opening Loupe and pressing `o` focused `com.t3tools.T3Code`.
+- **Focus T3 (`o`).** Now uses `bin/focus-t3`, which focuses the window through Hyprland by window class. The old `xdg-open t3code://app` route fell back to the browser, and its registered handler pointed at a stale AppImage after a nightly update. Verified live: with another app focused, opening Loupe and pressing `o` focused `com.t3tools.T3Code`.
 - **Text size.** `textSize` in `settings.json` and `+`/`-` in the panel scale every panel text token through a `Typo` singleton (`components/qmldir`). The centered card widens by 56px per pixel of bump, and the dropdown by 36px. Section labels elide instead of overflowing. Verified live at 0 and +2 in two-pane with the demo feed, on a colourful amber theme. No QML warnings.
 - **Text size control.** The footer has **A↓**, four rising bars (one per preset, each clickable) and **A↑**. The presets are 0 (default, smallest), +2, +4 and +6. `+`/`-` step through the same presets, and every change is written to `settings.json` with any other keys preserved. Verified live: +2 → `+` → +4 (saved) → `-` → +2 → `-` → 0 → `-` stays at 0, with A↓ greyed out → `+` → +2. The panel widened at each step. Clicking a bar wasn't physically tested; it uses the same `setTextSize` path.
 - **Backdrop and row shading (user request).**

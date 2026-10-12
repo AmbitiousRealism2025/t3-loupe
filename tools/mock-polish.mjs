@@ -5,8 +5,8 @@ import { loadQmlJs } from "../tests/lib/qml-js.mjs";
 
 const theme = process.argv[2] ?? "current";
 const what = process.argv[3] ?? "panel";
-const Palette = loadQmlJs(new URL("../plugin/lib/Palette.js", import.meta.url).pathname);
-const Icons = loadQmlJs(new URL("../plugin/lib/Icons.js", import.meta.url).pathname);
+const Palette = loadQmlJs(new URL("../lib/Palette.js", import.meta.url).pathname);
+const Icons = loadQmlJs(new URL("../lib/Icons.js", import.meta.url).pathname);
 const path = theme === "current" ? `${process.env.HOME}/.local/state/omarchy/current/theme/colors.toml` : `/usr/share/omarchy/themes/${theme}/colors.toml`;
 const c = Palette.parseColorsToml(readFileSync(path, "utf8"));
 const p = Palette.derive({ background: c.background, foreground: c.foreground, accent: c.accent, urgent: c.red, muted: c.muted, colors: c });

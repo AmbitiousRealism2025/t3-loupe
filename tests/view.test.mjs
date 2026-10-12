@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { loadQmlJs } from "./lib/qml-js.mjs";
 
-const Store = loadQmlJs(new URL("../plugin/lib/Store.js", import.meta.url).pathname);
-const Format = loadQmlJs(new URL("../plugin/lib/Format.js", import.meta.url).pathname);
+const Store = loadQmlJs(new URL("../lib/Store.js", import.meta.url).pathname);
+const Format = loadQmlJs(new URL("../lib/Format.js", import.meta.url).pathname);
 
 const r = (id, state, extra = {}) => ({ key: "e:" + id, envId: "e", id, parentId: "", state, settled: false, project: "P", title: id, branch: "", model: "", provider: "", rawStatus: "completed", completedAt: 0, ...extra });
 const ids = (list) => Array.from(list, (x) => (x.kind === "idle-line" ? `[idle ${x.count}${x.open ? " open" : ""}]` : x.kind === "section" ? `§${x.label} ${x.count}` : x.id));

@@ -1,6 +1,6 @@
 {
   "name": "t3-loupe",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "private": true,
   "type": "module",
   "description": "Live, read-only T3 Code thread monitor for the Omarchy shell",
@@ -10,7 +10,6 @@
   },
   "scripts": {
     "test": "node --disable-warning=ExperimentalWarning --test tests/*.test.mjs",
-    "install-plugin": "tools/install.sh",
-    "doctor": "node --disable-warning=ExperimentalWarning plugin/daemon/main.ts doctor"
+    "doctor": "node --disable-warning=ExperimentalWarning daemon/main.ts doctor"
   }
 }

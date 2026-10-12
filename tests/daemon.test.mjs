@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FakeT3 } from "./lib/fake-t3.mjs";
 
-const D = "../plugin/daemon/";
+const D = "../daemon/";
 const { ShellStore } = await import(D + "shell-store.ts");
 const { classify, buildRows, countRows, activityIcon, isUnread } = await import(D + "model.ts");
 const { TransitionDetector } = await import(D + "events.ts");

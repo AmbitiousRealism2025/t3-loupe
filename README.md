@@ -1,22 +1,22 @@
 # T3 Loupe
 
-<a href="docs/t3-loupe-promo.mp4"><img src="docs/t3-loupe-teaser.gif" width="100%" alt="T3 Loupe promo: a magnifying lens glides over the T3 Loupe window, bringing a thread's activity, PR, context and plan into focus"></a>
+<a href="https://github.com/AmbitiousRealism2025/t3-loupe-media/blob/main/t3-loupe-promo.mp4"><img src="https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/t3-loupe-teaser.gif" width="100%" alt="T3 Loupe promo: a magnifying lens glides over the T3 Loupe window, bringing a thread's activity, PR, context and plan into focus"></a>
 
-<sub>▶ <a href="docs/t3-loupe-promo.mp4">Watch the 45-second promo</a> · made with <a href="https://github.com/heygen-com/hyperframes">HyperFrames</a>; source in <a href="video/"><code>video/</code></a></sub>
+<sub>▶ <a href="https://github.com/AmbitiousRealism2025/t3-loupe-media/blob/main/t3-loupe-promo.mp4">Watch the 45-second promo</a> · made with <a href="https://github.com/heygen-com/hyperframes">HyperFrames</a>; source in <a href="https://github.com/AmbitiousRealism2025/t3-loupe-media">t3-loupe-media</a></sub>
 
 **A live, read-only view of your [T3 Code](https://t3.codes) agents, in your [Omarchy](https://omarchy.org) bar.**
 
-![T3 Loupe in the bar](docs/bar.png)
+![T3 Loupe in the bar](https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/screens/bar.png)
 
 T3 Loupe shows what every T3 Code thread is doing across all your machines. It tells you which threads are working, which are waiting on you, and how close you are to your usage limits, without switching to the T3 window.
 
-![The two-pane window floating over the desktop: threads grouped by status on the left, the selected thread's live detail on the right](docs/two-pane.png)
+![The two-pane window floating over the desktop: threads grouped by status on the left, the selected thread's live detail on the right](https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/screens/two-pane.png)
 
 <sub>The two-pane window: every thread on the left, grouped by status, and the selected one in full on the right. That includes live activity with T3's own icons, the PR, context and cost, the plan, the runs chart and subagents.</sub>
 
 | A pending approval, with the full command | The compact dropdown (press <code>f</code>) |
 |:---:|:---:|
-| ![Pending command approval with the full command text and the provider's options](docs/two-pane-approval.png) | ![The compact dropdown under the bar](docs/inbox.png) |
+| ![Pending command approval with the full command text and the provider's options](https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/screens/two-pane-approval.png) | ![The compact dropdown under the bar](https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/screens/inbox.png) |
 
 <sub>Screenshots: built-in demo feed, Omarchy's <b>Hackerman</b> theme. Loupe takes its colours from whatever theme is active.</sub>
 
@@ -58,19 +58,29 @@ There are no npm packages to install and nothing runs as root.
 ## Install
 
 ```sh
-git clone https://github.com/AmbitiousRealism2025/t3-loupe.git
-cd t3-loupe
-tools/install.sh                     # adds T3 Loupe to the right side of your bar
+omarchy plugin add https://github.com/AmbitiousRealism2025/t3-loupe.git --enable
 ```
 
-To put it elsewhere:
+Omarchy validates the plugin, asks which side of the bar to use (right by default) and installs it into `~/.config/omarchy/plugins/ambitiousrealism.t3-loupe/`. There are no install hooks.
+
+Move it later with `omarchy bar move ambitiousrealism.t3-loupe --section center` (or `left`).
+
+### Update
 
 ```sh
-tools/install.sh --section left      # or: center
-tools/install.sh --copy-only         # update an existing install in place
+omarchy plugin update ambitiousrealism.t3-loupe
 ```
 
-You can also move it later with `omarchy bar move ambitiousrealism.t3-loupe --section center`. The installer backs up any config it changes.
+Omarchy shows the incoming changes, fast-forwards, re-validates and rolls back if anything fails. [`CHANGELOG.md`](CHANGELOG.md) lists what changed.
+
+### Remove
+
+```sh
+omarchy plugin remove ambitiousrealism.t3-loupe
+rm -rf ~/.config/t3-loupe          # optional: your pairings and settings
+```
+
+Then revoke each machine's session in that machine's T3 → Settings → Connections.
 
 ## Pair your T3 machines
 
@@ -196,14 +206,14 @@ Omarchy shell (Quickshell)                         T3 server(s)
 └──────────────────────────────────────┘          └─────────────────────────────┘
 ```
 
-**The collector, `plugin/daemon/`.**
+**The collector, `daemon/`.**
 - It keeps one connection per paired machine and authenticates the socket with a short-lived ticket.
 - It speaks T3's Effect-RPC protocol: it acknowledges every streamed chunk and resumes from the last sequence it applied.
 - Busy threads, and threads waiting on you, get their own live subscription; that feeds the activity line and the approval text.
 - Transition detection turns state changes into notifications.
 - When the socket path is down but HTTP still answers, it falls back to HTTP polling.
 
-**The QML plugin, `plugin/`.**
+**The QML plugin.**
 - One shared service runs the collector, the theme palette and notifications.
 - Bar widgets can live in any section, with one instance per monitor.
 - The two-pane window is a layer-shell overlay with a dimmed backdrop. Clicking outside, `Esc`, or opening another bar panel closes it. The dropdown is a standard Omarchy `KeyboardPanel`.
@@ -233,21 +243,22 @@ Omarchy shell (Quickshell)                         T3 server(s)
 
 ```sh
 npm test                                              # daemon, fake-T3 end-to-end, view logic, palette × every installed theme
-node plugin/daemon/main.ts demo                       # synthetic feed (or "demo": true in settings.json)
-node tools/extract-icons.mjs <path-to-lucide-react>   # regenerate plugin/lib/Icons.js
+node daemon/main.ts demo                              # synthetic feed (or "demo": true in settings.json)
+node tools/extract-icons.mjs <path-to-lucide-react>   # regenerate lib/Icons.js
 node tools/probe.ts 20                                # record raw frames from your paired servers to ~/.cache (never the repo)
 ```
 
 **Layout:**
-- `plugin/` is exactly what gets installed.
-- `plugin/daemon/` is the collector.
-- `plugin/lib/` holds pure JavaScript shared by QML and the tests.
+- The repository root is the plugin: `manifest.json`, the QML files, `components/`, `lib/`, `daemon/` and `bin/`.
+- `daemon/` is the collector.
+- `lib/` holds pure JavaScript shared by QML and the tests.
+- `tests/` and `tools/` are for development only.
 - `tests/lib/fake-t3.mjs` is a dependency-free fake T3 server that speaks real WebSocket and Effect-RPC.
 
 ## Credits and license
 
-MIT © 2026 ambitiousrealism. See [`plugin/LICENSE`](plugin/LICENSE).
+MIT © 2026 ambitiousrealism. See [`LICENSE`](LICENSE).
 
-Icons are from [Lucide](https://lucide.dev), under the ISC license; see [`plugin/THIRD_PARTY.md`](plugin/THIRD_PARTY.md).
+Icons are from [Lucide](https://lucide.dev), under the ISC license; see [`THIRD_PARTY.md`](THIRD_PARTY.md).
 
 T3 Loupe is an independent project, not affiliated with T3 Tools or Omarchy.
