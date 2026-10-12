@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "id": "ambitiousrealism.t3-loupe",
+  "name": "T3 Loupe",
+  "version": "2.1.0",
+  "author": "ambitiousrealism",
+  "license": "MIT",
+  "description": "Live, read-only T3 Code thread monitor: activity ring, attention alerts, per-thread activity, usage limits.",
+  "kinds": [
+    "bar-widget",
+    "service"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml",
+    "service": "Service.qml"
+  },
+  "barWidget": {
+    "displayName": "T3 Loupe",
+    "description": "Live T3 Code thread activity across paired machines.",
+    "category": "Development",
+    "aliases": [
+      "loupe",
+      "t3",
+      "t3code",
+      "threads",
+      "agents"
+    ],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "display": "label",
+      "reduceMotion": false,
+      "panelWidth": 540
+    },
+    "schema": [
+      {
+        "key": "display",
+        "type": "enum",
+        "label": "Bar display",
+        "options": [
+          "label",
+          "ring",
+          "ring-count"
+        ],
+        "defaultValue": "label"
+      },
+      {
+        "key": "reduceMotion",
+        "type": "boolean",
+        "label": "Reduce motion",
+        "defaultValue": false
+      },
+      {
+        "key": "panelWidth",
+        "type": "integer",
+        "label": "Panel width",
+        "min": 420,
+        "max": 900,
+        "step": 20,
+        "defaultValue": 540
+      }
+    ]
+  }
+}
