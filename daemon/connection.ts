@@ -14,7 +14,7 @@ import { clean, Failure, failureCode, isObject, ms } from "./util.ts";
 
 export type ConnectionState =
   | "connecting" | "live" | "polling" | "offline" | "tunnel_missing" | "authentication_required"
-  | "unsupported" | "environment_changed" | "expired" | "response_too_large" | "failed";
+  | "unsupported" | "environment_changed" | "expired" | "response_too_large" | "listener_untrusted" | "failed";
 
 export interface UsageWindow { label: string; kind: string; usedPercent: number; resetsAt: number | null; durationMins: number }
 export interface ProviderView {
@@ -155,11 +155,14 @@ export class EnvironmentConnection {
     if (this.stopped || this.connecting) return;
     this.connecting = true;
     this.retryAt = null;
+    // Set once this attempt has matched the pinned server identity. The HTTP fallback below
+    // sends the token, so it is only allowed after that match.
+    let identityVerified = false;
     try {
       if (this.sessionExpiresAt !== null && this.sessionExpiresAt <= Date.now()) throw new Failure("expired");
       this.base = this.env.sshHost ? existingTunnel(this.env.sshHost) : this.env.url;
-      const descriptor = await getDescriptor(this.base);
-      if (descriptor.environmentId !== this.env.environmentId) throw new Failure("environment_changed");
+      const descriptor = await this.verifyIdentity();
+      identityVerified = true;
       this.hostLabel = clean(descriptor.label, 40);
       this.serverVersion = clean(descriptor.serverVersion, 60);
       await this.checkSession();
@@ -171,8 +174,8 @@ export class EnvironmentConnection {
       this.socket = null;
       const code = failureCode(error);
       this.failures++;
-      if (code === "offline" || code === "failed") {
-        // Socket path down; keep data flowing over HTTP if the server still answers.
+      if (identityVerified && (code === "offline" || code === "failed")) {
+        // Socket path down after the server proved its identity; keep data flowing over HTTP.
         if (await this.pollOnce()) {
           this.setState("polling");
           this.startPolling();
@@ -182,11 +185,18 @@ export class EnvironmentConnection {
       }
       this.stopPolling();
       this.setState(code as ConnectionState);
-      const slow = code === "authentication_required" || code === "expired" || code === "environment_changed" || code === "unsupported";
+      const slow = code === "authentication_required" || code === "expired" || code === "environment_changed" || code === "unsupported" || code === "listener_untrusted";
       this.schedule(slow ? 5 * 60_000 : code === "tunnel_missing" ? 15_000 : this.backoff());
     } finally {
       this.connecting = false;
     }
+  }
+
+  /** Fetch the descriptor (no credentials) and require the pinned environment id. */
+  private async verifyIdentity() {
+    const descriptor = await getDescriptor(this.base);
+    if (descriptor.environmentId !== this.env.environmentId) throw new Failure("environment_changed");
+    return descriptor;
   }
 
   private async checkSession() {
@@ -285,6 +295,9 @@ export class EnvironmentConnection {
   private async pollOnce(): Promise<boolean> {
     try {
       if (!this.base) return false;
+      // Re-check identity before every token-bearing poll: the server behind this address can
+      // change between polls (a restart, or another process taking a vacant port).
+      await this.verifyIdentity();
       const snapshot = await requestJson(this.base, "/api/orchestration/shell", { token: this.env.token });
       this.store.loadHttpSnapshot(snapshot);
       this.store.synchronized = true;
@@ -293,9 +306,9 @@ export class EnvironmentConnection {
       return true;
     } catch (error) {
       const code = failureCode(error);
-      if (code === "authentication_required") {
+      if (code === "authentication_required" || code === "environment_changed" || code === "listener_untrusted") {
         this.stopPolling();
-        this.setState("authentication_required");
+        this.setState(code);
       }
       return false;
     }
@@ -395,6 +408,7 @@ function label(state: ConnectionState): string {
   return {
     connecting: "Reconnecting", live: "Connected", polling: "Connected (polling)", offline: "Offline",
     tunnel_missing: "SSH tunnel not running", authentication_required: "Pairing required", unsupported: "Unsupported T3 version",
-    environment_changed: "Different T3 server at this address", expired: "Pairing expired", response_too_large: "Too much data", failed: "Connection error",
+    environment_changed: "Different T3 server at this address", expired: "Pairing expired", response_too_large: "Too much data",
+    listener_untrusted: "Port owned by another user", failed: "Connection error",
   }[state];
 }

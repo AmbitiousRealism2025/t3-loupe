@@ -202,3 +202,24 @@ Implements the [design review](https://github.com/AmbitiousRealism2025/t3-loupe-
 
 **Not verified:**
 - `--enable` placing the widget on a bar that has no existing entry for it. This machine already had one (the Notch Strip), so Omarchy's section prompt and default placement weren't exercised.
+
+## Security fix — v2.5.1 (2026-10-12)
+
+Responds to the maintainer review on [omarchy-plugin-marketplace#11292](https://github.com/omacom/omarchy-plugin-marketplace/issues/11292): at `51823ae`, a failed descriptor lookup led `connect()` into the HTTP fallback, which sent the bearer token before the pinned identity was verified.
+
+**What changed:**
+- `connect()` allows the HTTP fallback only after the descriptor matched the pinned environment ID in the same attempt.
+- `pollOnce()` re-checks the descriptor before every token-bearing poll and stops polling on a mismatch.
+- New `daemon/listener.ts`: before a token, socket ticket or pairing credential goes to a loopback address, the listening socket must belong to the current user, read from `/proc/net/tcp` and `tcp6`. Unknown ownership fails closed. Enforced in `requestJson` (token or form body) and `RpcSocket.connect`.
+- New state `listener_untrusted` ("Port owned by another user"), with a troubleshooting entry.
+
+**Verified:**
+- `npm test`: 61 tests pass, 4 of them new. The two connection tests were also run against the previous `connection.ts`, and both failed there as expected: the token was sent after a descriptor HTTP 500, and a poll went to a server with a different identity.
+- Listener ownership: synthetic `/proc/net` cases (own listener, another user's listener on the exact address, on the IPv4 wildcard and on the dual-stack `::` wildcard; nothing listening; unrelated addresses and non-listening sockets ignored; `[::1]`; unreadable `/proc` fails closed; remote HTTPS skipped), plus the real `/proc` seeing this process's own test listener.
+- All existing end-to-end tests now pass through the real ownership check, since the fake T3 listens as the test user.
+- Live: `daemon/main.ts doctor` against the local T3 on `127.0.0.1:3773` passed the endpoint, server identity, session and shell-snapshot checks.
+- `omarchy plugin validate .` and `qmllint` pass.
+
+**Not verified:**
+- A real listener owned by a different local account. That needs a second user on this machine; the synthetic `/proc` tests cover the decision.
+- The SSH-forward path live: the remote machine's forward wasn't running. A forward is owned by the user's own `ssh` process, so it passes by design.

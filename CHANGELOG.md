@@ -2,6 +2,14 @@
 
 What changed in each version. [`VALIDATION.md`](VALIDATION.md) records how each one was verified.
 
+## 2.5.1 — 2026-10-12
+
+Security fix from the [marketplace review](https://github.com/omacom/omarchy-plugin-marketplace/issues/11292).
+
+- **The token is never sent before the server's identity is verified.** If the connection failed at the identity check itself, the HTTP fallback used to poll with the token anyway. A process from another local account listening on T3's vacant port could answer the check with an error and receive the token. The fallback now runs only after the pinned identity matched, and every poll re-checks it.
+- **Loopback secrets only go to your own listener.** Before a token, socket ticket or pairing credential is sent to a loopback address, T3 Loupe checks `/proc/net/tcp` and `tcp6` and requires the listening socket to belong to the current user. The new state "Port owned by another user" reports a refusal.
+- Four new tests cover the reported scenario, re-verification on every poll, and listener ownership.
+
 ## 2.5.0 — 2026-10-12
 
 Ready for the [Omarchy plugin marketplace](https://plugins.omarchy.org/).

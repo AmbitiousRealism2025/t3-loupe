@@ -36,9 +36,12 @@ function* decodeFrames(state, chunk) {
 }
 
 export class FakeT3 {
-  constructor({ environmentId = "env-1", token = "tok", snapshot } = {}) {
+  constructor({ environmentId = "env-1", token = "tok", snapshot, descriptorStatus = 200, refuseSocket = false } = {}) {
     this.environmentId = environmentId;
     this.token = token;
+    this.descriptorStatus = descriptorStatus; // e.g. 500: a squatter answering the descriptor with an error
+    this.refuseSocket = refuseSocket;         // refuse /ws so the client falls back to HTTP polling
+    this.credentialed = [];                   // paths of every request that carried an Authorization header
     this.snapshot = snapshot ?? { schemaVersion: 2, snapshotSequence: 10, projects: [], threads: [], archivedThreads: [] };
     this.sockets = new Set();
     this.received = [];     // client → server RPC messages
@@ -65,6 +68,8 @@ export class FakeT3 {
   http(req, res) {
     const json = (status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
     const path = req.url.split("?")[0];
+    if (req.headers.authorization) this.credentialed.push(path);
+    if (path === "/.well-known/t3/environment" && this.descriptorStatus !== 200) return json(this.descriptorStatus, { error: "unavailable" });
     if (path === "/.well-known/t3/environment") return json(200, { environmentId: this.environmentId, label: "fake", serverVersion: "test", orchestrationProtocolVersion: 2 });
     if (!this.authorized(req)) return json(401, { error: "unauthorized" });
     if (path === "/api/auth/session") return json(200, { authenticated: true, scopes: ["orchestration:read"], expiresAt: new Date(Date.now() + 20 * 86400_000).toISOString() });
@@ -74,6 +79,7 @@ export class FakeT3 {
   }
 
   upgrade(req, socket) {
+    if (this.refuseSocket) { socket.end("HTTP/1.1 503 Service Unavailable\r\n\r\n"); return; }
     const url = new URL(req.url, "http://x");
     if (url.searchParams.get("orchestrationProtocol") !== "2") { socket.end("HTTP/1.1 426 Upgrade Required\r\n\r\n"); return; }
     if (url.searchParams.get("wsTicket") !== "ticket-1") { socket.end("HTTP/1.1 401 Unauthorized\r\n\r\n"); return; }

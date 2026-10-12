@@ -1,5 +1,7 @@
 // Minimal Effect-RPC client over T3's /ws endpoint (JSON serialization, one message per frame).
 // Streams must be acknowledged chunk by chunk; the server waits for each Ack.
+import { checkEndpoint } from "./http.ts";
+import { assertOwnListener } from "./listener.ts";
 import { Failure, isObject } from "./util.ts";
 
 export const MAX_FRAME = 16 * 1024 * 1024;
@@ -25,6 +27,8 @@ export class RpcSocket {
   }
 
   static connect(base: string, ticket: string, timeoutMs = 10_000): Promise<RpcSocket> {
+    // The ticket is a credential: same loopback ownership rule as bearer tokens.
+    assertOwnListener(checkEndpoint(base));
     const url = new URL("/ws", base.replace(/^http/, "ws"));
     url.searchParams.set("orchestrationProtocol", "2");
     url.searchParams.set("wsTicket", ticket);

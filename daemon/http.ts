@@ -1,4 +1,5 @@
 // Bounded HTTP for the few T3 endpoints the monitor reads.
+import { assertOwnListener, isLoopbackHost } from "./listener.ts";
 import { Failure, isObject } from "./util.ts";
 
 export const PROTOCOL_VERSION = 2;
@@ -12,7 +13,7 @@ export function checkEndpoint(url: string): URL {
   } catch {
     throw new Failure("endpoint_invalid");
   }
-  const loopback = parsed.hostname === "127.0.0.1" || parsed.hostname === "[::1]" || /^127\.\d+\.\d+\.\d+$/.test(parsed.hostname);
+  const loopback = isLoopbackHost(parsed.hostname);
   if (
     url.length > 512 ||
     !["http:", "https:"].includes(parsed.protocol) ||
@@ -35,7 +36,10 @@ export interface RequestOptions {
 }
 
 export async function requestJson(base: string, route: string, options: RequestOptions = {}): Promise<Record<string, any>> {
-  const origin = checkEndpoint(base).origin;
+  const endpoint = checkEndpoint(base);
+  const origin = endpoint.origin;
+  // A token or a credential-bearing form only goes to a loopback socket this user owns.
+  if (options.token || options.form) assertOwnListener(endpoint);
   const headers: Record<string, string> = {
     accept: "application/json",
     "accept-encoding": "identity",

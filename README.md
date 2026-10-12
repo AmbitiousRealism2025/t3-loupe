@@ -186,7 +186,8 @@ These settings live in `~/.config/t3-loupe/settings.json`. The file is optional 
 - **Narrow network surface.**
   - Plain HTTP is accepted only on loopback (your local T3 or an SSH forward); anything else must be HTTPS.
   - Redirects are never followed, so a token can't leak to another host.
-  - Each machine's server identity is pinned.
+  - Each machine's server identity is pinned, and checked before every request that carries the token, including HTTP polling.
+  - On loopback, the token, socket ticket and pairing credential only go to a listening socket owned by your own user. Another local account that takes T3's port while T3 is stopped gets nothing.
   - Responses are size-capped.
 - **Minimal data kept.** Only display fields are kept. Command output, diffs and message bodies are dropped on arrival. Approval and question text is shown because that is the point of the panel.
 - **Know what read scope can reach.** In T3, `orchestration:read` can also read any file the server's account can read. T3 Loupe only calls the descriptor, session, socket-ticket, shell and thread-stream endpoints.
@@ -229,6 +230,7 @@ Omarchy shell (Quickshell)                         T3 server(s)
 | The bar shows `+` | Nothing is paired yet; see [Pair your T3 machines](#pair-your-t3-machines). |
 | "No SSH tunnel" | Start your `ssh -L …:127.0.0.1:3773 host` forward. T3 Loupe picks it up within 15 s. |
 | "Pairing required" / "Pairing expired" | Re-pair that machine. |
+| "Port owned by another user" | Something run by a different user account is listening on that machine's T3 port, so T3 Loupe won't send it your token. Check what's listening with `ss -ltnp`; start T3 (or your SSH forward) as your own user. |
 | "Collector stopped" | Node is missing or too old on the shell's `PATH`. Set `"node"` in `settings.json`. `omarchy-shell ambitiousrealism.t3-loupe status` shows the last error. |
 | Changes to the plugin don't show | Some nested QML components don't hot-reload; run `omarchy-restart-shell`. |
 

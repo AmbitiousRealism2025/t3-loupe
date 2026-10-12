@@ -15,6 +15,7 @@ const { loadConfig, saveConfig, upsertEnvironment } = await import(D + "config.t
 const { tunnelUrl } = await import(D + "tunnel.ts");
 const { checkEndpoint, requestJson } = await import(D + "http.ts");
 const { EnvironmentConnection } = await import(D + "connection.ts");
+const { assertOwnListener, listenerUids } = await import(D + "listener.ts");
 const { extractCredential } = await import(D + "pairing.ts");
 
 const iso = (msAgo) => new Date(Date.now() - msAgo).toISOString();
@@ -305,6 +306,82 @@ test("connection: rejected token reports pairing required", async () => {
   } finally {
     conn.stop();
     await fake.close();
+  }
+});
+
+test("connection: a failed descriptor never leads to sending the token", async () => {
+  // Marketplace review #11292: a squatter on a vacant loopback port answers the descriptor
+  // with HTTP 500; the HTTP fallback must not then send the bearer token.
+  const fake = new FakeT3({ descriptorStatus: 500 });
+  const url = await fake.listen();
+  const conn = new EnvironmentConnection({ environmentId: "env-1", label: "Fake", url, token: "tok", expiresAt: Date.now() / 1000 + 86400 });
+  conn.start();
+  try {
+    await waitFor(() => conn.state === "failed");
+    await new Promise((r) => setTimeout(r, 300));
+    assert.deepEqual(fake.credentialed, [], "no request may carry the token before identity is verified");
+    assert.notEqual(conn.state, "polling");
+  } finally {
+    conn.stop();
+    await fake.close();
+  }
+});
+
+test("connection: HTTP fallback re-verifies identity before every poll", async () => {
+  const fake = new FakeT3({ refuseSocket: true });
+  const url = await fake.listen();
+  const conn = new EnvironmentConnection({ environmentId: "env-1", label: "Fake", url, token: "tok", expiresAt: Date.now() / 1000 + 86400 });
+  conn.start();
+  try {
+    await waitFor(() => conn.state === "polling");
+    assert.ok(fake.credentialed.includes("/api/orchestration/shell"), "the verified server is polled over HTTP");
+    // A different server now answers at the same address.
+    fake.environmentId = "someone-else";
+    fake.credentialed = [];
+    assert.equal(await conn.pollOnce(), false);
+    assert.deepEqual(fake.credentialed, [], "a poll must not send the token to an unverified server");
+    assert.equal(conn.state, "environment_changed");
+  } finally {
+    conn.stop();
+    await fake.close();
+  }
+});
+
+function fakeProc({ tcp = [], tcp6 = [] }) {
+  const root = mkdtempSync(join(tmpdir(), "t3l-proc-"));
+  mkdirSync(join(root, "net"));
+  const header = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n";
+  const rows = (entries) => entries.map(([address, state, uid], i) => `   ${i}: ${address} 00000000:0000 ${state} 00000000:00000000 00:00000000 00000000 ${uid} 0 ${1000 + i} 1 0 100 0 0 10 0`).join("\n");
+  writeFileSync(join(root, "net", "tcp"), header + rows(tcp) + "\n");
+  writeFileSync(join(root, "net", "tcp6"), header + rows(tcp6) + "\n");
+  return root;
+}
+
+test("loopback trust: secrets go only to a listener this user owns", () => {
+  const me = 1001, other = 1002;
+  const u = new URL("http://127.0.0.1:3773");
+  // 127.0.0.1:3773 = 0100007F:0EBD in /proc/net/tcp.
+  assert.doesNotThrow(() => assertOwnListener(u, fakeProc({ tcp: [["0100007F:0EBD", "0A", me]] }), me));
+  assert.throws(() => assertOwnListener(u, fakeProc({ tcp: [["0100007F:0EBD", "0A", other]] }), me), /listener_untrusted/);
+  assert.throws(() => assertOwnListener(u, fakeProc({ tcp: [["00000000:0EBD", "0A", other]] }), me), /listener_untrusted/, "a wildcard listener also answers");
+  assert.throws(() => assertOwnListener(u, fakeProc({ tcp6: [["0".repeat(32) + ":0EBD", "0A", other]] }), me), /listener_untrusted/, "a dual-stack :: listener also answers");
+  assert.throws(() => assertOwnListener(u, fakeProc({}), me), /offline/, "nothing listening");
+  assert.doesNotThrow(() => assertOwnListener(u, fakeProc({ tcp: [["0100007F:0EBD", "0A", me], ["0200007F:0EBD", "0A", other], ["0100007F:0EBD", "01", other]] }), me),
+    "other addresses and non-listening sockets are ignored");
+  assert.doesNotThrow(() => assertOwnListener(new URL("http://[::1]:3773"), fakeProc({ tcp6: [["00000000000000000000000001000000:0EBD", "0A", me]] }), me));
+  assert.throws(() => assertOwnListener(u, join(tmpdir(), "t3l-no-such-proc"), me), /listener_untrusted/, "unknown ownership fails closed");
+  assert.doesNotThrow(() => assertOwnListener(new URL("https://t3.example.com"), "/nonexistent", me), "remote HTTPS is not a loopback question");
+});
+
+test("loopback trust: the real /proc sees this process's own listener", async () => {
+  const server = createServer(() => {});
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  try {
+    const { port } = server.address();
+    assert.deepEqual(listenerUids("127.0.0.1", port), [process.getuid()]);
+    assert.doesNotThrow(() => assertOwnListener(new URL(`http://127.0.0.1:${port}`)));
+  } finally {
+    server.close();
   }
 });
 
