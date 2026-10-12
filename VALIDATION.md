@@ -186,3 +186,17 @@ Implements the [design review](https://github.com/AmbitiousRealism2025/t3-loupe-
   - The centered window's backdrop goes from 38% to 58% black. Measured live: brightness outside the card went 37 → 16 with the panel open.
   - Thread rows again sit on the palette `surface` fill, in both the two-pane list and the dropdown cards, with 3px gaps in two-pane. Subagent rows stay unshaded. Hover and selection use the shell fills on top.
   - Verified live with real threads.
+
+## Marketplace layout — v2.5.0 (2026-10-12)
+
+**What changed:** the plugin moved to the repository root; media and the promo source moved to `t3-loupe-media`, and history was rewritten without them; `tools/install.sh` was removed in favour of `omarchy plugin add`; `preview.webp`, `CHANGELOG.md` and `SECURITY.md` were added.
+
+**Verified:**
+- `omarchy plugin validate .` passes on the repository root and on a fresh clone from GitHub.
+- `qmllint` (with the shell's import path) reports nothing for every QML file.
+- `npm test`: 57 tests pass, from the working tree and from a fresh clone.
+- Marketplace limits: 61 files, 501 KiB in total, largest file 128 KiB (`preview.webp`); a fresh clone is about 2 MB, history included.
+- The plugin ID `ambitiousrealism.t3-loupe` isn't used in the marketplace catalog.
+
+**Not verified:**
+- A live `omarchy plugin add` install. The existing install was copied in by the old installer, and `omarchy plugin add` refuses a duplicate ID, so this needs the old copy removed first.
