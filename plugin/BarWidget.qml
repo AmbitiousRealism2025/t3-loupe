@@ -24,10 +24,26 @@ Panel {
   readonly property bool reduceMotion: setting("reduceMotion", false) === true
   readonly property int panelWidth: Number(setting("panelWidth", 540)) || 540
 
-  readonly property string screenName: {
-    var w = QsWindow.window
-    return w && w.screen ? String(w.screen.name) : ""
+  // "centered" (floating two-pane window, default) or "dropdown" (compact panel under the bar).
+  // Widget setting or settings.json "presentation"; `f` in the panel flips it for the session.
+  property string presentationOverride: ""
+  readonly property string presentation: presentationOverride
+    || (service && service.settings && typeof service.settings.presentation === "string" ? service.settings.presentation : "")
+    || String(setting("presentation", "centered"))
+  readonly property bool centered: presentation === "centered"
+  readonly property var content: centered
+    ? (centeredLoader.item ? centeredLoader.item.panelContent : null)
+    : (dropdownLoader.item ? dropdownLoader.item.panelContent : null)
+
+  function toggleLayout() {
+    presentationOverride = centered ? "dropdown" : "centered"
   }
+
+  readonly property var screenObj: {
+    var w = QsWindow.window
+    return w ? w.screen : null
+  }
+  readonly property string screenName: screenObj ? String(screenObj.name) : ""
 
   property string pendingFocus: ""
 
@@ -35,7 +51,7 @@ Panel {
   function openAt(key) {
     pendingFocus = key
     if (!opened) open()
-    else if (key) content.focusKey(key)
+    else if (key && content) content.focusKey(key)
   }
 
   onOpenedChanged: {
@@ -43,7 +59,7 @@ Panel {
     if (opened && pendingFocus) {
       var key = pendingFocus
       pendingFocus = ""
-      Qt.callLater(function() { content.focusKey(key) })
+      Qt.callLater(function() { if (root.content) root.content.focusKey(key) })
     }
   }
   onServiceChanged: if (service) service.registerWidget(root)
@@ -181,32 +197,66 @@ Panel {
     }
   }
 
-  KeyboardPanel {
-    id: panel
-    anchorItem: button
-    owner: root
-    bar: root.bar
-    open: root.opened
-    focusTarget: content.keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(root.panelWidth))
-    contentHeight: panel.fittedContentHeight(content.implicitHeight, Style.space(820))
+  Loader {
+    id: dropdownLoader
+    active: !root.centered
+    sourceComponent: KeyboardPanel {
+      id: panel
+      readonly property alias panelContent: dropContent
+      anchorItem: button
+      owner: root
+      bar: root.bar
+      open: root.opened
+      focusTarget: dropContent.keyCatcher
+      contentWidth: panel.fittedContentWidth(Style.space(root.panelWidth))
+      contentHeight: panel.fittedContentHeight(dropContent.implicitHeight, Style.space(820))
 
-    // Opaque reading surface regardless of popup translucency.
-    Rectangle {
-      anchors.fill: parent
-      anchors.margins: -panel.padding
-      radius: Math.max(0, Style.cornerRadius - Border.top(panel.borderSpec))
-      color: root.theme ? root.theme.popup.background : Color.popups.background
+      // Opaque reading surface regardless of popup translucency.
+      Rectangle {
+        anchors.fill: parent
+        anchors.margins: -panel.padding
+        radius: Math.max(0, Style.cornerRadius - Border.top(panel.borderSpec))
+        color: root.theme ? root.theme.popup.background : Color.popups.background
+      }
+
+      ThreadsPanel {
+        id: dropContent
+        anchors.fill: parent
+        service: root.service
+        opened: root.opened
+        reduceMotion: root.reduceMotion
+        onCloseRequested: root.close()
+        onSwitchRequested: function(direction) { root.switchPanel(direction) }
+        onLayoutToggleRequested: root.toggleLayout()
+      }
     }
+  }
 
-    ThreadsPanel {
-      id: content
-      anchors.fill: parent
-      service: root.service
-      opened: root.opened
-      reduceMotion: root.reduceMotion
-      onCloseRequested: root.close()
-      onSwitchRequested: function(direction) { root.switchPanel(direction) }
+  Loader {
+    id: centeredLoader
+    active: root.centered
+    sourceComponent: CenteredWindow {
+      id: floating
+      readonly property alias panelContent: floatContent
+      open: root.opened
+      bar: root.bar
+      owner: root
+      screen: root.screenObj
+      colors: root.theme ? root.theme.popup : ({})
+      onDismissRequested: root.close()
+      onOpenChanged: if (open) Qt.callLater(function() { floatContent.keyCatcher.forceActiveFocus() })
+
+      ThreadsPanel {
+        id: floatContent
+        anchors.fill: parent
+        service: root.service
+        opened: root.opened
+        centered: true
+        reduceMotion: root.reduceMotion
+        onCloseRequested: root.close()
+        onSwitchRequested: function(direction) { root.switchPanel(direction) }
+        onLayoutToggleRequested: root.toggleLayout()
+      }
     }
   }
 }

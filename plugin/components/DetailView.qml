@@ -349,9 +349,9 @@ Column {
 
   // Error text for failed / limited threads
   Text {
-    visible: root.row.error !== ""
+    visible: !!root.row.error
     width: root.width
-    text: root.row.error
+    text: root.row.error || ""
     textFormat: Text.PlainText
     color: root.colors.attentionInk
     font.family: root.monoFamily

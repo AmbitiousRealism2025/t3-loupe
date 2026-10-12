@@ -17,6 +17,10 @@ Item {
 
   signal closeRequested()
   signal switchRequested(int direction)
+  signal layoutToggleRequested()
+
+  // Floating, centered presentation: more room for the list.
+  property bool centered: false
 
   readonly property var colors: service ? service.theme.popup : ({})
   readonly property var rows: service ? service.rows : []
@@ -48,17 +52,44 @@ Item {
   }
 
   // Fixed chrome height + list content: lets KeyboardPanel fit the card to content.
-  implicitHeight: chrome.implicitHeight + Style.space(10) + Math.min(list.contentHeight, Style.space(900)) + Style.space(8) + footer.implicitHeight
+  // Two-pane takes the full card height so the panes don't jump as the selection changes.
+  implicitHeight: centered ? Style.space(2400)
+    : chrome.implicitHeight + Style.space(10) + Math.min(list.contentHeight, Style.space(900)) + Style.space(8) + footer.implicitHeight
+
+  // Two-pane selection: the thread shown on the right. Follows the cursor; survives list updates.
+  property string selectedKey: ""
+  readonly property var selectedRow: service && selectedKey ? service.rowByKey(selectedKey) : null
+  onCursorChanged: {
+    if (!centered || cursor < 0 || cursor >= visible_.length) return
+    var item = visible_[cursor]
+    if (item.kind === "idle-line") return
+    selectedKey = item.key
+    detailDebounce.restart()
+  }
+  function selectFirst() {
+    for (var i = 0; i < visible_.length; i++) if (visible_[i].kind !== "idle-line") { cursor = i; return }
+  }
+  Timer {
+    id: detailDebounce
+    interval: 150
+    onTriggered: if (root.selectedRow && root.service) root.service.requestDetail(root.selectedRow.envId, root.selectedRow.id)
+  }
 
   // Open on whatever needs you; otherwise on what's active.
   function pickDefaultFilter() {
     if (filterChosen) return
     filter = needCount > 0 ? "attention" : activeCount > 0 ? "active" : "all"
   }
-  onOpenedChanged: if (opened) { filterChosen = false; pickDefaultFilter(); cursor = -1; list.positionViewAtBeginning() }
+  onOpenedChanged: if (opened) {
+    filterChosen = false; pickDefaultFilter(); cursor = -1; list.positionViewAtBeginning()
+    if (centered) Qt.callLater(selectFirst)
+  }
   onNeedCountChanged: if (opened && !filterChosen && filter === "attention" && needCount === 0) pickDefaultFilter()
 
-  function setFilter(f) { filter = f; filterChosen = true; cursor = -1; list.positionViewAtBeginning() }
+  function setFilter(f) {
+    filter = f; filterChosen = true; cursor = -1; list.positionViewAtBeginning()
+    if (centered) Qt.callLater(selectFirst)
+  }
 
   function toggleIdle(key) {
     var next = {}
@@ -138,12 +169,13 @@ Item {
   Timer {
     interval: 45000
     repeat: true
-    running: root.opened && Object.keys(root.expanded).length > 0
+    running: root.opened && (Object.keys(root.expanded).length > 0 || root.selectedRow !== null)
     onTriggered: {
       for (var k in root.expanded) {
         var row = root.service ? root.service.rowByKey(k) : null
         if (row) root.service.requestDetail(row.envId, row.id)
       }
+      if (root.centered && root.selectedRow) root.service.requestDetail(root.selectedRow.envId, root.selectedRow.id)
     }
   }
 
@@ -167,6 +199,7 @@ Item {
       else if (t === "3") root.setFilter("done")
       else if (t === "4") root.setFilter("all")
       else if (t === "/") search.forceActiveFocus()
+      else if (t === "f") root.layoutToggleRequested()
       else if (t === "r" && root.service) root.service.refresh()
       else if (t === "o") root.act(root.cursor >= 0 ? root.visible_[root.cursor] : null, "focus")
       else if (t === "g") {
@@ -483,9 +516,9 @@ Item {
       anchors.topMargin: Style.space(10)
       anchors.bottom: footer.top
       anchors.bottomMargin: Style.space(8)
-      width: parent.width
+      width: root.centered ? Math.round(parent.width * 0.44) : parent.width
       clip: true
-      spacing: Style.space(6)
+      spacing: Style.space(root.centered ? 3 : 6)
       boundsBehavior: Flickable.StopAtBounds
       model: root.visible_
       reuseItems: false
@@ -524,7 +557,7 @@ Item {
         }
         Loader {
           width: parent.width
-          sourceComponent: cell.isLine ? lineComponent : cardComponent
+          sourceComponent: cell.isLine ? lineComponent : root.centered ? rowComponent : cardComponent
         }
         Component {
           id: lineComponent
@@ -535,6 +568,25 @@ Item {
             colors: root.colors
             fontFamily: root.fontFamily
             onClicked: { root.cursor = cell.index; root.toggleIdle(cell.modelData.key) }
+          }
+        }
+        Component {
+          id: rowComponent
+          CompactRow {
+            row: cell.modelData
+            colors: root.colors
+            now: root.now
+            selected: cell.index === root.cursor
+            reduceMotion: root.reduceMotion
+            showMachine: root.multiMachine && root.filter !== "all"
+            machineLabel: {
+              var e = root.service ? root.service.environment(cell.modelData.envId) : null
+              return e ? e.label : ""
+            }
+            fontFamily: root.fontFamily
+            monoFamily: root.monoFamily
+            opacity: cell.modelData.stale ? 0.55 : 1
+            onClicked: root.cursor = cell.index
           }
         }
         Component {
@@ -565,6 +617,39 @@ Item {
       displaced: Transition { NumberAnimation { properties: "y"; duration: 160; easing.type: Easing.OutCubic } }
     }
 
+    // Two-pane: divider and the selected thread's detail.
+    Rectangle {
+      visible: root.centered
+      anchors.top: list.top
+      anchors.bottom: list.bottom
+      x: list.width + Style.space(8)
+      width: 1
+      color: root.colors.line
+    }
+    Loader {
+      active: root.centered
+      visible: active
+      anchors.top: list.top
+      anchors.bottom: list.bottom
+      anchors.left: list.right
+      anchors.leftMargin: Style.space(18)
+      anchors.right: parent.right
+      sourceComponent: ThreadDetailPane {
+        row: root.selectedRow
+        detail: root.selectedRow && root.service ? root.service.details[root.selectedRow.key] || null : null
+        colors: root.colors
+        now: root.now
+        reduceMotion: root.reduceMotion
+        machineLabel: {
+          var e = root.selectedRow && root.service ? root.service.environment(root.selectedRow.envId) : null
+          return e && root.multiMachine ? e.label : ""
+        }
+        fontFamily: root.fontFamily
+        monoFamily: root.monoFamily
+        onActionRequested: function(action) { if (root.selectedRow) root.act(root.selectedRow, action) }
+      }
+    }
+
     Column {
       id: footer
       anchors.bottom: parent.bottom
@@ -582,15 +667,23 @@ Item {
         fontFamily: root.fontFamily
       }
 
+      // Key hints: keys in readable ink, labels faint. Wraps between hints, never inside one.
       Text {
+        readonly property var hints: [
+          [root.centered ? "j/k" : "j/k", root.centered ? "select" : "move"], ["↵", root.centered ? "subagents" : "expand"], ["1–4", "filter"], ["/", "search"],
+          ["f", "toggle view"], ["o", "open T3"], ["esc", "close"]
+        ]
         width: parent.width
         horizontalAlignment: Text.AlignRight
-        text: "j/k move  ·  ↵ expand  ·  1–4 filter  ·  / search  ·  o open T3  ·  esc"
-        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        textFormat: Text.StyledText
+        text: hints.map(function(h) {
+          return "<font color=\"" + root.colors.textDim + "\">" + h[0] + "</font>&nbsp;" + h[1].replace(/ /g, "&nbsp;")
+        }).join("&nbsp;&nbsp;·&nbsp; ")
         color: root.colors.textFaint
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
-        elide: Text.ElideLeft
+        lineHeight: 1.15
       }
     }
   }

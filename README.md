@@ -6,11 +6,15 @@
 
 T3 Loupe shows what every T3 Code thread is doing across all your machines. It tells you which threads are working, which are waiting on you, and how close you are to your usage limits, without switching to the T3 window.
 
-| Inbox | Live thread detail | Approval text |
-|:---:|:---:|:---:|
-| ![Inbox view](docs/inbox.png) | ![Expanded thread with activity trail, runs and context](docs/detail.png) | ![Pending command approval with full text](docs/approval.png) |
+![Two-pane view: thread list with live activity on the left, the selected thread's detail on the right](docs/two-pane.png)
 
-<sub>Screenshots use the built-in demo feed and the Ristretto theme.</sub>
+<sub>The two-pane window: every thread on the left, the selected one in full on the right. Demo feed, Lumon theme.</sub>
+
+| Approval text, two-pane | Compact dropdown | Dropdown detail |
+|:---:|:---:|:---:|
+| ![Pending command approval with full text](docs/two-pane-approval.png) | ![Dropdown inbox view](docs/inbox.png) | ![Expanded thread in the dropdown](docs/detail.png) |
+
+<sub>Press <code>f</code> to switch between the two-pane window and the compact dropdown. Dropdown screenshots: demo feed, Ristretto theme.</sub>
 
 ---
 
@@ -27,7 +31,8 @@ T3 Loupe shows what every T3 Code thread is doing across all your machines. It t
   The ring turns slowly while agents work. When a thread needs you, a halo breathes around it and a badge shows how many.
 - **What the agent is doing right now.** Each busy thread shows its current step, with **the same icons T3's timeline uses**: terminal for commands, pen for edits, eye for reads, magnifier for code search, globe for web, brain for reasoning, bot for subagents, and so on.
 - **The approval text itself.** When an agent is waiting for approval, you see the exact command, file change or question, and the choices the provider offered.
-- **Per-thread detail on demand:**
+- **Two-pane window.** By default the panel opens as a floating window in the middle of the screen. Threads are listed on the left. The selected thread's live detail is on the right, and it follows `j`/`k` without anything expanding or jumping. Press `f` for a compact dropdown under the bar instead.
+- **Per-thread detail:**
   - the last six activities
   - plan progress
   - a run-duration chart
@@ -94,8 +99,9 @@ Sessions last 30 days, and T3 doesn't issue refresh tokens. T3 Loupe warns you t
 |---|---|
 | **Click** the name or the ring | open or close the panel |
 | **Middle-click** | reconnect now |
-| `j` / `k`, `↑` / `↓` | move between threads |
-| `Enter` | expand or collapse a thread, or the **Idle (n)** line |
+| `j` / `k`, `↑` / `↓` | select a thread; the two-pane detail follows |
+| `Enter` | show all of a thread's subagents (two-pane) or expand its card (dropdown); on **Idle (n)**, fold or unfold |
+| `f` | switch between the two-pane window and the dropdown |
 | `1` `2` `3` `4`, `h` / `l` | **Inbox** (needs you) · **Active** · **Done** (finished, newest first) · **All** (grouped by machine and project) |
 | `/` | filter by text |
 | `g` | jump to the first thread that needs you |
@@ -123,7 +129,8 @@ Set these with `omarchy bar set ambitiousrealism.t3-loupe <key> <value>`.
 |---|---|---|
 | `display` | `label`: "T3 Loupe" + ring · `ring`: ring with the count inside · `ring-count`: count beside the ring | `label` |
 | `reduceMotion` | `true` stops the spin, pulse and halo | `false` |
-| `panelWidth` | `420` – `900` | `540` |
+| `presentation` | `centered`: two-pane floating window · `dropdown`: compact panel under the bar | `centered` |
+| `panelWidth` | `420` – `900` (dropdown width) | `540` |
 
 ### Notifications and the collector
 
@@ -140,6 +147,7 @@ These settings live in `~/.config/t3-loupe/settings.json`. The file is optional 
     "kinds": { "checks_passed": false }
   },
   "node": "/usr/bin/node",
+  "presentation": "centered",
   "demo": false
 }
 ```
@@ -197,7 +205,7 @@ Omarchy shell (Quickshell)                         T3 server(s)
 **The QML plugin, `plugin/`.**
 - One shared service runs the collector, the theme palette and notifications.
 - Bar widgets can live in any section, with one instance per monitor.
-- The panel is a standard Omarchy `KeyboardPanel`.
+- The two-pane window is a layer-shell overlay with a dimmed backdrop. Clicking outside, `Esc`, or opening another bar panel closes it. The dropdown is a standard Omarchy `KeyboardPanel`.
 - Icons are Lucide vector paths drawn in theme colors.
 
 [`docs/DESIGN.md`](docs/DESIGN.md) records the original design and the T3 source evidence behind it. [`VALIDATION.md`](VALIDATION.md) records what has been verified on a live system and what hasn't.

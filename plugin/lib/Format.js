@@ -70,3 +70,13 @@ function model(name) {
 function plural(n, word, many) {
   return n + " " + (n === 1 ? word : (many || word + "s"))
 }
+
+// The time shown on a thread: how long it has waited on you or been working,
+// when a usage limit resets, or when it last finished.
+function elapsed(row, now, busy) {
+  if (row.state === "input" && row.pendingSince) return duration(now - row.pendingSince)
+  if (row.activeSince && busy) return duration(now - row.activeSince)
+  if (row.state === "limited" && row.usageResetAt) return "resets " + until(row.usageResetAt, now)
+  if (row.completedAt) return ago(row.completedAt, now)
+  return ago(row.updatedAt, now)
+}

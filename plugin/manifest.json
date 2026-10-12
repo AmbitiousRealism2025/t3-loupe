@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "ambitiousrealism.t3-loupe",
   "name": "T3 Loupe",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "author": "ambitiousrealism",
   "license": "MIT",
   "description": "Live, read-only T3 Code thread monitor: activity ring, attention alerts, per-thread activity, usage limits.",
@@ -30,7 +30,8 @@
     "defaults": {
       "display": "label",
       "reduceMotion": false,
-      "panelWidth": 540
+      "panelWidth": 540,
+      "presentation": "centered"
     },
     "schema": [
       {
@@ -43,6 +44,17 @@
           "ring-count"
         ],
         "defaultValue": "label"
+      },
+      {
+        "key": "presentation",
+        "type": "enum",
+        "label": "Panel layout",
+        "options": [
+          "centered",
+          "dropdown"
+        ],
+        "defaultValue": "centered",
+        "description": "centered: floating two-pane window (list + live detail). dropdown: compact panel under the bar. Press f in the panel to switch."
       },
       {
         "key": "reduceMotion",

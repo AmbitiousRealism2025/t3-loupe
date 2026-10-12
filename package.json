@@ -1,6 +1,6 @@
 {
   "name": "t3-loupe",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "private": true,
   "type": "module",
   "description": "Live, read-only T3 Code thread monitor for the Omarchy shell",

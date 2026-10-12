@@ -24,24 +24,13 @@ Item {
   signal actionRequested(string action)
 
   readonly property bool child: row.parentId !== ""
-  readonly property color tone: colors[roleFor(row.state)] || colors.textDim
-  readonly property color ink: colors[roleFor(row.state) + "Ink"] || colors.textDim
-  readonly property bool loud: Store.ATTENTION[row.state] === true || Store.BUSY[row.state] === true || row.state === "limited"
+  readonly property color tone: colors[Store.stateRole(row.state)] || colors.textDim
+  readonly property color ink: colors[Store.stateRole(row.state) + "Ink"] || colors.textDim
+  readonly property bool loud: Store.isLoud(row.state)
   readonly property var activity: Store.currentActivity(row)
   readonly property real indent: child ? Style.space(22) : 0
 
-  function roleFor(state) {
-    return { input: "attention", failed: "attention", plan: "warning", limited: "warning", working: "accent", waiting: "accent",
-      queued: "info", background: "subagent", review: "success" }[state] || "idle"
-  }
-
-  readonly property string elapsedText: {
-    if (row.state === "input" && row.pendingSince) return Format.duration(now - row.pendingSince)
-    if (row.activeSince && Store.BUSY[row.state]) return Format.duration(now - row.activeSince)
-    if (row.state === "limited" && row.usageResetAt) return "resets " + Format.until(row.usageResetAt, now)
-    if (row.completedAt) return Format.ago(row.completedAt, now)
-    return Format.ago(row.updatedAt, now)
-  }
+  readonly property string elapsedText: Format.elapsed(row, now, Store.BUSY[row.state] === true)
 
   readonly property string metaText: {
     var parts = []
@@ -200,63 +189,15 @@ Item {
         }
       }
 
-      // Chips
-      Flow {
-        visible: chips.count > 0 || ctxChip.visible || bgChip.visible
+      ThreadChips {
         x: glyph.width + Style.space(8)
         width: parent.width - x
-        spacing: Style.space(5)
-
-        Chip {
-          visible: root.row.state === "failed" && root.row.errorClass !== ""
-          icon: "circle-alert"
-          text: root.row.errorClass.replace("_", " ")
-          tone: root.colors.attention
-          ink: root.colors.attentionInk
-        }
-        Chip {
-          id: bgChip
-          // Background tasks and child threads describe the same subagents; take the larger view.
-          readonly property int subs: Math.max(root.row.background ? root.row.background.subagents : 0, root.row.activeChildren)
-          visible: !root.child && (subs > 0 || (root.row.childCount > 0 && root.expanded))
-          icon: "bot"
-          text: subs > 0 ? Format.plural(subs, "subagent") + " running" : Format.plural(root.row.childCount, "subagent")
-          tone: root.colors.subagent
-          ink: root.colors.subagentInk
-        }
-        Chip {
-          visible: root.row.background && (root.row.background.commands + root.row.background.monitors) > 0
-          icon: root.row.background && root.row.background.monitors > 0 ? "eye" : "terminal"
-          text: root.row.background ? Format.plural(root.row.background.commands + root.row.background.monitors, "background task") : ""
-          tone: root.colors.info
-          ink: root.colors.infoInk
-        }
-        Chip {
-          visible: root.row.pr !== null && root.row.pr !== undefined
-          readonly property var pr: root.row.pr || ({})
-          icon: pr.state === "merged" ? "git-merge" : "git-pull-request"
-          text: "#" + pr.number + (pr.checks === "passing" ? "  ✓" : pr.checks === "failing" ? "  ✗" : pr.checks === "pending" ? "  …" : "")
-            + (pr.additions || pr.deletions ? "  +" + pr.additions + " −" + pr.deletions : "")
-          tone: pr.checks === "failing" ? root.colors.attention : pr.state === "merged" ? root.colors.subagent : pr.state === "open" ? root.colors.success : root.colors.textFaint
-          ink: pr.checks === "failing" ? root.colors.attentionInk : pr.state === "merged" ? root.colors.subagentInk : pr.state === "open" ? root.colors.successInk : root.colors.textDim
-        }
-        Chip {
-          id: ctxChip
-          readonly property var ctx: root.detail && root.detail.context ? root.detail.context : null
-          visible: ctx !== null && ctx.max > 0 && !root.expanded
-          icon: "gauge"
-          text: ctx ? Math.round(ctx.used / ctx.max * 100) + "% context" : ""
-          tone: ctx && ctx.used / ctx.max > 0.85 ? root.colors.warning : root.colors.textFaint
-          ink: ctx && ctx.used / ctx.max > 0.85 ? root.colors.warningInk : root.colors.textDim
-        }
-        Chip {
-          visible: root.row.plan && !root.child
-          icon: "list-todo"
-          text: "plan mode"
-          tone: root.colors.textFaint
-          ink: root.colors.textDim
-        }
-        Repeater { id: chips; model: 0 }
+        visible: anyVisible
+        row: root.row
+        detail: root.detail
+        colors: root.colors
+        showContext: !root.expanded
+        showSubagentTotal: root.expanded
       }
 
       Loader {

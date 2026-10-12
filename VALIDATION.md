@@ -113,3 +113,36 @@ Validated on 2026-10-12, on this setup:
   - Key `3` opened Done, showing 5 threads newest first.
   - No QML warnings came from this plugin.
 - Not verified: clicking with the mouse (no pointer automation here; the click and `Enter` use the same handler), and per-group lines with live data across two machines (unit-tested only).
+
+## Two-pane window — v2.3.0 (2026-10-12)
+
+**New:**
+- **`presentation` setting**, with `centered` as the new default and `dropdown` as the alternative. It can be set in `settings.json` or as a widget setting, and `f` switches it for the session.
+- **Centered window:**
+  - a layer-shell overlay (`t3-loupe` namespace) with a dimmed backdrop and an 820px card up to 84% of the screen height;
+  - a fade and scale on open and close;
+  - exclusive keyboard focus while open;
+  - closes on a backdrop click or `Esc`, and claims the bar's shared popup slot so other bar panels close it.
+- **Two-pane layout:**
+  - a 44% compact list on the left;
+  - `ThreadDetailPane` on the right, showing the selected thread (title, meta, chips, pending request, activity, plan, runs, context, subagents, actions);
+  - the selection follows the cursor, and detail is requested after a 150 ms debounce;
+  - the first thread is selected when the panel opens or the filter changes.
+- **Key hints** wrap between hints, and `f toggle view` was added.
+
+**Fixed:**
+- A thread whose only chip was its PR never showed that chip.
+- Chip-row visibility depended on its own children, which made it circular.
+- The detail pane's position was a binding loop.
+- An undefined `row.error` caused a warning.
+
+**Verified:**
+- The tests pass.
+- Live in the Notch Strip with real data (Lumon theme): the centered window opened over T3, and the detail of the current thread updated live (activity, 12-run chart, context 502k/1M).
+- Demo feed: Inbox with the command approval and options in the right pane; `j` moved the selection and the pane followed (activity, plan, runs, context, subagents, PR chip); `f` switched to the dropdown and back.
+- No QML warnings came from this plugin.
+
+**Not verified:**
+- Multiple monitors.
+- The centered window on the main bar rather than the Notch Strip.
+- Mouse clicks: list clicks and `j`/`k` share a handler, but no click was physically made.

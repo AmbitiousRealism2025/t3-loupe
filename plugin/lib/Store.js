@@ -61,6 +61,14 @@ function stateIcon(row) {
 
 function isRoot(row) { return !row.parentId }
 
+// Display state → palette role (matches Palette.STATE_ROLE).
+var ROLE = { input: "attention", failed: "attention", plan: "warning", limited: "warning", working: "accent", waiting: "accent",
+  queued: "info", background: "subagent", review: "success" }
+function stateRole(state) { return ROLE[state] || "idle" }
+
+// Things worth drawing attention to in a row: busy, blocked or rate-limited.
+function isLoud(state) { return ATTENTION[state] === true || BUSY[state] === true || state === "limited" }
+
 function rootMatches(row, filter) {
   if (filter === "attention") return NEEDS_YOU[row.state] === true
   if (filter === "active") return !row.settled || BUSY[row.state] === true || ATTENTION[row.state] === true || row.state === "review"
