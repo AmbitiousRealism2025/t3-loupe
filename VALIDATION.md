@@ -219,6 +219,7 @@ Responds to the maintainer review on [omarchy-plugin-marketplace#11292](https://
 - All existing end-to-end tests now pass through the real ownership check, since the fake T3 listens as the test user.
 - Live: `daemon/main.ts doctor` against the local T3 on `127.0.0.1:3773` passed the endpoint, server identity, session and shell-snapshot checks.
 - `omarchy plugin validate .` and `qmllint` pass.
+- Live update: `omarchy plugin update ambitiousrealism.t3-loupe --yes` fast-forwarded the installed git checkout to the fix. The collector restarted on the new code and the local machine reported `live`.
 
 **Not verified:**
 - A real listener owned by a different local account. That needs a second user on this machine; the synthetic `/proc` tests cover the decision.
