@@ -2,7 +2,7 @@ import QtQuick
 import qs.Commons
 import "../lib/Format.js" as Format
 
-// Tags for a thread: error class, subagents, background tasks, PR, context, plan mode.
+// Tags for a thread (dropdown cards): neutral ink; only failures and failing checks use attention.
 Flow {
   id: root
   property var row: ({})
@@ -28,54 +28,49 @@ Flow {
 
   spacing: Style.space(5)
 
+  component Tag: Chip {
+    tone: root.colors.textFaint
+    ink: root.colors.textDim
+    outlined: true
+  }
+
   Chip {
-    id: errChip
     visible: root.showError
     icon: "circle-alert"
     text: String(root.row.errorClass || "").replace("_", " ")
     tone: root.colors.attention
     ink: root.colors.attentionInk
+    outlined: true
   }
-  Chip {
-    id: subChip
+  Tag {
     visible: root.showSubs
     icon: "bot"
     text: root.subs > 0 ? Format.plural(root.subs, "subagent") + " running" : Format.plural(root.row.childCount, "subagent")
-    tone: root.colors.subagent
-    ink: root.colors.subagentInk
   }
-  Chip {
-    id: taskChip
+  Tag {
     visible: root.showTasks
     icon: root.row.background && root.row.background.monitors > 0 ? "eye" : "terminal"
     text: Format.plural(root.tasks, "background task")
-    tone: root.colors.info
-    ink: root.colors.infoInk
   }
   Chip {
-    id: prChip
     visible: root.showPr
     readonly property var p: root.pr || ({})
+    readonly property bool failing: p.checks === "failing"
     icon: p.state === "merged" ? "git-merge" : "git-pull-request"
-    text: "#" + p.number + (p.checks === "passing" ? "  ✓" : p.checks === "failing" ? "  ✗" : p.checks === "pending" ? "  …" : "")
+    text: "#" + p.number + (p.checks === "passing" ? "  ✓" : failing ? "  ✗" : p.checks === "pending" ? "  …" : "")
       + (p.additions || p.deletions ? "  +" + p.additions + " −" + p.deletions : "")
-    tone: p.checks === "failing" ? root.colors.attention : p.state === "merged" ? root.colors.subagent : p.state === "open" ? root.colors.success : root.colors.textFaint
-    ink: p.checks === "failing" ? root.colors.attentionInk : p.state === "merged" ? root.colors.subagentInk : p.state === "open" ? root.colors.successInk : root.colors.textDim
+    tone: failing ? root.colors.attention : root.colors.textFaint
+    ink: failing ? root.colors.attentionInk : root.colors.textDim
+    outlined: true
   }
-  Chip {
-    id: ctxChip
+  Tag {
     visible: root.showCtx
     icon: "gauge"
     text: root.ctx ? Math.round(root.ctx.used / root.ctx.max * 100) + "% context" : ""
-    tone: root.ctx && root.ctx.used / root.ctx.max > 0.85 ? root.colors.warning : root.colors.textFaint
-    ink: root.ctx && root.ctx.used / root.ctx.max > 0.85 ? root.colors.warningInk : root.colors.textDim
   }
-  Chip {
-    id: planChip
+  Tag {
     visible: root.showPlan
     icon: "list-todo"
     text: "plan mode"
-    tone: root.colors.textFaint
-    ink: root.colors.textDim
   }
 }

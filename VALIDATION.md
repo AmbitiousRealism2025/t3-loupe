@@ -146,3 +146,43 @@ Validated on 2026-10-12, on this setup:
 - Multiple monitors.
 - The centered window on the main bar rather than the Notch Strip.
 - Mouse clicks: list clicks and `j`/`k` share a handler, but no click was physically made.
+
+## Visual polish — v2.4.0 (2026-10-12)
+
+Implements `docs/review/DESIGN-REVIEW.md`.
+
+**What changed:**
+- **Colour budget.** Only needs-you (attention), working (accent) and done-unseen (success) take a hue, and only on icons. State words use ink, except the alarm states (needs input, failed). Coloured edges are gone. Tags are neutral and outlined, except failures and failing checks.
+- **Status sections.** Inbox and Active group threads under **Needs you / Working / Done**, using the shell's `PanelSectionHeader`. The cursor skips headings, and the Idle fold uses the same heading style with a chevron.
+- **Flat rows.** Rows use the shell's state fills (`Style.normal/hover/selectedFillFor`), with a 2px accent marker on the selected row only. Subagents indent without connector lines.
+- **Header.** `PanelHero`-style: the ring as the mark, the title at `Style.font.heading`, and one uppercase meta line. Machines show as dots in the header in two-pane, and on one quiet line in the dropdown. The segment bar, legend and machine chips are gone.
+- **Two-pane detail.** The meta line leads with the state. Focus T3 / Open PR / Copy are icon buttons in the header, followed by a facts strip (subagents, PR, context with meter, cost).
+- **Charts.**
+  - The runs chart is linear (it was a square-root scale), with past runs dimmed, the current run in accent, failures in attention, a baseline and the longest run labelled.
+  - Plan progress is shown as steps.
+  - Meters use ink and turn attention at 90% or more.
+  - Usage takes one line per provider.
+- **Bar.** The ring is ink with only the needs-you slice coloured, and the badge is now an outlined pill.
+- **Centered card.** 1px line border instead of 2px.
+
+**Verified:**
+- Tests pass, including new ones for sections, the colour budget and ring segments.
+- The manifest validates.
+- With the demo feed, checked live in a monochrome theme (the hardest case for colour):
+  - two-pane in Active and Inbox (with the approval command text);
+  - the dropdown, via `f`;
+  - the bar.
+- No QML warnings from this plugin.
+
+**Not verified:**
+- Colourful and light themes visually. I didn't change your active theme to test them; the palette contrast tests cover all 22 shipped themes.
+- Mouse hover and click states (they share handlers with keyboard input).
+
+**Also in v2.4.0:**
+- **Focus T3 (`o`).** Now uses `plugin/bin/focus-t3`, which focuses the window through Hyprland by window class. The old `xdg-open t3code://app` route fell back to the browser, and its registered handler pointed at a stale AppImage after a nightly update. Verified live: with another app focused, opening Loupe and pressing `o` focused `com.t3tools.T3Code`.
+- **Text size.** `textSize` in `settings.json` and `+`/`-` in the panel scale every panel text token through a `Typo` singleton (`components/qmldir`). The centered card widens by 56px per pixel of bump, and the dropdown by 36px. Section labels elide instead of overflowing. Verified live at 0 and +2 in two-pane with the demo feed, on a colourful amber theme. No QML warnings.
+- **Text size control.** The footer has **A↓**, four rising bars (one per preset, each clickable) and **A↑**. The presets are 0 (default, smallest), +2, +4 and +6. `+`/`-` step through the same presets, and every change is written to `settings.json` with any other keys preserved. Verified live: +2 → `+` → +4 (saved) → `-` → +2 → `-` → 0 → `-` stays at 0, with A↓ greyed out → `+` → +2. The panel widened at each step. Clicking a bar wasn't physically tested; it uses the same `setTextSize` path.
+- **Backdrop and row shading (user request).**
+  - The centered window's backdrop goes from 38% to 58% black. Measured live: brightness outside the card went 37 → 16 with the panel open.
+  - Thread rows again sit on the palette `surface` fill, in both the two-pane list and the dropdown cards, with 3px gaps in two-pane. Subagent rows stay unshaded. Hover and selection use the shell fills on top.
+  - Verified live with real threads.

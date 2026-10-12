@@ -1,7 +1,7 @@
 import QtQuick
 import qs.Commons
 
-// "Idle (n)" fold: a slim, clickable divider that collapses or reveals idle threads.
+// "› IDLE 3" fold, styled as a section heading that you can open.
 Item {
   id: root
   property int count: 0
@@ -12,53 +12,43 @@ Item {
 
   signal clicked()
 
-  implicitHeight: Style.space(26)
+  implicitHeight: Style.space(28)
 
   Rectangle {
     anchors.fill: parent
     radius: Style.cornerRadius
-    color: root.selected ? root.colors.surfaceSelected : hover.hovered ? root.colors.surface : "transparent"
-    border.width: root.selected ? 1 : 0
-    border.color: Qt.rgba(root.colors.accent.r, root.colors.accent.g, root.colors.accent.b, 0.55)
-    Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
+    color: root.selected ? Style.selectedFillFor(root.colors.text, root.colors.accent)
+      : hover.hovered ? Style.hoverFillFor(root.colors.text, root.colors.accent) : "transparent"
+    Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
+  }
+  Rectangle {
+    visible: root.selected
+    x: 0; y: Style.space(5); width: Style.space(2); height: parent.height - Style.space(10)
+    color: root.colors.accent
   }
 
   HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
   TapHandler { onTapped: root.clicked() }
 
   Row {
-    id: label
-    x: Style.space(8)
+    x: Style.space(4)
     anchors.verticalCenter: parent.verticalCenter
     spacing: Style.space(6)
-
     LucideIcon {
       anchors.verticalCenter: parent.verticalCenter
       name: "chevron-right"
-      color: hover.hovered || root.selected ? root.colors.text : root.colors.textDim
-      size: Math.round(Style.font.body * 1.05)
+      color: root.colors.textDim
+      size: Math.round(Typo.caption * 1.2)
       rotation: root.open ? 90 : 0
       Behavior on rotation { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
     }
-    Text {
+    SectionCaption {
       anchors.verticalCenter: parent.verticalCenter
-      text: "Idle (" + root.count + ")"
-      textFormat: Text.PlainText
-      color: hover.hovered || root.selected ? root.colors.text : root.colors.textDim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-      font.weight: Font.Medium
+      label: "Idle"
+      count: root.count
+      foreground: root.colors.text
+      countColor: root.colors.textFaint
+      fontFamily: root.fontFamily
     }
-  }
-
-  // Divider running to the edge.
-  Rectangle {
-    anchors.left: label.right
-    anchors.leftMargin: Style.space(10)
-    anchors.right: parent.right
-    anchors.rightMargin: Style.space(8)
-    anchors.verticalCenter: parent.verticalCenter
-    height: 1
-    color: root.colors.line
   }
 }

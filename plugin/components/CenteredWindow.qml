@@ -12,7 +12,8 @@ PanelWindow {
   property var bar: null
   property var owner: null
   property var colors: ({})
-  property real cardWidth: Style.space(820)
+  // Wider as the text grows, so a size bump adds legibility rather than truncation.
+  property real cardWidth: Style.space(820 + Math.max(0, Typo.bump) * 56)
   property real maxHeightRatio: 0.84
   default property alias contentData: slot.data
   readonly property alias card: card
@@ -40,7 +41,8 @@ PanelWindow {
   Rectangle {
     anchors.fill: parent
     color: "#000000"
-    opacity: win.open ? 0.38 : 0
+    // Strong enough to read on dark themes, where a light dim barely registers.
+    opacity: win.open ? 0.58 : 0
     Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
     MouseArea {
       anchors.fill: parent
@@ -52,11 +54,12 @@ PanelWindow {
     id: card
     anchors.centerIn: parent
     width: Math.min(win.cardWidth, win.width - Style.gapsOut * 4)
-    height: Math.min(win.height * win.maxHeightRatio, slot.implicitContentHeight + win.padding * 2)
+    height: Math.min(win.height * (win.maxHeightRatio + Math.max(0, Typo.bump) * 0.02), slot.implicitContentHeight + win.padding * 2)
     radius: Style.cornerRadius
     color: win.colors.background || Color.popups.background
-    border.width: Math.max(1, Style.space(2))
-    border.color: Color.popups.border
+    // A quiet hairline; the dimmed backdrop already separates the card.
+    border.width: 1
+    border.color: win.colors.line || Color.popups.border
     opacity: win.open ? 1 : 0
     scale: win.open ? 1 : 0.965
     Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }

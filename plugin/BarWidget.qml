@@ -146,8 +146,14 @@ Panel {
         readonly property real barSize: Number(root.barSize) || Style.bar.sizeHorizontal
         diameter: Math.max(12, Math.min(barSize - Style.space(8), Style.space(19)))
         thickness: Math.max(2, Math.round(diameter / 7.5))
-        segments: root.service ? Store.distribution(root.service.rows) : []
-        colors: root.theme ? root.theme.bar : ({})
+        // Monochrome like its bar neighbours; only "needs you" is coloured.
+        segments: root.service ? Store.ringSegments(root.service.rows) : []
+        colors: ({
+          attention: root.theme ? root.theme.bar.attention : Color.urgent,
+          ink: root.ink,
+          inkFaint: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.35),
+          track: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.16)
+        })
         spinning: root.counts.busy > 0
         alert: root.counts.attention > 0
         reduceMotion: root.reduceMotion
@@ -179,15 +185,18 @@ Panel {
         x: root.vertical ? (glyphRow.width - width) / 2 : glyphRow.offset(badge)
         y: root.vertical ? glyphRow.offset(badge) : (glyphRow.height - height) / 2
         height: Math.round(ring.diameter * 0.78)
-        width: Math.max(height, badgeText.implicitWidth + Style.space(8))
-        radius: Math.min(Style.cornerRadius, height / 2)
-        color: root.theme ? root.theme.bar.attention : Color.urgent
+        width: Math.max(height, badgeText.implicitWidth + Style.space(9))
+        // Outlined pill: present without shouting.
+        radius: height / 2
+        color: "transparent"
+        border.width: Math.max(1, Math.round(ring.thickness * 0.6))
+        border.color: root.theme ? root.theme.bar.attention : Color.urgent
         Text {
           id: badgeText
           anchors.centerIn: parent
           text: String(root.counts.attention)
           textFormat: Text.PlainText
-          color: root.theme && root.theme.bar.light ? "#ffffff" : (root.theme ? root.theme.bar.background : Color.bar.background)
+          color: root.theme ? root.theme.bar.attentionInk : Color.urgent
           font.family: button.fontFamily
           font.pixelSize: Math.max(8, Math.round(ring.diameter * 0.5))
           font.bold: true
@@ -208,7 +217,7 @@ Panel {
       bar: root.bar
       open: root.opened
       focusTarget: dropContent.keyCatcher
-      contentWidth: panel.fittedContentWidth(Style.space(root.panelWidth))
+      contentWidth: panel.fittedContentWidth(Style.space(root.panelWidth + Math.max(0, Typo.bump) * 36))
       contentHeight: panel.fittedContentHeight(dropContent.implicitHeight, Style.space(820))
 
       // Opaque reading surface regardless of popup translucency.

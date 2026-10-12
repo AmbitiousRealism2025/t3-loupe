@@ -29,7 +29,7 @@ Rectangle {
       anchors.verticalCenter: parent.verticalCenter
       name: root.icon || "circle-dot"
       color: root.ink
-      size: Math.round(Style.font.caption * 1.15)
+      size: Math.round(Typo.caption * 1.15)
     }
     Text {
       id: label
@@ -38,7 +38,7 @@ Rectangle {
       textFormat: Text.PlainText
       color: root.ink
       font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
+      font.pixelSize: Typo.caption
       font.weight: Font.Medium
       renderType: Text.NativeRendering
     }

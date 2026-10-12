@@ -6,12 +6,13 @@ const Store = loadQmlJs(new URL("../plugin/lib/Store.js", import.meta.url).pathn
 const Format = loadQmlJs(new URL("../plugin/lib/Format.js", import.meta.url).pathname);
 
 const r = (id, state, extra = {}) => ({ key: "e:" + id, envId: "e", id, parentId: "", state, settled: false, project: "P", title: id, branch: "", model: "", provider: "", rawStatus: "completed", completedAt: 0, ...extra });
-const ids = (list) => Array.from(list, (x) => (x.kind === "idle-line" ? `[idle ${x.count}${x.open ? " open" : ""}]` : x.id));
+const ids = (list) => Array.from(list, (x) => (x.kind === "idle-line" ? `[idle ${x.count}${x.open ? " open" : ""}]` : x.kind === "section" ? `§${x.label} ${x.count}` : x.id));
+const rowIds = (list) => Array.from(list).filter((x) => !x.kind).map((x) => x.id);
 
 test("inbox shows what needs you; children follow parents", () => {
   const rows = [r("a", "input"), r("b", "working"), r("c", "review"), r("k", "working", { parentId: "b" }), r("z", "idle", { settled: true })];
-  assert.deepEqual(Array.from(Store.visibleRows(rows, "attention", "", {}), (x) => x.id), ["a", "c"]);
-  assert.deepEqual(Array.from(Store.visibleRows(rows, "active", "", {}), (x) => x.id), ["a", "b", "k", "c"]);
+  assert.deepEqual(ids(Store.visibleRows(rows, "attention", "", {})), ["§Needs you 1", "a", "§Done 1", "c"]);
+  assert.deepEqual(ids(Store.visibleRows(rows, "active", "", {})), ["§Needs you 1", "a", "§Working 1", "b", "k", "§Done 1", "c"]);
   assert.deepEqual(ids(Store.visibleRows(rows, "all", "", {})), ["a", "b", "k", "c", "[idle 1]"]);
   assert.equal(Store.filterCount(rows, "attention"), 2);
 });
@@ -47,9 +48,9 @@ test("active folds idle and stopped roots behind one line at the bottom", () => 
     r("w2", "working", { envId: "B", key: "B:w2" }), r("i2", "idle", { envId: "B", key: "B:i2" }),
     r("k", "idle", { envId: "A", key: "A:k", parentId: "i1" }),
   ];
-  assert.deepEqual(ids(Store.visibleRows(rows, "active", "", {}, {})), ["w1", "w2", "[idle 3]"], "one fold across machines, after every visible row");
+  assert.deepEqual(ids(Store.visibleRows(rows, "active", "", {}, {})), ["§Working 2", "w1", "w2", "[idle 3]"], "one fold across machines, after every visible row");
   const open = { [Store.idleLineKey(rows[1], "active")]: true };
-  assert.deepEqual(ids(Store.visibleRows(rows, "active", "", { "A:i1": true }, open)), ["w1", "w2", "[idle 3 open]", "i1", "k", "s1", "i2"]);
+  assert.deepEqual(rowIds(Store.visibleRows(rows, "active", "", { "A:i1": true }, open)), ["w1", "w2", "i1", "k", "s1", "i2"]);
 });
 
 test("all view puts one idle line at the end of each group", () => {
@@ -61,7 +62,7 @@ test("all view puts one idle line at the end of each group", () => {
 
 test("a text search never folds", () => {
   const rows = [r("alpha", "idle"), r("beta", "working")];
-  assert.deepEqual(ids(Store.visibleRows(rows, "active", "alp", {}, {})), ["alpha"]);
+  assert.deepEqual(rowIds(Store.visibleRows(rows, "active", "alp", {}, {})), ["alpha"]);
 });
 
 test("done tab: finished threads, newest first, no folding", () => {
@@ -72,4 +73,21 @@ test("done tab: finished threads, newest first, no folding", () => {
   assert.deepEqual(ids(Store.visibleRows(rows, "done", "", {}, {})), ["new", "mid", "old"]);
   assert.equal(Store.filterCount(rows, "done"), 3);
   assert.deepEqual(Array.from(Store.FILTERS), ["attention", "active", "done", "all"]);
+});
+
+test("sections follow urgency and count only what is shown", () => {
+  const rows = [r("in", "input"), r("pl", "plan"), r("lim", "limited"), r("w", "working"), r("q", "queued"), r("d", "review"), r("i", "idle")];
+  assert.deepEqual(ids(Store.visibleRows(rows, "active", "", {}, {})),
+    ["§Needs you 2", "in", "pl", "§Working 3", "lim", "w", "q", "§Done 1", "d", "[idle 1]"]);
+  assert.equal(Store.isStop({ kind: "section" }), false);
+  assert.equal(Store.isStop({ kind: "idle-line" }), true);
+});
+
+test("colour budget: three meanings earn a hue, ring is ink except needs-you", () => {
+  assert.equal(Store.stateRole("input"), "attention");
+  assert.equal(Store.stateRole("working"), "accent");
+  assert.equal(Store.stateRole("review"), "success");
+  for (const s of ["plan", "limited", "queued", "background", "idle", "stopped"]) assert.equal(Store.stateRole(s), "textDim", s);
+  const segs = Array.from(Store.ringSegments([r("a", "input"), r("b", "plan"), r("c", "working"), r("d", "limited"), r("e", "review"), r("f", "idle")]), (x) => `${x.role}:${x.count}`);
+  assert.deepEqual(segs, ["attention:2", "ink:2", "inkFaint:2"]);
 });

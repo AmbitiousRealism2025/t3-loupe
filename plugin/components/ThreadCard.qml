@@ -24,8 +24,9 @@ Item {
   signal actionRequested(string action)
 
   readonly property bool child: row.parentId !== ""
+  // Colour budget: the glyph carries the state hue; words stay ink except the alarm states.
   readonly property color tone: colors[Store.stateRole(row.state)] || colors.textDim
-  readonly property color ink: colors[Store.stateRole(row.state) + "Ink"] || colors.textDim
+  readonly property bool alarm: Store.isAlarm(row.state)
   readonly property bool loud: Store.isLoud(row.state)
   readonly property var activity: Store.currentActivity(row)
   readonly property real indent: child ? Style.space(22) : 0
@@ -43,42 +44,23 @@ Item {
 
   implicitHeight: card.height + Style.space(child ? 2 : 4)
 
-  // Tree connector for subagent rows.
-  Rectangle {
-    visible: root.child
-    x: Style.space(9)
-    y: -Style.space(4)
-    width: 1
-    height: card.height / 2 + Style.space(4)
-    color: root.colors.line
-  }
-  Rectangle {
-    visible: root.child
-    x: Style.space(9)
-    y: card.height / 2
-    width: Style.space(9)
-    height: 1
-    color: root.colors.line
-  }
-
   Rectangle {
     id: card
     x: root.indent
     width: root.width - root.indent
     height: content.implicitHeight + Style.space(root.child ? 12 : 18)
     radius: Style.cornerRadius
-    color: root.selected ? root.colors.surfaceSelected : hover.hovered ? root.colors.surfaceRaised : root.child ? "transparent" : root.colors.surface
-    border.width: root.selected ? 1 : 0
-    border.color: Qt.rgba(root.colors.accent.r, root.colors.accent.g, root.colors.accent.b, 0.55)
+    // Shell state fills: normal / hover / selected. No borders, no coloured edges.
+    color: root.selected ? Style.selectedFillFor(root.colors.text, root.colors.accent)
+      : hover.hovered ? Style.hoverFillFor(root.colors.text, root.colors.accent)
+      : root.child ? "transparent" : root.colors.surface
     Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
-    // State rail.
+    // Selection marker.
     Rectangle {
-      width: Style.space(3)
-      height: parent.height
-      color: root.tone
-      opacity: root.loud ? 1 : (root.row.state === "review" ? 0.8 : 0.28)
-      radius: Math.min(Style.cornerRadius, width / 2)
+      visible: root.selected
+      y: Style.space(6); width: Style.space(2); height: parent.height - Style.space(12)
+      color: root.colors.accent
     }
 
     HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
@@ -103,7 +85,7 @@ Item {
           icon: Store.stateIcon(root.row)
           threadState: root.row.state
           color: root.tone
-          size: Math.round(Style.font.body * (root.child ? 1.05 : 1.25))
+          size: Math.round(Typo.body * (root.child ? 1.0 : 1.15))
           reduceMotion: root.reduceMotion
         }
 
@@ -117,8 +99,8 @@ Item {
           textFormat: Text.PlainText
           color: root.row.state === "idle" || root.row.state === "stopped" ? root.colors.textDim : root.colors.text
           font.family: root.fontFamily
-          font.pixelSize: root.child ? Style.font.bodySmall : Style.font.body
-          font.weight: root.child ? Font.Normal : Font.DemiBold
+          font.pixelSize: root.child ? Typo.caption : Typo.body
+          font.weight: root.child ? Font.Normal : Font.Medium
           wrapMode: Text.Wrap
           maximumLineCount: root.expanded ? 3 : 2
           elide: Text.ElideRight
@@ -133,9 +115,9 @@ Item {
             anchors.right: parent.right
             text: root.elapsedText
             textFormat: Text.PlainText
-            color: root.loud ? root.colors.text : root.colors.textFaint
+            color: root.loud ? root.colors.textDim : root.colors.textFaint
             font.family: root.monoFamily
-            font.pixelSize: Style.font.caption
+            font.pixelSize: Typo.caption
             font.features: { "tnum": 1 }
           }
           Text {
@@ -143,10 +125,10 @@ Item {
             visible: !root.child || root.loud
             text: Store.stateLabel(root.row)
             textFormat: Text.PlainText
-            color: root.loud || root.row.state === "review" ? root.ink : root.colors.textFaint
+            color: root.alarm ? root.colors.attentionInk : root.loud ? root.colors.textDim : root.colors.textFaint
             font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            font.weight: root.loud ? Font.DemiBold : Font.Normal
+            font.pixelSize: Typo.caption
+            font.weight: root.alarm ? Font.DemiBold : Font.Normal
           }
         }
       }
@@ -160,7 +142,7 @@ Item {
         textFormat: Text.PlainText
         color: root.colors.textFaint
         font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
+        font.pixelSize: Typo.caption
         elide: Text.ElideRight
       }
 
@@ -175,7 +157,7 @@ Item {
           anchors.verticalCenter: parent.verticalCenter
           name: root.activity ? root.activity.icon : "zap"
           color: root.activity && root.activity.status === "running" ? root.colors.accentInk : root.colors.textDim
-          size: Math.round(Style.font.caption * 1.25)
+          size: Math.round(Typo.caption * 1.25)
         }
         Text {
           anchors.verticalCenter: parent.verticalCenter
@@ -184,7 +166,7 @@ Item {
           textFormat: Text.PlainText
           color: root.colors.textDim
           font.family: root.activity && root.activity.icon === "terminal" ? root.monoFamily : root.fontFamily
-          font.pixelSize: Style.font.caption
+          font.pixelSize: Typo.caption
           elide: Text.ElideRight
         }
       }

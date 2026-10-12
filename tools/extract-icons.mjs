@@ -14,6 +14,7 @@ const ICONS = [
   "clock", "pause", "circle-pause", "loader-circle", "x", "refresh-cw", "external-link", "copy", "pin", "moon",
   "server", "laptop", "gauge", "coins", "folder", "chevron-right", "chevron-down", "bell", "plug-zap",
   "shield-alert", "message-circle-question", "notebook-pen", "users", "activity", "cpu", "key-round", "circle-dot",
+  "a-arrow-up", "a-arrow-down",
 ];
 
 const lucide = process.argv[2];

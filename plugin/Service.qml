@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
 import qs.Commons
+import "components"
 
 // Shared service: owns the t3-loupe process, the theme palette and notifications.
 // Bar widgets (one per monitor, in any bar or the Notch Strip) read from here.
@@ -29,6 +30,35 @@ Item {
   property double now: Date.now()
 
   property var settings: ({})
+  // Panel text size: a pixel bump over the shell's type scale, saved as settings.json "textSize".
+  // The footer control and +/- step through four presets; the default is the smallest.
+  readonly property var textSizes: [0, 2, 4, 6]
+  readonly property real savedTextSize: settings && typeof settings.textSize === "number" ? Math.max(-2, Math.min(8, settings.textSize)) : 0
+  property real pendingTextSize: NaN   // shown immediately, until the settings file reloads
+  readonly property real textSize: !isNaN(pendingTextSize) ? pendingTextSize : savedTextSize
+  // Index of the largest preset at or below the current size.
+  readonly property int textSizeStep: {
+    var step = 0
+    for (var i = 0; i < textSizes.length; i++) if (textSize >= textSizes[i]) step = i
+    return step
+  }
+  onTextSizeChanged: Typo.bump = textSize
+  Component.onCompleted: Typo.bump = textSize
+
+  function setTextSize(value) {
+    pendingTextSize = value
+    var next = {}
+    for (var k in settings) next[k] = settings[k]
+    next.textSize = value
+    settingsFile.setText(JSON.stringify(next, null, 2) + "\n")
+  }
+  function stepTextSize(delta) {
+    var step = textSizeStep
+    // An off-preset size (e.g. 1) steps up to the next preset, not past it.
+    if (delta > 0 && textSize !== textSizes[step]) step -= 1
+    var target = Math.max(0, Math.min(textSizes.length - 1, step + delta))
+    if (textSizes[target] !== textSize) setTextSize(textSizes[target])
+  }
   readonly property var theme: themeObject
   readonly property var widgets: []
 
@@ -140,11 +170,15 @@ Item {
   Timer { id: restart; interval: 2500; onTriggered: daemon.running = true }
 
   FileView {
+    id: settingsFile
     path: root.configDir + "/settings.json"
     watchChanges: true
     printErrors: false
     onFileChanged: reload()
-    onLoaded: { try { root.settings = JSON.parse(text()) || {} } catch (e) { root.settings = {} } }
+    onLoaded: {
+      try { root.settings = JSON.parse(text()) || {} } catch (e) { root.settings = {} }
+      root.pendingTextSize = NaN
+    }
     onLoadFailed: root.settings = ({})
   }
 

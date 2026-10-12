@@ -38,7 +38,7 @@ fi
 
 mkdir -p "$DEST"
 rsync -a --delete --exclude '__pycache__' "$SRC/" "$DEST/"
-chmod 0755 "$DEST/daemon/main.ts"
+chmod 0755 "$DEST/daemon/main.ts" "$DEST/bin/focus-t3"
 echo "Copied plugin to $DEST"
 
 case "$mode" in

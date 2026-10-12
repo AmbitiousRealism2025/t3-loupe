@@ -61,13 +61,22 @@ function stateIcon(row) {
 
 function isRoot(row) { return !row.parentId }
 
-// Display state → palette role (matches Palette.STATE_ROLE).
-var ROLE = { input: "attention", failed: "attention", plan: "warning", limited: "warning", working: "accent", waiting: "accent",
-  queued: "info", background: "subagent", review: "success" }
-function stateRole(state) { return ROLE[state] || "idle" }
+// Colour budget: only three meanings earn a hue — needs you, working, done-and-unseen.
+// Everything else reads through its icon and words in plain ink.
+var ROLE = { input: "attention", failed: "attention", working: "accent", waiting: "accent", review: "success" }
+function stateRole(state) { return ROLE[state] || "textDim" }
+
+// The only states whose words are tinted (the alarm exception).
+function isAlarm(state) { return state === "input" || state === "failed" }
 
 // Things worth drawing attention to in a row: busy, blocked or rate-limited.
 function isLoud(state) { return ATTENTION[state] === true || BUSY[state] === true || state === "limited" }
+
+// Status sections for the Inbox and Active lists (structure carries urgency, not colour).
+var SECTION_OF = { input: "needs", plan: "needs", failed: "needs", limited: "working", working: "working", waiting: "working",
+  queued: "working", background: "working", review: "done" }
+var SECTION_LABEL = { needs: "Needs you", working: "Working", done: "Done" }
+function sectionOf(state) { return SECTION_OF[state] || "" }
 
 function rootMatches(row, filter) {
   if (filter === "attention") return NEEDS_YOU[row.state] === true
@@ -126,6 +135,17 @@ function visibleRows(rows, filter, query, expanded, idleOpen) {
   }
 
   var folding = !query && (filter === "active" || filter === "all")
+  var sectioned = filter === "active" || filter === "attention"
+  var sectionCounts = {}
+  if (sectioned) {
+    for (var sc = 0; sc < roots.length; sc++) {
+      var sr = roots[sc]
+      if (!rootMatches(sr, filter) || (folding && FOLDED[sr.state]) || !textMatches(sr, query)) continue
+      var b0 = sectionOf(sr.state)
+      if (b0) sectionCounts[b0] = (sectionCounts[b0] || 0) + 1
+    }
+  }
+  var currentSection = ""
   var out = []
   var pending = null // idle roots of the current fold: { key, envId, project, roots: [] }
 
@@ -164,6 +184,13 @@ function visibleRows(rows, filter, query, expanded, idleOpen) {
       pending.roots.push(root)
       continue
     }
+    if (sectioned) {
+      var bucket = sectionOf(root.state)
+      if (bucket && bucket !== currentSection && sectionCounts[bucket]) {
+        out.push({ kind: "section", key: "sec:" + bucket, label: SECTION_LABEL[bucket], count: sectionCounts[bucket], parentId: "" })
+        currentSection = bucket
+      }
+    }
     emit(root)
   }
   flush()
@@ -185,6 +212,28 @@ function groupKey(row, environments) {
 }
 
 // Distribution of root states for the header bar: [{role, count}] in display order.
+// Segments for the activity ring: only "needs you" is coloured; working is full ink,
+// everything else active is faint ink. Roles resolve against a colour map that adds
+// "ink" and "inkFaint" to the palette.
+function ringSegments(rows) {
+  var needs = 0, busy = 0, rest = 0
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i]
+    if (r.parentId) continue
+    if (ATTENTION[r.state]) needs++
+    else if (BUSY[r.state] || r.state === "limited") busy++
+    else if (!r.settled || r.state === "review") rest++
+  }
+  return [
+    { role: "attention", count: needs },
+    { role: "ink", count: busy },
+    { role: "inkFaint", count: rest }
+  ]
+}
+
+// Items the cursor can rest on (sections are headings, not stops).
+function isStop(item) { return !!item && item.kind !== "section" }
+
 function distribution(rows) {
   var buckets = { attention: 0, warning: 0, busy: 0, done: 0, idle: 0 }
   for (var i = 0; i < rows.length; i++) {

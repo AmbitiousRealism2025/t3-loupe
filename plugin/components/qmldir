@@ -1,0 +1,17 @@
+singleton Typo 1.0 Typo.qml
+ActivityRing 1.0 ActivityRing.qml
+CenteredWindow 1.0 CenteredWindow.qml
+Chip 1.0 Chip.qml
+CompactRow 1.0 CompactRow.qml
+DetailView 1.0 DetailView.qml
+IconButton 1.0 IconButton.qml
+IdleLine 1.0 IdleLine.qml
+LucideIcon 1.0 LucideIcon.qml
+Meter 1.0 Meter.qml
+ProviderStrip 1.0 ProviderStrip.qml
+SectionCaption 1.0 SectionCaption.qml
+StateGlyph 1.0 StateGlyph.qml
+ThreadCard 1.0 ThreadCard.qml
+ThreadChips 1.0 ThreadChips.qml
+ThreadDetailPane 1.0 ThreadDetailPane.qml
+TextSizeControl 1.0 TextSizeControl.qml

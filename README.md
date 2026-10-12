@@ -8,27 +8,21 @@ T3 Loupe shows what every T3 Code thread is doing across all your machines. It t
 
 ![Two-pane view: thread list with live activity on the left, the selected thread's detail on the right](docs/two-pane.png)
 
-<sub>The two-pane window: every thread on the left, the selected one in full on the right. Demo feed, Lumon theme.</sub>
+<sub>The two-pane window: every thread on the left, grouped by status, and the selected one in full on the right. Demo feed, shown in a monochrome theme. Loupe uses the colours of whatever theme is active.</sub>
 
-| Approval text, two-pane | Compact dropdown | Dropdown detail |
-|:---:|:---:|:---:|
-| ![Pending command approval with full text](docs/two-pane-approval.png) | ![Dropdown inbox view](docs/inbox.png) | ![Expanded thread in the dropdown](docs/detail.png) |
+| Approval text, two-pane | Compact dropdown |
+|:---:|:---:|
+| ![Pending command approval with full text](docs/two-pane-approval.png) | ![Dropdown inbox view](docs/inbox.png) |
 
-<sub>Press <code>f</code> to switch between the two-pane window and the compact dropdown. Dropdown screenshots: demo feed, Ristretto theme.</sub>
+<sub>Press <code>f</code> to switch between the two-pane window and the compact dropdown.</sub>
 
 ---
 
 ## Features
 
 - **Live, not polled.** T3 Loupe subscribes to T3's orchestration stream, so changes reach the bar in about a second. It resumes cleanly after a network drop or a suspend.
-- **A glanceable ring.** The ring in the bar has one segment per thread state, sized by how many threads are in it:
-  - red: blocked on you
-  - yellow: waiting for review
-  - accent: working
-  - green: done and unseen
-  - grey: idle
-
-  The ring turns slowly while agents work. When a thread needs you, a halo breathes around it and a badge shows how many.
+- **A quiet, glanceable ring.** The ring in the bar is drawn in plain text colour, like its bar neighbours. Working threads are full ink and the rest are faint. Only the threads that need you are coloured, with an outlined badge showing how many. The ring turns slowly while agents work and breathes when something is waiting on you.
+- **Structure over colour.** Threads are grouped under **Needs you**, **Working** and **Done** headings in the shell's own section style, so urgency reads from position in every theme, monochrome ones included. Only three meanings get a colour: needs you, working, and done-and-unseen. Everything else uses its icon and plain text.
 - **What the agent is doing right now.** Each busy thread shows its current step, with **the same icons T3's timeline uses**: terminal for commands, pen for edits, eye for reads, magnifier for code search, globe for web, brain for reasoning, bot for subagents, and so on.
 - **The approval text itself.** When an agent is waiting for approval, you see the exact command, file change or question, and the choices the provider offered.
 - **Two-pane window.** By default the panel opens as a floating window in the middle of the screen. Threads are listed on the left. The selected thread's live detail is on the right, and it follows `j`/`k` without anything expanding or jumping. Press `f` for a compact dropdown under the bar instead.
@@ -102,6 +96,7 @@ Sessions last 30 days, and T3 doesn't issue refresh tokens. T3 Loupe warns you t
 | `j` / `k`, `↑` / `↓` | select a thread; the two-pane detail follows |
 | `Enter` | show all of a thread's subagents (two-pane) or expand its card (dropdown); on **Idle (n)**, fold or unfold |
 | `f` | switch between the two-pane window and the dropdown |
+| `+` / `-` | step the panel text size up / down (also the **A↓ ▁▂▃▅ A↑** control in the footer); the choice is saved |
 | `1` `2` `3` `4`, `h` / `l` | **Inbox** (needs you) · **Active** · **Done** (finished, newest first) · **All** (grouped by machine and project) |
 | `/` | filter by text |
 | `g` | jump to the first thread that needs you |
@@ -148,6 +143,7 @@ These settings live in `~/.config/t3-loupe/settings.json`. The file is optional 
   },
   "node": "/usr/bin/node",
   "presentation": "centered",
+  "textSize": 0,
   "demo": false
 }
 ```
@@ -159,6 +155,7 @@ These settings live in `~/.config/t3-loupe/settings.json`. The file is optional 
 | `info` | `environment_offline` · `environment_restored` |
 
 - Each kind fires at most once per thread every two minutes.
+- `"textSize"` makes the panel's text larger without changing the shell-wide font size. There are four steps: `0` (the shell's own size, the smallest), `2`, `4` and `6`, measured in pixels on top of the shell's type scale. You can set it with the **A↓ ▁▂▃▅ A↑** control in the panel footer, by clicking a bar to jump to that size, or with `+` / `-`. Loupe saves the choice to this file. The window widens with the text, so bigger text means easier reading rather than more truncation. Other values from `-2` to `8` can be set by hand.
 - `"node"` pins a Node binary when the shell's `PATH` doesn't have a suitable one.
 - `"demo": true` replaces live data with a synthetic feed that exercises every state.
 
@@ -223,7 +220,7 @@ Omarchy shell (Quickshell)                         T3 server(s)
 
 ## Limitations
 
-- **No deep link into a thread.** T3's `t3code://` link brings the app forward but can't open a specific thread yet, so *Focus T3* raises the window.
+- **No deep link into a thread.** T3 can't yet be told to open a specific thread from outside. *Focus T3* (`o`) brings the T3 window forward through Hyprland, matching the window class (`com.t3tools.T3Code`, `t3code`, `t3code-dev`). It doesn't use the `t3code://` link, which can fall back to the browser or launch a stale build after an update.
 - **Read-only.** Answering approvals or interrupting from the panel would need T3's much wider `orchestration:operate` scope, which also allows sending messages. That is deliberately not included.
 - **Usage gauges only where T3 has data.** Providers that don't report usage windows show only a status dot.
 - **Newer shells untested.** Newer Omarchy shells that give plugins narrower APIs haven't been tested.
