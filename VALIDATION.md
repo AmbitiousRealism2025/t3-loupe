@@ -198,5 +198,7 @@ Implements the [design review](https://github.com/AmbitiousRealism2025/t3-loupe-
 - Marketplace limits: 61 files, 501 KiB in total, largest file 128 KiB (`preview.webp`); a fresh clone is about 2 MB, history included.
 - The plugin ID `ambitiousrealism.t3-loupe` isn't used in the marketplace catalog.
 
+- **Live install through Omarchy's plugin manager.** The old installer-copied folder was removed with `omarchy plugin remove ambitiousrealism.t3-loupe --yes` (Omarchy backed it up), then `omarchy plugin add https://github.com/AmbitiousRealism2025/t3-loupe.git --enable --yes` cloned the repository from GitHub, validated it and enabled it. The Notch Strip placement was kept. After the shell rescan, `omarchy-shell ambitiousrealism.t3-loupe status` reported `ready` with live data from the new git checkout, the widget drew in the strip, and the panel opened over IPC with live threads.
+
 **Not verified:**
-- A live `omarchy plugin add` install. The existing install was copied in by the old installer, and `omarchy plugin add` refuses a duplicate ID, so this needs the old copy removed first.
+- `--enable` placing the widget on a bar that has no existing entry for it. This machine already had one (the Notch Strip), so Omarchy's section prompt and default placement weren't exercised.
