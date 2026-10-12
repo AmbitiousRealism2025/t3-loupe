@@ -6,15 +6,15 @@
 
 T3 Loupe shows what every T3 Code thread is doing across all your machines. It tells you which threads are working, which are waiting on you, and how close you are to your usage limits, without switching to the T3 window.
 
-![Two-pane view: thread list with live activity on the left, the selected thread's detail on the right](docs/two-pane.png)
+![The two-pane window floating over the desktop: threads grouped by status on the left, the selected thread's live detail on the right](docs/two-pane.png)
 
-<sub>The two-pane window: every thread on the left, grouped by status, and the selected one in full on the right. Demo feed, shown in a monochrome theme. Loupe uses the colours of whatever theme is active.</sub>
+<sub>The two-pane window: every thread on the left, grouped by status, and the selected one in full on the right. That includes live activity with T3's own icons, the PR, context and cost, the plan, the runs chart and subagents.</sub>
 
-| Approval text, two-pane | Compact dropdown |
+| A pending approval, with the full command | The compact dropdown (press <code>f</code>) |
 |:---:|:---:|
-| ![Pending command approval with full text](docs/two-pane-approval.png) | ![Dropdown inbox view](docs/inbox.png) |
+| ![Pending command approval with the full command text and the provider's options](docs/two-pane-approval.png) | ![The compact dropdown under the bar](docs/inbox.png) |
 
-<sub>Press <code>f</code> to switch between the two-pane window and the compact dropdown.</sub>
+<sub>Screenshots: built-in demo feed, Omarchy's <b>Hackerman</b> theme. Loupe takes its colours from whatever theme is active.</sub>
 
 ---
 

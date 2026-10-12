@@ -33,10 +33,10 @@ Item {
     if (subs > 0 || subTotal > 0) f.push({ label: "Subagents", value: subs > 0 ? subs + " running" : String(subTotal), note: subs > 0 && subTotal > subs ? subTotal + " total" : "" })
     if (row.pr) {
       var c = row.pr.checks === "passing" ? "✓ passing" : row.pr.checks === "failing" ? "✗ failing" : row.pr.checks === "pending" ? "pending" : row.pr.state
-      f.push({ label: "Pull request", value: "#" + row.pr.number + " · " + c, note: (row.pr.additions || row.pr.deletions) ? "+" + row.pr.additions + " −" + row.pr.deletions : "", alarm: row.pr.checks === "failing" })
+      f.push({ label: "PR", value: "#" + row.pr.number + " · " + c, note: (row.pr.additions || row.pr.deletions) ? "+" + row.pr.additions + " −" + row.pr.deletions : "", alarm: row.pr.checks === "failing" })
     }
     if (ctx) f.push({ label: "Context", value: Format.tokens(ctx.used) + " / " + Format.tokens(ctx.max), meter: ctx.used / ctx.max })
-    if (ctx && ctx.cost !== null) f.push({ label: "Cost", value: Format.money(ctx.cost, ctx.currency), note: "API-equivalent" })
+    if (ctx && ctx.cost !== null) f.push({ label: "Cost", value: Format.money(ctx.cost, ctx.currency), note: "API estimate" })
     if (!f.length && row.lastRunMs) f.push({ label: "Last run", value: Format.duration(row.lastRunMs) })
     return f
   }
