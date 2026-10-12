@@ -1,5 +1,9 @@
 # T3 Loupe
 
+<a href="docs/t3-loupe-promo.mp4"><img src="docs/t3-loupe-teaser.gif" width="100%" alt="T3 Loupe promo: a magnifying lens glides over the T3 Loupe window, bringing a thread's activity, PR, context and plan into focus"></a>
+
+<sub>▶ <a href="docs/t3-loupe-promo.mp4">Watch the 45-second promo</a> · made with <a href="https://github.com/heygen-com/hyperframes">HyperFrames</a>; source in <a href="video/"><code>video/</code></a></sub>
+
 **A live, read-only view of your [T3 Code](https://t3.codes) agents, in your [Omarchy](https://omarchy.org) bar.**
 
 ![T3 Loupe in the bar](docs/bar.png)
