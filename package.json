@@ -1,11 +1,13 @@
 {
   "name": "t3-loupe",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "private": true,
   "type": "module",
   "description": "Live, read-only T3 Code thread monitor for the Omarchy shell",
   "license": "MIT",
-  "engines": { "node": ">=22.18" },
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "test": "node --disable-warning=ExperimentalWarning --test tests/*.test.mjs",
     "install-plugin": "tools/install.sh",

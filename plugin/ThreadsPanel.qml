@@ -31,10 +31,13 @@ Item {
   property int cursor: -1
   property string query: ""
 
-  readonly property var visible_: Store.visibleRows(rows, filter, query, expanded)
+  // Idle folds start collapsed and keep their state while the shell runs.
+  property var idleOpen: ({})
+  readonly property var visible_: Store.visibleRows(rows, filter, query, expanded, idleOpen)
   readonly property var dist: Store.distribution(rows)
   readonly property int needCount: Store.filterCount(rows, "attention")
   readonly property int activeCount: Store.filterCount(rows, "active")
+  readonly property int doneCount: Store.filterCount(rows, "done")
   readonly property int allCount: Store.filterCount(rows, "all")
   readonly property bool multiMachine: environments.length > 1
   readonly property bool hasMetered: {
@@ -57,6 +60,20 @@ Item {
 
   function setFilter(f) { filter = f; filterChosen = true; cursor = -1; list.positionViewAtBeginning() }
 
+  function toggleIdle(key) {
+    var next = {}
+    for (var k in idleOpen) next[k] = idleOpen[k]
+    next[key] = !next[key]
+    idleOpen = next
+  }
+
+  // Enter / click on whatever is under the cursor.
+  function activate(item) {
+    if (!item) return
+    if (item.kind === "idle-line") toggleIdle(item.key)
+    else toggleExpand(item)
+  }
+
   function toggleExpand(row) {
     var next = {}
     for (var k in expanded) next[k] = expanded[k]
@@ -72,7 +89,14 @@ Item {
   function focusKey(key) {
     var row = service ? service.rowByKey(key) : null
     if (!row) return
-    if (Store.visibleRows(rows, filter, query, expanded).indexOf(row) < 0) { filter = "all"; filterChosen = true }
+    // Unfold the idle line it may sit behind, in this view and in All.
+    var folds = {}
+    for (var f in idleOpen) folds[f] = idleOpen[f]
+    var root_ = row.parentId ? (service.rowByKey(row.envId + ":" + row.parentId) || row) : row
+    folds[Store.idleLineKey(root_, "active")] = true
+    folds[Store.idleLineKey(root_, "all")] = true
+    idleOpen = folds
+    if (Store.visibleRows(rows, filter, query, expanded, idleOpen).indexOf(row) < 0) { filter = "all"; filterChosen = true }
     var next = {}
     for (var k in expanded) next[k] = expanded[k]
     next[row.parentId ? row.envId + ":" + row.parentId : key] = true
@@ -136,14 +160,15 @@ Item {
         root.setFilter(order[Math.max(0, Math.min(order.length - 1, order.indexOf(root.filter) + dx))])
       }
     }
-    onActivateRequested: if (root.cursor >= 0 && root.cursor < root.visible_.length) root.toggleExpand(root.visible_[root.cursor])
+    onActivateRequested: if (root.cursor >= 0 && root.cursor < root.visible_.length) root.activate(root.visible_[root.cursor])
     onTextKey: function(t) {
       if (t === "1") root.setFilter("attention")
       else if (t === "2") root.setFilter("active")
-      else if (t === "3") root.setFilter("all")
+      else if (t === "3") root.setFilter("done")
+      else if (t === "4") root.setFilter("all")
       else if (t === "/") search.forceActiveFocus()
       else if (t === "r" && root.service) root.service.refresh()
-      else if (t === "o" && root.cursor >= 0) root.act(root.visible_[root.cursor], "focus")
+      else if (t === "o") root.act(root.cursor >= 0 ? root.visible_[root.cursor] : null, "focus")
       else if (t === "g") {
         for (var i = 0; i < root.visible_.length; i++) if (Store.ATTENTION[root.visible_[i].state]) { root.cursor = i; list.positionViewAtIndex(i, ListView.Contain); break }
       }
@@ -384,7 +409,8 @@ Item {
           options: [
             { value: "attention", label: "Inbox  " + root.needCount, tooltip: "1" },
             { value: "active", label: "Active  " + root.activeCount, tooltip: "2" },
-            { value: "all", label: "All  " + root.allCount, tooltip: "3" }
+            { value: "done", label: "Done  " + root.doneCount, tooltip: "3" },
+            { value: "all", label: "All  " + root.allCount, tooltip: "4" }
           ]
           value: root.filter
           foreground: root.colors.text
@@ -420,7 +446,7 @@ Item {
         bottomPadding: Style.space(10)
         LucideIcon {
           anchors.horizontalCenter: parent.horizontalCenter
-          name: !root.environments.length ? "plug-zap" : root.filter === "attention" ? "circle-check" : "moon"
+          name: !root.environments.length ? "plug-zap" : root.filter === "attention" || root.filter === "done" ? "circle-check" : "moon"
           color: root.colors.textFaint
           size: Math.round(Style.font.display * 1.1)
         }
@@ -429,7 +455,8 @@ Item {
           horizontalAlignment: Text.AlignHCenter
           text: !root.environments.length ? "Pair a T3 environment to start"
             : root.query ? "No threads match “" + root.query + "”"
-            : root.filter === "attention" ? "Inbox zero — nothing needs you" : root.filter === "active" ? "No active threads" : "No recent threads"
+            : root.filter === "attention" ? "Inbox zero — nothing needs you" : root.filter === "active" ? "No active threads"
+            : root.filter === "done" ? "Nothing finished recently" : "No recent threads"
           textFormat: Text.PlainText
           color: root.colors.textDim
           font.family: root.fontFamily
@@ -481,6 +508,7 @@ Item {
           }
           return true
         }
+        readonly property bool isLine: modelData.kind === "idle-line"
         Text {
           visible: cell.newGroup
           width: parent.width
@@ -494,28 +522,43 @@ Item {
           font.letterSpacing: 0.8
           elide: Text.ElideRight
         }
-      ThreadCard {
-        readonly property var modelData: cell.modelData
-        readonly property int index: cell.index
-        width: parent.width
-        row: modelData
-        colors: root.colors
-        detail: root.service ? root.service.details[modelData.key] || null : null
-        now: root.now
-        selected: index === root.cursor
-        expanded: root.expanded[modelData.key] === true
-        reduceMotion: root.reduceMotion
-        showMachine: root.multiMachine && root.filter !== "all"
-        machineLabel: {
-          var e = root.service ? root.service.environment(modelData.envId) : null
-          return e ? e.label : ""
+        Loader {
+          width: parent.width
+          sourceComponent: cell.isLine ? lineComponent : cardComponent
         }
-        fontFamily: root.fontFamily
-        monoFamily: root.monoFamily
-        opacity: modelData.stale ? 0.55 : 1
-        onClicked: { root.cursor = index; root.toggleExpand(modelData) }
-        onActionRequested: function(action) { root.act(modelData, action) }
-      }
+        Component {
+          id: lineComponent
+          IdleLine {
+            count: cell.modelData.count
+            open: cell.modelData.open
+            selected: cell.index === root.cursor
+            colors: root.colors
+            fontFamily: root.fontFamily
+            onClicked: { root.cursor = cell.index; root.toggleIdle(cell.modelData.key) }
+          }
+        }
+        Component {
+          id: cardComponent
+          ThreadCard {
+            row: cell.modelData
+            colors: root.colors
+            detail: root.service ? root.service.details[cell.modelData.key] || null : null
+            now: root.now
+            selected: cell.index === root.cursor
+            expanded: root.expanded[cell.modelData.key] === true
+            reduceMotion: root.reduceMotion
+            showMachine: root.multiMachine && root.filter !== "all"
+            machineLabel: {
+              var e = root.service ? root.service.environment(cell.modelData.envId) : null
+              return e ? e.label : ""
+            }
+            fontFamily: root.fontFamily
+            monoFamily: root.monoFamily
+            opacity: cell.modelData.stale ? 0.55 : 1
+            onClicked: { root.cursor = cell.index; root.toggleExpand(cell.modelData) }
+            onActionRequested: function(action) { root.act(cell.modelData, action) }
+          }
+        }
       }
 
       add: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 160; easing.type: Easing.OutCubic } }
@@ -542,7 +585,7 @@ Item {
       Text {
         width: parent.width
         horizontalAlignment: Text.AlignRight
-        text: "j/k move  ·  ↵ expand  ·  1 2 3 filter  ·  / search  ·  o open T3  ·  esc"
+        text: "j/k move  ·  ↵ expand  ·  1–4 filter  ·  / search  ·  o open T3  ·  esc"
         textFormat: Text.PlainText
         color: root.colors.textFaint
         font.family: root.fontFamily

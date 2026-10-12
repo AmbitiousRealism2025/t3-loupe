@@ -7,7 +7,10 @@ var ATTENTION = { input: true, plan: true, failed: true }
 var BUSY = { working: true, waiting: true, queued: true, background: true }
 var NEEDS_YOU = { input: true, plan: true, failed: true, limited: true, review: true }
 
-var FILTERS = ["attention", "active", "all"]
+var FILTERS = ["attention", "active", "done", "all"]
+
+// States that fold behind the "Idle (n)" line in Active and All.
+var FOLDED = { idle: true, stopped: true }
 
 var PENDING = {
   command: { label: "Run command?", icon: "terminal" },
@@ -61,6 +64,7 @@ function isRoot(row) { return !row.parentId }
 function rootMatches(row, filter) {
   if (filter === "attention") return NEEDS_YOU[row.state] === true
   if (filter === "active") return !row.settled || BUSY[row.state] === true || ATTENTION[row.state] === true || row.state === "review"
+  if (filter === "done") return isDone(row)
   return true
 }
 
@@ -70,11 +74,25 @@ function textMatches(row, query) {
   return (row.title + " " + row.project + " " + row.branch + " " + row.model + " " + row.provider).toLowerCase().indexOf(q) >= 0
 }
 
+// Finished work: the latest run completed and nothing is running or waiting on you.
+function isDone(row) {
+  return row.rawStatus === "completed" && (row.state === "review" || row.state === "idle")
+}
+
+// Key of the idle line a root folds behind (one per view in Active, one per group in All).
+function idleLineKey(row, filter) {
+  return filter === "all" ? "idle:" + row.envId + "\u0000" + row.project : "idle:active"
+}
+
 // Rows for a filter, with children following their parent.
 // Children appear when their parent appears and they are busy or need attention
 // (or always, when the parent is expanded).
-function visibleRows(rows, filter, query, expanded) {
+// In Active and All, idle/stopped roots fold behind an "Idle (n)" line item:
+//   { kind: "idle-line", key, envId, project, parentId: "", count, open }
+// The line is open when idleOpen[key] is true. A text search never folds.
+function visibleRows(rows, filter, query, expanded, idleOpen) {
   expanded = expanded || {}
+  idleOpen = idleOpen || {}
   var byParent = {}
   var roots = []
   for (var i = 0; i < rows.length; i++) {
@@ -94,8 +112,32 @@ function visibleRows(rows, filter, query, expanded) {
       var ga = a.envId + "\u0000" + a.project, gb = b.envId + "\u0000" + b.project
       return ga < gb ? -1 : ga > gb ? 1 : order[a.key] - order[b.key]
     })
+  } else if (filter === "done") {
+    // Most recently finished first.
+    roots.sort(function(a, b) { return (b.completedAt || 0) - (a.completedAt || 0) })
   }
+
+  var folding = !query && (filter === "active" || filter === "all")
   var out = []
+  var pending = null // idle roots of the current fold: { key, envId, project, roots: [] }
+
+  function emit(root) {
+    out.push(root)
+    var kids = byParent[root.key] || []
+    for (var m = 0; m < kids.length; m++) {
+      var kid = kids[m]
+      if (expanded[root.key] || BUSY[kid.state] || ATTENTION[kid.state]) out.push(kid)
+    }
+  }
+  function flush() {
+    if (!pending || !pending.roots.length) { pending = null; return }
+    var open = idleOpen[pending.key] === true
+    out.push({ kind: "idle-line", key: pending.key, envId: pending.envId, project: pending.project, parentId: "",
+               count: pending.roots.length, open: open })
+    if (open) for (var p = 0; p < pending.roots.length; p++) emit(pending.roots[p])
+    pending = null
+  }
+
   for (var j = 0; j < roots.length; j++) {
     var root = roots[j]
     var kids = byParent[root.key] || []
@@ -107,12 +149,16 @@ function visibleRows(rows, filter, query, expanded) {
       for (var q = 0; q < kids.length; q++) if (textMatches(kids[q], query)) anyKid = true
       if (!anyKid) continue
     }
-    out.push(root)
-    for (var m = 0; m < kids.length; m++) {
-      var kid = kids[m]
-      if (expanded[root.key] || BUSY[kid.state] || ATTENTION[kid.state]) out.push(kid)
+    var lineKey = folding ? idleLineKey(root, filter) : ""
+    if (pending && pending.key !== lineKey) flush()
+    if (folding && FOLDED[root.state]) {
+      if (!pending) pending = { key: lineKey, envId: root.envId, project: root.project, roots: [] }
+      pending.roots.push(root)
+      continue
     }
+    emit(root)
   }
+  flush()
   return out
 }
 

@@ -38,7 +38,9 @@ T3 Loupe shows what every T3 Code thread is doing across all your machines. It t
 - **Notifications that matter.** You're notified when a thread needs input, a plan is ready, a run fails, a usage limit hits, checks fail, or a long run finishes while you were away. Startup and reconnects are silent, and clicking a notification opens the panel on that thread.
 - **Many machines.** Pair your laptop and any remote T3 servers, including ones you reach through an SSH tunnel. All threads are ranked together, and each machine shows its connection health.
 - **Native to your theme.** Every color comes from the active Omarchy theme and is held to WCAG contrast floors. All 22 shipped themes are tested, light and monochrome ones included. Changing theme recolors the plugin live.
-- **Keyboard-first.** `j`/`k`, `Enter`, filters on `1 2 3`, `/` to search, `g` to jump to whatever needs you.
+- **Four views.** **Inbox** (what needs you), **Active**, **Done** (finished work, newest first) and **All** (grouped by machine and project).
+- **Idle stays out of the way.** In Active and All, idle and stopped threads fold behind a collapsible **› Idle (n)** line, so busy work stays on top.
+- **Keyboard-first.** `j`/`k`, `Enter`, filters on `1`–`4`, `/` to search, `g` to jump to whatever needs you.
 
 ## Requirements
 
@@ -93,8 +95,8 @@ Sessions last 30 days, and T3 doesn't issue refresh tokens. T3 Loupe warns you t
 | **Click** the name or the ring | open or close the panel |
 | **Middle-click** | reconnect now |
 | `j` / `k`, `↑` / `↓` | move between threads |
-| `Enter` | expand or collapse a thread |
-| `1` `2` `3`, `h` / `l` | **Inbox** (needs you) · **Active** · **All** (grouped by machine and project) |
+| `Enter` | expand or collapse a thread, or the **Idle (n)** line |
+| `1` `2` `3` `4`, `h` / `l` | **Inbox** (needs you) · **Active** · **Done** (finished, newest first) · **All** (grouped by machine and project) |
 | `/` | filter by text |
 | `g` | jump to the first thread that needs you |
 | `o` | bring the T3 window forward |

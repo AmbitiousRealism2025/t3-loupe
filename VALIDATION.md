@@ -94,3 +94,22 @@ Validated on 2026-10-12, on this setup:
 - **Live install migrated in place.** The id was replaced in `shell.json` and in the Notch Strip layout, so the right-flank position was kept; backups are `*.before-t3-loupe-*`. The old plugin folder was removed. After a shell restart the service reported `live`.
 - **Bar.** The default display is now `label`: "T3 Loupe" left of the ring, inside the same `WidgetButton`, whose mouse area spans both. The rendered bar was inspected after the restart. The click was not physically exercised, because no pointer automation is available here; the panel opens through the same `toggle()` that the IPC `open` call verifies.
 - **Tests.** The tests passed after the rename.
+
+## Idle fold and Done tab — v2.2.0 (2026-10-12)
+
+**New behaviour:**
+- **Idle fold.** In **Active**, idle and stopped root threads (with their subagents) fold behind one **Idle (n)** line at the bottom. In **All**, there is one line at the end of each machine/project group.
+  - The line is collapsed by default and keeps its state while the shell runs.
+  - It toggles on click or `Enter`.
+  - A text search never folds.
+  - Focusing a thread from a notification unfolds the line that hides it.
+- **Done tab**, placed between Active and All, with keys `1`–`4`. It lists threads whose latest run completed and that are not busy or waiting on you, newest first; this includes settled threads from the last day.
+
+**Verified:**
+- Tests: 55 passing, including new cases for folding across machines, per-group lines, search, Done order and membership, and filter order.
+- Live in the Notch Strip with real data, using the Lumon theme:
+  - The collapsed line showed **Idle (4)** under 2 busy threads.
+  - Keyboard `j j j Enter` expanded it, with the caret rotated, the line highlighted and the four threads revealed.
+  - Key `3` opened Done, showing 5 threads newest first.
+  - No QML warnings came from this plugin.
+- Not verified: clicking with the mouse (no pointer automation here; the click and `Enter` use the same handler), and per-group lines with live data across two machines (unit-tested only).
