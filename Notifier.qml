@@ -1,45 +1,34 @@
 import QtQuick
-import Quickshell
 import qs.Commons
+import "lib/Notices.js" as Notices
 
 // Desktop notifications for daemon notices. Preferences live in
 // ~/.config/t3-loupe/settings.json under "notifications" (see README).
+// Notification text can be read by other local accounts on Omarchy (lib/Notices.js explains
+// why), so by default it names only the kind of event; the click opens the thread.
 QtObject {
   id: root
   property var service: null
 
-  // Severity groups on by default; individual kinds can be switched in "kinds".
-  readonly property var defaults: ({ attention: true, milestone: true, info: false })
   readonly property var glyphs: ({ attention: "󰂞", milestone: "󰄬", info: "󰌘" })
 
-  function prefs() {
-    var s = service && service.settings ? service.settings.notifications : null
-    return s && typeof s === "object" ? s : {}
-  }
-
-  function wanted(n) {
-    var p = prefs()
-    if (p.enabled === false) return false
-    if (p.kinds && typeof p.kinds[n.kind] === "boolean") return p.kinds[n.kind]
-    if (typeof p[n.severity] === "boolean") return p[n.severity]
-    if (service && service.openPanels > 0 && p.whenPanelOpen !== true && n.severity !== "attention") return false
-    return defaults[n.severity] === true
-  }
-
-  // Notification text is untrusted (thread titles); keep it from looking like an option.
+  // Text is untrusted (thread titles, when details are on); keep it from looking like an option.
   function safe(text, limit) {
     var t = String(text || "").replace(/[\r\t]/g, " ").slice(0, limit)
     return /^-/.test(t) ? "‐" + t.slice(1) : t
   }
 
   function notice(n) {
-    if (!wanted(n)) return
+    var settings = service ? service.settings : null
+    if (!Notices.wanted(n, settings, service ? service.openPanels : 0)) return
+    var shown = Notices.text(n, settings)
     var argv = ["omarchy-notification-send", "--app-name", "T3 Loupe",
       "-u", n.severity === "attention" ? "normal" : "low",
       "-g", glyphs[n.severity] || glyphs.info,
-      safe(n.title, 160)]
-    var body = safe(n.body, 400)
+      safe(shown.title, 160)]
+    var body = safe(shown.body, 400)
     if (body) argv.push(body)
+    // The click carries only opaque ids.
     if (n.envId && n.threadId) argv.push("--exec", "omarchy-shell", "-q", "ambitiousrealism.t3-loupe", "focus", n.envId + ":" + n.threadId)
     else argv.push("--exec", "omarchy-shell", "-q", "ambitiousrealism.t3-loupe", "open")
     Util.execArgv(argv)

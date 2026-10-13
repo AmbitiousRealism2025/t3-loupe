@@ -224,3 +224,26 @@ Responds to the maintainer review on [omarchy-plugin-marketplace#11292](https://
 **Not verified:**
 - A real listener owned by a different local account. That needs a second user on this machine; the synthetic `/proc` tests cover the decision.
 - The SSH-forward path live: the remote machine's forward wasn't running. A forward is owned by the user's own `ssh` process, so it passes by design.
+
+## Privacy fix — v2.5.2 (2026-10-13)
+
+Responds to the second finding on [omarchy-plugin-marketplace#11292](https://github.com/omacom/omarchy-plugin-marketplace/issues/11292): private thread, project and error text reached process argv through notifications, and the Copy title action passed the title to `wl-copy` as an argument.
+
+**What changed:**
+- Notifications name only the kind of event by default (`lib/Notices.js`). A D-Bus client was tried first, to keep detailed text out of `busctl`'s argv. It didn't solve the problem: Omarchy's notification service (`shell/plugins/notifications/Service.qml`, `persistPopupFile` and `writeHistoryFile`) passes each notification's JSON to `bash` as an argument when saving it, so detailed text would leak downstream however it was sent. The D-Bus client was removed, and detailed text is opt-in (`"details": true`) with that caveat documented.
+- Copy title: QML sends the title to the collector over its stdin, and `daemon/desktop.ts` pipes it to `wl-copy` on stdin.
+- The open-panel hold now also applies to explicitly enabled kinds.
+- `tools/probe.ts` uses the collector's guarded request helpers.
+
+**Second opinion:** two read-only reviews by Codex (`gpt-6.1-sol`, extra-high reasoning). The first found the downstream leak in Omarchy's notification service, clipboard error handling gaps and documentation overclaims. The second confirmed that no default path sends private text into argv, and found four more items: `wl-copy` EPIPE on exit 0, timeout cleanup, probe checks per request, and README wording. All of them were fixed before this commit.
+
+**Verified:**
+- `npm test`: 67 tests pass. They cover generic wording for every notice kind, the details opt-in, preference precedence, the clipboard text arriving on stdin and absent from argv, a non-zero exit, EPIPE with exit 0, a missing command, a timeout that kills the helper's process group, and malformed commands. The desktop tests ran 20 times in a row without a failure.
+- Live clipboard: copying a unique marker through `copyText` with the real `wl-copy` pasted back exactly. A concurrent scan of every process's `/proc/<pid>/cmdline` found no process with the marker in its argv. The user's clipboard was saved before the check and restored after.
+- Live D-Bus check, done while exploring the transport: `busctl --user monitor` decoded a notification sent over the session bus exactly. That is how the D-Bus option was evaluated before it was dropped.
+- `tools/probe.ts` ran live against the local T3: identity verified, session 200, frames streamed.
+- `omarchy plugin validate .`, `qmllint` and `git diff --check` are clean.
+
+**Not verified:**
+- The generic notification text on screen through the live shell. The wording and preferences are unit-tested in `lib/Notices.js`, which is the file the shell loads.
+- Copy title clicked in the panel. The QML change is a one-line `send`; the collector path is tested live above.

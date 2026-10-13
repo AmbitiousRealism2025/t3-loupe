@@ -2,6 +2,17 @@
 
 What changed in each version. [`VALIDATION.md`](VALIDATION.md) records how each one was verified.
 
+## 2.5.2 — 2026-10-13
+
+Privacy fix from the [marketplace review](https://github.com/omacom/omarchy-plugin-marketplace/issues/11292). Any local account can read a process's command-line arguments, and private text was reaching them.
+
+- **Notifications are generic by default.** They now name only the kind of event, such as "A T3 thread needs your input". Clicking still opens that thread. Thread titles, projects and errors used to be passed to `omarchy-notification-send` as arguments. Omarchy's notification service also passes notification text to a shell command as an argument when it saves a notification, so no wording choice on our side can keep detailed text private. `"notifications": { "details": true }` opts back in to full text, with that caveat documented.
+- **Copy title pipes the title to `wl-copy` on stdin** through the collector, instead of passing it as an argument. A failed or missing `wl-copy` is reported by code and can't crash the collector.
+- **An open panel now holds back non-attention notifications even when their kind is switched on explicitly**, matching the README.
+- `tools/probe.ts`, a developer tool, now uses the collector's own request helpers, so it gets the same identity check, the same loopback-ownership check before every secret, and the same redirect, timeout and size limits.
+- The README and SECURITY.md describe exactly when identity and ownership are checked, and the window that remains.
+- New tests for notification wording and preferences and for clipboard success, failure and timeout paths (67 pass).
+
 ## 2.5.1 — 2026-10-12
 
 Security fix from the [marketplace review](https://github.com/omacom/omarchy-plugin-marketplace/issues/11292).

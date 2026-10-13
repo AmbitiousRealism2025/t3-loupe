@@ -1,6 +1,7 @@
 // Synthetic feed covering every display state, for UI development and screenshots.
 // Enable with {"demo": true} in ~/.config/t3-loupe/settings.json, or run `main.ts demo`.
 import { createInterface } from "node:readline";
+import { handleDesktopCommand } from "./desktop.ts";
 import type { Row } from "./model.ts";
 import type { Detail } from "./thread-watch.ts";
 
@@ -116,7 +117,9 @@ export function runDemo(write: (m: Record<string, unknown>) => void) {
   createInterface({ input: process.stdin }).on("line", (line) => {
     try {
       const cmd = JSON.parse(line);
-      if (cmd.cmd === "detail") {
+      if (cmd.cmd === "copy") {
+        void handleDesktopCommand(cmd);
+      } else if (cmd.cmd === "detail") {
         const id = String(cmd.threadId);
         const d = details[id] ?? { activity: rows.find((r) => r.id === id)?.activity ?? [], pending: [], runs: [], context: null, subagents: [], todo: null };
         write({ type: "detail", envId: cmd.envId, threadId: id, detail: d });

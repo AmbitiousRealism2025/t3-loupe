@@ -13,6 +13,7 @@ import { statSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { configDir, type Environment, loadConfig, saveConfig } from "./config.ts";
+import { handleDesktopCommand } from "./desktop.ts";
 import { EnvironmentConnection, type EnvironmentView } from "./connection.ts";
 import type { Notice } from "./events.ts";
 import { checkEndpoint, getDescriptor, requestJson } from "./http.ts";
@@ -124,7 +125,9 @@ class Daemon {
   private command(line: string) {
     let cmd: any;
     try { cmd = JSON.parse(line); } catch { return; }
-    if (cmd?.cmd === "detail" && typeof cmd.envId === "string" && typeof cmd.threadId === "string") {
+    if (cmd?.cmd === "copy") {
+      void handleDesktopCommand(cmd);
+    } else if (cmd?.cmd === "detail" && typeof cmd.envId === "string" && typeof cmd.threadId === "string") {
       this.connections.get(cmd.envId)?.requestDetail(cmd.threadId.slice(0, 120));
     } else if (cmd?.cmd === "refresh") {
       for (const c of this.connections.values()) c.retryNow();

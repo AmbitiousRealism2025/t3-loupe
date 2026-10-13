@@ -38,7 +38,7 @@ T3 Loupe shows what every T3 Code thread is doing across all your machines. It t
   - subagents with their progress
   - pull request number, checks and diff size
 - **Usage limits at a glance.** Session and weekly windows for providers that report them (such as Codex and Claude), with reset times.
-- **Notifications that matter.** You're notified when a thread needs input, a plan is ready, a run fails, a usage limit hits, checks fail, or a long run finishes while you were away. Startup and reconnects are silent, and clicking a notification opens the panel on that thread.
+- **Notifications that matter.** You're notified when a thread needs input, a plan is ready, a run fails, a usage limit hits, checks fail, or a long run finishes while you were away. Startup and reconnects are silent, and clicking a notification opens the panel on that thread. Notifications name only the kind of event ("A T3 thread needs your input"); titles stay in the panel unless you turn on `"details"` (see [Configuration](#notifications-and-the-collector)).
 - **Many machines.** Pair your laptop and any remote T3 servers, including ones you reach through an SSH tunnel. All threads are ranked together, and each machine shows its connection health.
 - **Native to your theme.** Every color comes from the active Omarchy theme and is held to WCAG contrast floors. All 22 shipped themes are tested, light and monochrome ones included. Changing theme recolors the plugin live.
 - **Four views.** **Inbox** (what needs you), **Active**, **Done** (finished work, newest first) and **All** (grouped by machine and project).
@@ -153,6 +153,7 @@ These settings live in `~/.config/t3-loupe/settings.json`. The file is optional 
     "milestone": true,
     "info": false,
     "whenPanelOpen": false,
+    "details": false,
     "kinds": { "checks_passed": false }
   },
   "node": "/usr/bin/node",
@@ -169,6 +170,8 @@ These settings live in `~/.config/t3-loupe/settings.json`. The file is optional 
 | `info` | `environment_offline` · `environment_restored` |
 
 - Each kind fires at most once per thread every two minutes.
+- While the panel is open, only `attention` notifications are shown, unless `"whenPanelOpen": true`.
+- `"details": true` puts the thread title, project, machine, error messages and pull request titles into notifications. Off by default for privacy: Omarchy's notification service passes notification text to a shell command as an argument when it saves the notification, so other accounts on the machine can see it in process listings. Leave it off on shared machines.
 - `"textSize"` makes the panel's text larger without changing the shell-wide font size. There are four steps: `0` (the shell's own size, the smallest), `2`, `4` and `6`, measured in pixels on top of the shell's type scale. You can set it with the **A↓ ▁▂▃▅ A↑** control in the panel footer, by clicking a bar to jump to that size, or with `+` / `-`. Loupe saves the choice to this file. The window widens with the text, so bigger text means easier reading rather than more truncation. Other values from `-2` to `8` can be set by hand.
 - `"node"` pins a Node binary when the shell's `PATH` doesn't have a suitable one.
 - `"demo": true` replaces live data with a synthetic feed that exercises every state.
@@ -186,9 +189,10 @@ These settings live in `~/.config/t3-loupe/settings.json`. The file is optional 
 - **Narrow network surface.**
   - Plain HTTP is accepted only on loopback (your local T3 or an SSH forward); anything else must be HTTPS.
   - Redirects are never followed, so a token can't leak to another host.
-  - Each machine's server identity is pinned, and checked before every request that carries the token, including HTTP polling.
-  - On loopback, the token, socket ticket and pairing credential only go to a listening socket owned by your own user. Another local account that takes T3's port while T3 is stopped gets nothing.
+  - Each machine's server identity is pinned. It is verified when connecting, before the token is used, and again before every HTTP poll.
+  - On loopback, the token, socket ticket and pairing credential are only sent after checking that the listening socket belongs to your own user, so another local account that takes T3's port while T3 is stopped is refused. These checks run just before each send rather than being bound to the connection, so a narrow window remains if the port changes hands in between.
   - Responses are size-capped.
+- **Private text stays out of other processes' arguments.** Any local account can read a process's command line, so thread titles and other private text are never passed as one. Notifications are generic by default (see `"details"`), and **Copy title** pipes the title to `wl-copy` on stdin. Two exceptions you start yourself: with `"details": true`, notification text reaches Omarchy's notification service, which passes it as an argument (see above); and **Open PR** hands the pull request URL to your browser, which receives it as an argument like any opened link.
 - **Minimal data kept.** Only display fields are kept. Command output, diffs and message bodies are dropped on arrival. Approval and question text is shown because that is the point of the panel.
 - **Know what read scope can reach.** In T3, `orchestration:read` can also read any file the server's account can read. T3 Loupe only calls the descriptor, session, socket-ticket, shell and thread-stream endpoints.
 

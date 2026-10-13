@@ -214,7 +214,8 @@ Item {
     } else if (action === "pr" && row.pr && row.pr.url) {
       Qt.openUrlExternally(row.pr.url)
     } else if (action === "copy") {
-      Util.execArgv(["wl-copy", "--", row.title])
+      // Piped to wl-copy's stdin by the collector: the title never appears in a process's argv.
+      if (service) service.send({ cmd: "copy", text: row.title })
     }
   }
 
