@@ -112,7 +112,7 @@ Sessions last 30 days, and T3 doesn't issue refresh tokens. T3 Loupe warns you t
 | `f` | switch between the two-pane window and the dropdown |
 | `+` / `-` | step the panel text size up / down (also the **A↓ ▁▂▃▅ A↑** control in the footer); the choice is saved |
 | `1` `2` `3` `4`, `h` / `l` | **Inbox** (needs you) · **Active** · **Done** (finished, newest first) · **All** (grouped by machine and project) |
-| `/` | filter by text |
+| `/` | filter by text: type, `Backspace` deletes, `Enter` keeps the filter and returns to the list, `Esc` clears it |
 | `g` | jump to the first thread that needs you |
 | `o` | bring the T3 window forward |
 | `r` | reconnect |
@@ -232,7 +232,7 @@ Omarchy shell (Quickshell)                         T3 server(s)
 |---|---|
 | The bar shows `—` | The collector can't reach any machine. Run `node $L doctor`. |
 | The bar shows `+` | Nothing is paired yet; see [Pair your T3 machines](#pair-your-t3-machines). |
-| "No SSH tunnel" | Start your `ssh -L …:127.0.0.1:3773 host` forward. T3 Loupe picks it up within 15 s. |
+| "No SSH tunnel" | Start your `ssh -L …:127.0.0.1:3773 host` forward. T3 Loupe picks it up within 15 s. If T3 itself reaches that machine another way, such as over Tailscale HTTPS, there is no forward to find: re-pair it with `pair --url https://<host>`, which replaces the old entry. |
 | "Pairing required" / "Pairing expired" | Re-pair that machine. |
 | "Port owned by another user" | Something run by a different user account is listening on that machine's T3 port, so T3 Loupe won't send it your token. Check what's listening with `ss -ltnp`; start T3 (or your SSH forward) as your own user. |
 | "Collector stopped" | Node is missing or too old on the shell's `PATH`. Set `"node"` in `settings.json`. `omarchy-shell ambitiousrealism.t3-loupe status` shows the last error. |

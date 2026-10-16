@@ -34,6 +34,7 @@ Item {
   property var expanded: ({})
   property int cursor: -1
   property string query: ""
+  onQueryChanged: cursor = -1
 
   // Idle folds start collapsed and keep their state while the shell runs.
   property var idleOpen: ({})
@@ -412,18 +413,23 @@ Item {
           focusable: false
           onChanged: function(v) { root.setFilter(v) }
         }
-        TextField {
+        FilterField {
           id: search
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
           width: activeFocus || text !== "" ? Style.space(150) : Style.space(90)
-          placeholderText: "/ filter"
           text: root.query
-          font.family: root.fontFamily
-          font.pixelSize: Typo.caption
-          onTextChanged: { root.query = text; root.cursor = -1 }
-          Keys.onEscapePressed: { text = ""; keys.forceActiveFocus() }
-          Keys.onReturnPressed: keys.forceActiveFocus()
+          foreground: root.colors.text
+          dim: root.colors.textDim
+          border: root.colors.textFaint
+          accent: root.colors.accent
+          fontFamily: root.fontFamily
+          fontSize: Typo.caption
+          radius: Style.cornerRadius
+          padding: Style.space(8)
+          onEdited: function(t) { root.query = t }
+          onFinished: keys.forceActiveFocus()
+          onClicked: forceActiveFocus()
           Behavior on width { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
         }
       }

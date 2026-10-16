@@ -4,6 +4,7 @@ CenteredWindow 1.0 CenteredWindow.qml
 Chip 1.0 Chip.qml
 CompactRow 1.0 CompactRow.qml
 DetailView 1.0 DetailView.qml
+FilterField 1.0 FilterField.qml
 IconButton 1.0 IconButton.qml
 IdleLine 1.0 IdleLine.qml
 LucideIcon 1.0 LucideIcon.qml

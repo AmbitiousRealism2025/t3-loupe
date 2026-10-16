@@ -267,3 +267,26 @@ Fixes two linked problems with several running threads: they swapped places on e
 - The swap scenario itself, live: the demo feed never reorders, and the check above didn't watch two real threads working at once.
 - The cursor logic in `ThreadsPanel.qml` has no automated test. The ordering that feeds it does.
 
+## Filter input fix — v2.5.4 (2026-10-16)
+
+Responds to the maintainer review on [omarchy-plugin-marketplace#11810](https://github.com/omacom/omarchy-plugin-marketplace/issues/11810): at `081a21c`, the filter was a stock editable `TextField` (`ThreadsPanel.qml` L415–L427), which can read the clipboard on its own, and the Wayland reader behind that read has no size or time limit. The behavior itself was not reproduced here; the fix removes the exposure instead.
+
+**What changed:**
+- New `components/FilterField.qml`: the filter box, built from `Text` and a static caret. It takes keys only while it has focus (the panel's `PanelKeyCatcher` is `blocked` meanwhile, as it was for the `TextField`) and hands them back on `Enter` or `Esc`. It imports nothing from the shell.
+- `lib/Store.js`: `editFilter` holds the editing rules (typing, `Backspace`, `Ctrl+W`, `Ctrl+U`, `Enter`, `Esc`). Control characters are ignored and the text is capped at 80 characters.
+- `ThreadsPanel.qml`: uses `FilterField`; the cursor reset moved to the query itself, so it still fires when `Esc` clears the filter from outside the box.
+- `README.md`, `SECURITY.md`, `CHANGELOG.md`: the filter keys, the clipboard statement, and a hint for remote machines that T3 reaches without SSH.
+- No `TextField`, `TextInput`, `TextEdit` or `TextArea` is left in any `.qml` file (`grep`).
+
+**Verified:**
+- `npm test`: 72 pass. 2 new tests cover the editing rules and 1 runs `tests/qml/tst_filterfield.qml` in Qt's test runner (`qmltestrunner`, offscreen, Qt 6.12.0): 11 cases through real key events, including letters that are navigation keys elsewhere (`j k h l x`, space) typed as text, `Ctrl+W` and `Ctrl+U`, `Enter` and `Esc`, no effect from `Ctrl+V`, `Shift+Insert` or Alt and Ctrl chords, the 80-character cap, a click, and a walk of the component's items that finds no text input. Removing the Alt/Ctrl guard makes the suite fail.
+- Rendered offscreen: placeholder, typed text, and the focused state (caret and accent border, text elided from the left).
+- `omarchy plugin validate .` passes. `git diff --check` is clean. `qmllint` with the shell's `qs` import path gives the same 306 warnings as before the change, none in the new file.
+
+- Live, in the real shell: with temporary logging in the installed copy, the logged events were `/` giving the box focus (the panel's catcher then `blocked`), `r` and `i` typed, `Backspace` leaving `r`, `Enter` keeping `r` and handing the keys back, `/` focusing again, and `Esc` clearing the text and handing the keys back with the panel still open. The logging was removed afterwards.
+- Panel QML changes only take effect after `omarchy-restart-shell`. A plugin reload ("Local plugin changed, reloading") reloads the bar widget but kept serving the previous `ThreadsPanel.qml`: the shell's warnings carried the old file's line numbers across three reloads, and the new component's load-time log line appeared only after a restart. An earlier live check in this release ran against the old text field because of this.
+
+**Not verified:**
+- How the box looks in the real shell (border, caret, theme colors, both layouts) beyond the offscreen render, and clicking it there.
+- The clipboard exposure itself, before or after.
+

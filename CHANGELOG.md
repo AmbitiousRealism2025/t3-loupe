@@ -2,6 +2,14 @@
 
 What changed in each version. [`VALIDATION.md`](VALIDATION.md) records how each one was verified.
 
+## 2.5.4 — 2026-10-16
+
+Security fix from the [marketplace review](https://github.com/omacom/omarchy-plugin-marketplace/issues/11810).
+
+- **The filter box no longer uses an editable text input.** It was a stock `TextField`, which can read the clipboard on its own, and a filter has no use for paste. It is now `components/FilterField.qml`, built from plain `Text`, with typing delivered as key events. The plugin has no `TextField`, `TextInput` or `TextEdit` left. Typing, `Backspace`, `Ctrl+W` (delete word), `Ctrl+U` (clear), `Enter` (keep the filter) and `Esc` (clear it) work as before; paste, mouse selection and input-method composition are no longer supported in the filter.
+- The troubleshooting entry for "No SSH tunnel" says what to do when T3 reaches the machine another way, such as over Tailscale HTTPS: re-pair with `pair --url`.
+- New tests: the filter's editing rules, and the real component driven with key events through Qt's test runner (72 pass).
+
 ## 2.5.3 — 2026-10-16
 
 Fixes the list order and the two-pane selection when several threads are running at once.

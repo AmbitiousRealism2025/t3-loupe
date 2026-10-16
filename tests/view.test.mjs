@@ -91,3 +91,35 @@ test("colour budget: three meanings earn a hue, ring is ink except needs-you", (
   const segs = Array.from(Store.ringSegments([r("a", "input"), r("b", "plan"), r("c", "working"), r("d", "limited"), r("e", "review"), r("f", "idle")]), (x) => `${x.role}:${x.count}`);
   assert.deepEqual(segs, ["attention:2", "ink:2", "inkFaint:2"]);
 });
+
+test("filter editing: typing, deleting, word and line clears, and the keys that finish it", () => {
+  const edit = (q, action, text) => Store.editFilter(q, action, text);
+  assert.deepEqual({ ...edit("", "text", "r") }, { query: "r", done: false, handled: true });
+  assert.equal(edit("ri", "text", "v").query, "riv");
+  // j, k, h, l, x and space are ordinary letters while typing.
+  assert.equal(edit("a", "text", "j").query, "aj");
+  assert.equal(edit("a", "text", " ").query, "a ");
+  assert.equal(edit("riv", "backspace").query, "ri");
+  assert.equal(edit("", "backspace").query, "");
+  assert.equal(edit("two words ", "word").query, "two ");
+  assert.equal(edit("two words", "word").query, "two ");
+  assert.equal(edit("one", "word").query, "");
+  assert.equal(edit("anything", "clear").query, "");
+  // Enter keeps the text and hands the keys back; Esc clears it and hands them back.
+  assert.deepEqual({ ...edit("riv", "enter") }, { query: "riv", done: true, handled: true });
+  assert.deepEqual({ ...edit("riv", "escape") }, { query: "", done: true, handled: true });
+});
+
+test("filter editing: control characters and unknown actions are not used; length is capped", () => {
+  const edit = (q, action, text) => Store.editFilter(q, action, text);
+  for (const t of ["", undefined, "\u0000", "\u0008", "\u001b", "\r", "\t", "\u007f", "\u0085"]) {
+    assert.deepEqual({ ...edit("ab", "text", t) }, { query: "ab", done: false, handled: false }, JSON.stringify(t));
+  }
+  assert.equal(edit("ab", "paste", "xyz").handled, false);
+  assert.equal(edit("ab", "paste", "xyz").query, "ab");
+  assert.equal(edit("x".repeat(80), "text", "y").query, "x".repeat(80));
+  // Characters outside the BMP count once, and backspace removes them whole.
+  assert.equal(edit("a", "text", "😀").query, "a😀");
+  assert.equal(edit("a😀", "backspace").query, "a");
+  assert.equal(edit(undefined, "text", "q").query, "q");
+});
