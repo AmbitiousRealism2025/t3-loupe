@@ -2,6 +2,16 @@
 
 What changed in each version. [`VALIDATION.md`](VALIDATION.md) records how each one was verified.
 
+## 2.5.3 — 2026-10-16
+
+Fixes the list order and the two-pane selection when several threads are running at once.
+
+- **Threads keep their places.** Needs you and Working used to be ordered by last update, so two busy threads swapped places on nearly every tool call. They are now ordered by when each thread was created: oldest on top, newest at the bottom. Creation time never changes, so nothing moves while it works. "Finishing", "queued" and "background" threads no longer sort as separate tiers inside Working. Done, Stopped and Idle still go most recent first.
+- **The highlight follows the thread, not the row.** When the list reordered, the highlight stayed on its row and landed on a different thread while the right pane kept showing the old one. The cursor now follows its thread when the list changes, and the right pane always shows the highlighted thread. If that thread leaves the current view, the highlight moves to the nearest row and the pane follows it.
+- **One order across machines.** Rows from every paired machine are sorted together. They were joined machine by machine before.
+- Each row carries one more allowlisted field, the thread's creation time. There is no new network, process or file access.
+- Two new tests for the ordering (69 pass).
+
 ## 2.5.2 — 2026-10-13
 
 Privacy fix from the [marketplace review](https://github.com/omacom/omarchy-plugin-marketplace/issues/11292). Any local account can read a process's command-line arguments, and private text was reaching them.

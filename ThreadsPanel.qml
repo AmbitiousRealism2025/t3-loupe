@@ -61,15 +61,37 @@ Item {
   implicitHeight: centered ? Style.space(2400)
     : chrome.implicitHeight + Style.space(10) + Math.min(list.contentHeight, Style.space(900)) + Style.space(8) + footer.implicitHeight
 
-  // Two-pane selection: the thread shown on the right. Follows the cursor; survives list updates.
+  // Two-pane selection: the thread shown on the right. Always the item under the cursor.
   property string selectedKey: ""
   readonly property var selectedRow: service && selectedKey ? service.rowByKey(selectedKey) : null
-  onCursorChanged: {
-    if (!centered || cursor < 0 || cursor >= visible_.length) return
+  // The cursor sits on an item, not a position: when the list reorders it follows that item.
+  property string cursorKey: ""
+  onCursorChanged: syncSelection(true)
+  onVisible_Changed: {
+    if (cursor < 0) return
+    var i = -1
+    for (var k = 0; k < visible_.length; k++) if (visible_[k].key === cursorKey) { i = k; break }
+    // The item left this view: stay at the same height, on the nearest stop.
+    if (i < 0) i = nearestStop(cursor)
+    if (i !== cursor) cursor = i
+    else syncSelection(false)
+  }
+  // moved: the cursor itself moved, so refresh the detail even for the same thread.
+  function syncSelection(moved) {
+    if (cursor < 0 || cursor >= visible_.length) { cursorKey = ""; return }
     var item = visible_[cursor]
-    if (item.kind === "idle-line" || item.kind === "section") return
+    cursorKey = item.key
+    if (!centered || item.kind === "idle-line" || item.kind === "section" || (!moved && selectedKey === item.key)) return
     selectedKey = item.key
     detailDebounce.restart()
+  }
+  function nearestStop(i) {
+    i = Math.min(i, visible_.length - 1)
+    for (var d = 0; d < visible_.length; d++) {
+      if (i + d < visible_.length && Store.isStop(visible_[i + d])) return i + d
+      if (i - d >= 0 && Store.isStop(visible_[i - d])) return i - d
+    }
+    return -1
   }
   function selectFirst() {
     for (var i = 0; i < visible_.length; i++) if (!visible_[i].kind) { cursor = i; return }

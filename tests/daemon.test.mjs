@@ -8,7 +8,7 @@ import { FakeT3 } from "./lib/fake-t3.mjs";
 
 const D = "../daemon/";
 const { ShellStore } = await import(D + "shell-store.ts");
-const { classify, buildRows, countRows, activityIcon, isUnread } = await import(D + "model.ts");
+const { classify, buildRows, compareRows, countRows, activityIcon, isUnread } = await import(D + "model.ts");
 const { TransitionDetector } = await import(D + "events.ts");
 const { ThreadWatch } = await import(D + "thread-watch.ts");
 const { loadConfig, saveConfig, upsertEnvironment } = await import(D + "config.ts");
@@ -87,6 +87,33 @@ test("buildRows keeps active roots, nests live children, drops old settled threa
   assert.equal(root.project, "Proj");
   const counts = countRows(rows);
   assert.equal(counts.busy, 1);
+});
+
+test("live threads keep their places: oldest first, whatever updated last", () => {
+  const busy = (id, created, updated, extra = {}) =>
+    thread(id, { activityRunStatus: "running", createdAt: iso(created), updatedAt: iso(updated), ...extra });
+  const order = (threads) => buildRows("e", threads, projects).map((r) => r.id);
+  const a = busy("old", 3 * 3600_000, 5000), b = busy("mid", 2 * 3600_000, 9000), c = busy("new", 3600_000, 1000);
+  assert.deepEqual(order([c, a, b]), ["old", "mid", "new"]);
+  // Fresh activity on the newest thread, or a run finalizing (waiting), never moves it up.
+  assert.deepEqual(order([busy("new", 3600_000, 0), a, b]), ["old", "mid", "new"]);
+  assert.deepEqual(order([c, b, busy("old", 3 * 3600_000, 0, { activityRunStatus: "waiting" })]), ["old", "mid", "new"]);
+  // Needs you still comes first, also oldest first; idle goes most recently touched first.
+  const rows = order([
+    c, a,
+    thread("ask-new", { pendingRuntimeRequest: { kind: "command", createdAt: iso(0) }, createdAt: iso(1000) }),
+    thread("plan-old", { hasActionableProposedPlan: true, createdAt: iso(9e6) }),
+    thread("idle-stale", { createdAt: iso(9e6), updatedAt: iso(9e6) }),
+    thread("idle-fresh", { createdAt: iso(9e6 + 1), updatedAt: iso(1000) }),
+  ]);
+  assert.deepEqual(rows, ["plan-old", "ask-new", "old", "new", "idle-fresh", "idle-stale"]);
+});
+
+test("rows from several machines merge into one order", () => {
+  const busy = (id, created) => thread(id, { activityRunStatus: "running", createdAt: iso(created) });
+  const laptop = buildRows("laptop", [busy("l-new", 1000), busy("l-old", 9000)], projects);
+  const server = buildRows("server", [busy("s-mid", 5000), thread("s-ask", { pendingRuntimeRequest: { kind: "command", createdAt: iso(0) } })], projects);
+  assert.deepEqual([...laptop, ...server].sort(compareRows).map((r) => r.id), ["s-ask", "l-old", "s-mid", "l-new"]);
 });
 
 test("activity icons follow T3's timeline mapping", () => {

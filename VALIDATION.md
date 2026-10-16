@@ -247,3 +247,23 @@ Responds to the second finding on [omarchy-plugin-marketplace#11292](https://git
 **Not verified:**
 - The generic notification text on screen through the live shell. The wording and preferences are unit-tested in `lib/Notices.js`, which is the file the shell loads.
 - Copy title clicked in the panel. The QML change is a one-line `send`; the collector path is tested live above.
+
+## List order and selection fix — v2.5.3 (2026-10-16)
+
+Fixes two linked problems with several running threads: they swapped places on every update, and in the two-pane window the highlight could end up on a different thread than the one shown on the right.
+
+**What changed:**
+- `daemon/model.ts`: `compareRows` orders Needs you and Working by creation time, oldest first, with the row key as the final tiebreak; Done, Stopped and Idle stay most recent first. The sections match the panel's headings, so the states inside Working no longer sort apart. New `createdAt` field on each row.
+- `daemon/main.ts`: rows from all machines are sorted with `compareRows` instead of being concatenated per machine.
+- `ThreadsPanel.qml`: the cursor remembers its thread (`cursorKey`) and re-finds it whenever the visible list changes. If the thread is gone, the cursor goes to the nearest stop. `selectedKey` follows the cursor on every change.
+
+**Verified:**
+- `npm test`: 69 pass, 2 of them new. One keeps the order stable while the newest thread is updated and while an older one goes from working to finishing, and keeps Needs you first and idle most recent first. The other merges rows from two machines. Both fail on the v2.5.2 sort (run against it: the old order gave `new, old, mid`).
+- `omarchy plugin validate .` passes. `git diff --check` is clean. 65 files, 541 KiB tracked, largest file `preview.webp` at 128 KiB.
+- `qmllint` with the shell's `qs` import path gives the same 306 warnings (unqualified access and missing properties on shell types) before and after the change, so none are new. The earlier claim that it reports nothing doesn't reproduce with the import paths available on this machine.
+- Live: copying the changed files into the installed plugin made the shell reload. The collector restarted on the new code, the bar ring showed live counts (10 threads) and the shell log had no plugin errors after the reload.
+
+**Not verified:**
+- The swap scenario itself, live: the demo feed never reorders, and the check above didn't watch two real threads working at once.
+- The cursor logic in `ThreadsPanel.qml` has no automated test. The ordering that feeds it does.
+

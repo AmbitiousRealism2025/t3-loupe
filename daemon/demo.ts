@@ -11,7 +11,7 @@ function row(partial: Partial<Row> & Pick<Row, "id" | "envId" | "title" | "state
   return {
     key: `${partial.envId}:${partial.id}`, parentId: "", projectId: "p", project: "t3-code", branch: "", worktree: false,
     provider: "claudeAgent", model: "claude-opus-5-5", mode: "full-access", plan: false, rawStatus: "completed",
-    pendingKind: "", pendingSince: null, activeSince: null, lastRunMs: null, completedAt: null, updatedAt: Date.now(),
+    pendingKind: "", pendingSince: null, activeSince: null, lastRunMs: null, completedAt: null, createdAt: null, updatedAt: Date.now(),
     unread: false, pinned: false, settled: false, snoozedUntil: null,
     background: { subagents: 0, commands: 0, monitors: 0, other: 0 }, pr: null, prCount: 0, errorClass: "", error: "",
     usageResetAt: null, childCount: 0, activeChildren: 0, activity: [], ...partial,

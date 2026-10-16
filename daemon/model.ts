@@ -61,6 +61,7 @@ export interface Row {
   activeSince: number | null;
   lastRunMs: number | null;
   completedAt: number | null;
+  createdAt: number | null;
   updatedAt: number | null;
   unread: boolean;
   pinned: boolean;
@@ -178,6 +179,7 @@ export function toRow(envId: string, t: Record<string, any>, projects: Map<strin
     activeSince: BUSY.has(state) || state === "input" ? started : null,
     lastRunMs: completed !== null && runStarted !== null && completed >= runStarted ? completed - runStarted : null,
     completedAt: completed,
+    createdAt: ms(t.createdAt),
     updatedAt: ms(t.updatedAt),
     unread: isUnread(t),
     pinned: Boolean(t.pinnedAt),
@@ -200,9 +202,31 @@ const CHILD_RECENT = 2 * 3600_000;
 const MAX_CHILDREN = 12;
 export const MAX_ROWS = 220;
 
-/** Sort key: attention first, then busy, then recency. */
+/** Display sections, in list order; they match the panel's Needs you / Working / Done headings. */
+const SECTION: Record<State, number> = {
+  input: 0, plan: 0, failed: 0,
+  limited: 1, working: 1, waiting: 1, queued: 1, background: 1,
+  review: 2, stopped: 3, idle: 4,
+};
+
+/** Sort key: needs you first, then busy, then finished, stopped and idle. */
 export function rank(row: Row): number {
-  return STATES.indexOf(row.state);
+  return SECTION[row.state];
+}
+
+/**
+ * List order, by section. Live threads (needs you, working) go oldest first: creation time never
+ * changes, so they keep their places while they work instead of swapping on every update; unknown
+ * ages sort last. Finished, stopped and idle threads stay still anyway and go most recent first,
+ * so the row cap sheds the oldest.
+ */
+export function compareRows(a: Row, b: Row): number {
+  const section = rank(a) - rank(b);
+  if (section) return section;
+  const age = rank(a) <= 1
+    ? (a.createdAt ?? Infinity) - (b.createdAt ?? Infinity)
+    : (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
+  return age || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
 }
 
 /**
@@ -230,7 +254,7 @@ export function buildRows(envId: string, threads: Iterable<Record<string, any>>,
     out.push(root);
     const shown = kids
       .filter((k) => BUSY.has(k.state) || ATTENTION.has(k.state) || (k.updatedAt ?? 0) > now - CHILD_RECENT)
-      .sort((a, b) => rank(a) - rank(b) || (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+      .sort(compareRows)
       .slice(0, MAX_CHILDREN);
     out.push(...shown);
   }
@@ -240,9 +264,7 @@ export function buildRows(envId: string, threads: Iterable<Record<string, any>>,
     if (rootIds.has(parent)) continue;
     out.push(...kids.filter((k) => BUSY.has(k.state) || ATTENTION.has(k.state)).map((k) => ({ ...k, parentId: "" })));
   }
-  return out
-    .sort((a, b) => rank(a) - rank(b) || (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-    .slice(0, MAX_ROWS);
+  return out.sort(compareRows).slice(0, MAX_ROWS);
 }
 
 export interface Counts {

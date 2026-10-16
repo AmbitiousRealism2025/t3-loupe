@@ -17,7 +17,7 @@ import { handleDesktopCommand } from "./desktop.ts";
 import { EnvironmentConnection, type EnvironmentView } from "./connection.ts";
 import type { Notice } from "./events.ts";
 import { checkEndpoint, getDescriptor, requestJson } from "./http.ts";
-import type { Counts, Row } from "./model.ts";
+import { compareRows, type Counts, type Row } from "./model.ts";
 import { exchange, extractCredential, issueCredential, READ_SCOPE } from "./pairing.ts";
 import { existingTunnel } from "./tunnel.ts";
 import { Failure, failureCode } from "./util.ts";
@@ -32,7 +32,8 @@ function write(message: Record<string, unknown>) {
 }
 
 export function summarize(views: EnvironmentView[]) {
-  const rows: Row[] = views.flatMap((v) => v.rows.map((r) => ({ ...r, stale: v.stale })));
+  // One list across machines, in the same order each machine uses.
+  const rows: Row[] = views.flatMap((v) => v.rows.map((r) => ({ ...r, stale: v.stale }))).sort(compareRows);
   const live = views.filter((v) => v.state === "live" || v.state === "polling");
   const counts: Counts = { active: 0, busy: 0, attention: 0, input: 0, review: 0 };
   for (const v of live) for (const k of Object.keys(counts) as (keyof Counts)[]) counts[k] += v.counts[k];
