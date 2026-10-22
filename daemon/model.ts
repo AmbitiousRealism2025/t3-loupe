@@ -106,20 +106,32 @@ export function isUnread(t: Record<string, any>): boolean {
   return visited === null || visited < done;
 }
 
+/**
+ * A PR's identity, as T3 keys it: forge host, repository and number. pullRequests[] entries carry the
+ * host and a lowercased repository; the linked and branch references carry only a URL and keep their case.
+ */
+function prKey(p: Record<string, any>): string {
+  let host = typeof p.host === "string" ? p.host.toLowerCase() : "";
+  if (!host) try { host = new URL(p.url).hostname; } catch {}
+  return `${host}/${String(p.repository).toLowerCase()}#${p.number}`;
+}
+
 function pickPullRequest(t: Record<string, any>): { pr: PullRequest | null; count: number } {
   const all = [t.linkedPullRequest, t.branchPullRequest, ...(Array.isArray(t.pullRequests) ? t.pullRequests : [])].filter(
     (p) => isObject(p) && isObject(p.snapshot) && typeof p.number === "number",
   );
   if (!all.length) return { pr: null, count: 0 };
   const unique = new Map<string, any>();
-  for (const p of all) unique.set(`${p.repository}#${p.number}`, p);
+  for (const p of all) unique.set(prKey(p), p);
   const ranked = [...unique.values()].sort((a, b) => {
     const open = Number(b.snapshot.state === "open") - Number(a.snapshot.state === "open");
     if (open) return open;
     return (ms(b.snapshot.updatedAt) ?? ms(b.linkedAt) ?? 0) - (ms(a.snapshot.updatedAt) ?? ms(a.linkedAt) ?? 0);
   });
-  // Explicit links win over recency.
-  const chosen = isObject(t.linkedPullRequest) ? t.linkedPullRequest : isObject(t.branchPullRequest) ? t.branchPullRequest : ranked[0];
+  // Explicit links win over recency. They are bare references, so resolve them to the entry
+  // carrying the snapshot; a link whose details have not synced yet yields to the ranking.
+  const link = [t.linkedPullRequest, t.branchPullRequest].filter(isObject).map(prKey).find((k) => unique.has(k));
+  const chosen = link ? unique.get(link) : ranked[0];
   const s = chosen.snapshot;
   return {
     count: unique.size,

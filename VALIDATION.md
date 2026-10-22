@@ -290,3 +290,23 @@ Responds to the maintainer review on [omarchy-plugin-marketplace#11810](https://
 - How the box looks in the real shell (border, caret, theme colors, both layouts) beyond the offscreen render, and clicking it there.
 - The clipboard exposure itself, before or after.
 
+
+## Linked PR crash fix — v2.5.5 (2026-10-22)
+
+Fixes [#1](https://github.com/AmbitiousRealism2025/t3-loupe/issues/1), reported on T3 v0.1.1-nightly.20261020.3386: with any thread carrying a `linkedPullRequest`, the collector threw `TypeError: Cannot read properties of undefined (reading 'title')` in `pickPullRequest` and the widget stayed on "Collector stopped · restarting".
+
+**Cause:** `pickPullRequest` filtered candidates down to those with a `snapshot`, then chose the explicit link by reading `t.linkedPullRequest` / `t.branchPullRequest` again, unfiltered. In T3's source (`apps/server/src/orchestration-v2/Orchestrator.ts`, `thread.metadata.update` and `thread.pull-request.link`) those are bare references (`projectId`, `repository`, `number`, `url`) and the details sit on the `pullRequests[]` entry with the same key, which T3 creates with `snapshot: null` until it syncs. The installed T3 bundle's `claim()` lowercases `repository` for those entries; the references keep the case they were given.
+
+**What changed:**
+- `daemon/model.ts`: new `prKey` (forge host, repository lowercased, number) for deduplication and lookup, matching the key T3 uses. Entries carry `host` (the URL's hostname, lowercased, in T3's `parseChangeRequestUrl`); the references have only a URL, so their host is taken from it. The explicit link (linked first, then branch) is resolved to the snapshot-bearing entry with the same key. If neither resolves, the ranked pick (open first, then most recent) is used, as for threads without links.
+
+**Second opinion:** Codex's review of `728b811` found one item (P2): the key left out the forge host, so the same repository path and number on two forges collapsed into one PR and the panel could show or open the wrong one. The key now includes the host, as T3's does, and the test covers it.
+
+**Verified:**
+- `npm test`: 73 pass, 1 new. It builds threads with T3's shapes: a linked reference in mixed case against a lowercased entry, beside a more recent PR (the link wins, count 2), a branch reference, a link whose entry has `snapshot: null` beside a synced PR (the synced PR is shown), a link with nothing synced (`pr` is `null`), and the same `example/repo#7` on a second forge beside the linked one (the linked one stays, with its own URL; count 2). On the v2.5.4 code it fails with the reported `TypeError`. With the lowercasing removed it fails too (picks #3, not the linked #7), and with the host left out of the key the other forge's PR replaces the linked one.
+- The issue's repro script prints `Example PR`.
+- Live, against the local T3 (v0.1.1 stable): `daemon/main.ts status` from the branch reports the environment `live` with 11 active threads. A read of the shell found 144 threads, 16 with synced `pullRequests[]` entries (all on `github.com`), each given a PR and the same PR count as before the host was part of the key. None of them had a `linkedPullRequest` or `branchPullRequest`, so the crash shape itself was not seen live.
+- `omarchy plugin validate .` passes. `git diff --check` is clean.
+
+**Not verified:**
+- A live T3 nightly that sets `linkedPullRequest`. The shapes come from T3's source and the reporter's description, not a live capture.
