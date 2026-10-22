@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "ambitiousrealism.t3-loupe",
   "name": "T3 Loupe",
-  "version": "2.5.4",
+  "version": "2.5.5",
   "author": "ambitiousrealism",
   "license": "MIT",
   "description": "Live, read-only T3 Code thread monitor: activity ring, attention alerts, per-thread activity, usage limits.",

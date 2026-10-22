@@ -290,3 +290,21 @@ Responds to the maintainer review on [omarchy-plugin-marketplace#11810](https://
 - How the box looks in the real shell (border, caret, theme colors, both layouts) beyond the offscreen render, and clicking it there.
 - The clipboard exposure itself, before or after.
 
+
+## Linked PR crash fix — v2.5.5 (2026-10-22)
+
+Fixes [#1](https://github.com/AmbitiousRealism2025/t3-loupe/issues/1), reported on T3 v0.1.1-nightly.20261020.3386: with any thread carrying a `linkedPullRequest`, the collector threw `TypeError: Cannot read properties of undefined (reading 'title')` in `pickPullRequest` and the widget stayed on "Collector stopped · restarting".
+
+**Cause:** `pickPullRequest` filtered candidates down to those with a `snapshot`, then chose the explicit link by reading `t.linkedPullRequest` / `t.branchPullRequest` again, unfiltered. In T3's source (`apps/server/src/orchestration-v2/Orchestrator.ts`, `thread.metadata.update` and `thread.pull-request.link`) those are bare references (`projectId`, `repository`, `number`, `url`) and the details sit on the `pullRequests[]` entry with the same key, which T3 creates with `snapshot: null` until it syncs. The installed T3 bundle's `claim()` lowercases `repository` for those entries; the references keep the case they were given.
+
+**What changed:**
+- `daemon/model.ts`: new `prKey` (repository lowercased, then number) for deduplication and lookup. The explicit link (linked first, then branch) is resolved to the snapshot-bearing entry with the same key. If neither resolves, the ranked pick (open first, then most recent) is used, as for threads without links.
+
+**Verified:**
+- `npm test`: 73 pass, 1 new. It builds threads with T3's shapes: a linked reference in mixed case against a lowercased entry, beside a more recent PR (the link wins, count 2), a branch reference, a link whose entry has `snapshot: null` beside a synced PR (the synced PR is shown), and a link with nothing synced (`pr` is `null`). On the v2.5.4 code it fails with the reported `TypeError`. With the lowercasing removed it fails too (picks #3, not the linked #7).
+- The issue's repro script prints `Example PR`.
+- Live, against the local T3 (v0.1.1 stable): `daemon/main.ts status` from the branch reports the environment `live` with 11 active threads. A read of the shell found 144 threads, 15 with `pullRequests[]` entries, all picked without error. None of them had a `linkedPullRequest` or `branchPullRequest`, so the crash shape itself was not seen live.
+- `omarchy plugin validate .` passes. `git diff --check` is clean.
+
+**Not verified:**
+- A live T3 nightly that sets `linkedPullRequest`. The shapes come from T3's source and the reporter's description, not a live capture.

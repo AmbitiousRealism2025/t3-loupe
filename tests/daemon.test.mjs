@@ -116,6 +116,26 @@ test("rows from several machines merge into one order", () => {
   assert.deepEqual([...laptop, ...server].sort(compareRows).map((r) => r.id), ["s-ask", "l-old", "s-mid", "l-new"]);
 });
 
+test("explicit PR links resolve to their synced pullRequests entry", () => {
+  // linkedPullRequest / branchPullRequest are bare references; T3 keeps the details on the
+  // matching pullRequests[] entry, with the repository lowercased.
+  const ref = (number) => ({ projectId: "p1", repository: "Example/Repo", number, url: `https://github.com/Example/Repo/pull/${number}` });
+  const entry = (number, snapshot) => ({ host: "github.com", repository: "example/repo", number, url: `https://github.com/example/repo/pull/${number}`, source: "manual", linkedAt: iso(0), snapshot, stack: null });
+  const open = (title) => ({ state: "open", title, checksState: "passing", updatedAt: iso(0) });
+  const row = (extra) => buildRows("e", [thread("a", extra)], projects)[0];
+
+  const linked = row({ linkedPullRequest: ref(7), pullRequests: [entry(3, open("Newer")), entry(7, open("Linked"))] });
+  assert.equal(linked.pr.number, 7);
+  assert.equal(linked.pr.title, "Linked");
+  assert.equal(linked.pr.checks, "passing");
+  assert.equal(linked.prCount, 2);
+
+  assert.equal(row({ branchPullRequest: ref(7), pullRequests: [entry(7, open("Branch"))] }).pr.title, "Branch");
+  // A link whose details have not synced yet falls back to the best synced PR, or to none.
+  assert.equal(row({ linkedPullRequest: ref(9), pullRequests: [entry(9, null), entry(3, open("Synced"))] }).pr.title, "Synced");
+  assert.equal(row({ linkedPullRequest: ref(9), pullRequests: [entry(9, null)] }).pr, null);
+});
+
 test("activity icons follow T3's timeline mapping", () => {
   assert.equal(activityIcon({ type: "command_execution" }), "terminal");
   assert.equal(activityIcon({ type: "file_change" }), "square-pen");
