@@ -235,7 +235,7 @@ Omarchy shell (Quickshell)                         T3 server(s)
 | "No SSH tunnel" | Start your `ssh -L …:127.0.0.1:3773 host` forward. T3 Loupe picks it up within 15 s. If T3 itself reaches that machine another way, such as over Tailscale HTTPS, there is no forward to find: re-pair it with `pair --url https://<host>`, which replaces the old entry. |
 | "Pairing required" / "Pairing expired" | Re-pair that machine. |
 | "Port owned by another user" | Something run by a different user account is listening on that machine's T3 port, so T3 Loupe won't send it your token. Check what's listening with `ss -ltnp`; start T3 (or your SSH forward) as your own user. |
-| "Collector stopped" | Node is missing or too old on the shell's `PATH`. Set `"node"` in `settings.json`. `omarchy-shell ambitiousrealism.t3-loupe status` shows the last error. |
+| "Collector stopped" | Node is missing or too old on the shell's `PATH`. Set `"node"` in `settings.json`. `omarchy-shell ambitiousrealism.t3-loupe status` shows the last error. On v2.5.4 and earlier, a thread with a linked PR or on a branch with an open PR also stopped it; [update](#update) to 2.5.5. |
 | Changes to the plugin don't show | Some nested QML components don't hot-reload; run `omarchy-restart-shell`. |
 
 ## Limitations
