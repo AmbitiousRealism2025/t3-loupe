@@ -106,8 +106,15 @@ export function isUnread(t: Record<string, any>): boolean {
   return visited === null || visited < done;
 }
 
-/** T3 stores pullRequests[] repositories lowercased; the linked and branch references keep their case. */
-const prKey = (p: Record<string, any>) => `${String(p.repository).toLowerCase()}#${p.number}`;
+/**
+ * A PR's identity, as T3 keys it: forge host, repository and number. pullRequests[] entries carry the
+ * host and a lowercased repository; the linked and branch references carry only a URL and keep their case.
+ */
+function prKey(p: Record<string, any>): string {
+  let host = typeof p.host === "string" ? p.host.toLowerCase() : "";
+  if (!host) try { host = new URL(p.url).hostname; } catch {}
+  return `${host}/${String(p.repository).toLowerCase()}#${p.number}`;
+}
 
 function pickPullRequest(t: Record<string, any>): { pr: PullRequest | null; count: number } {
   const all = [t.linkedPullRequest, t.branchPullRequest, ...(Array.isArray(t.pullRequests) ? t.pullRequests : [])].filter(

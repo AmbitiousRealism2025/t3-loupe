@@ -131,6 +131,12 @@ test("explicit PR links resolve to their synced pullRequests entry", () => {
   assert.equal(linked.prCount, 2);
 
   assert.equal(row({ branchPullRequest: ref(7), pullRequests: [entry(7, open("Branch"))] }).pr.title, "Branch");
+  // The same path and number on another forge is a different PR.
+  const elsewhere = { ...entry(7, open("Enterprise")), host: "git.example.com", url: "https://git.example.com/example/repo/pull/7" };
+  const forges = row({ linkedPullRequest: ref(7), pullRequests: [entry(7, open("Linked")), elsewhere] });
+  assert.equal(forges.pr.title, "Linked");
+  assert.equal(forges.pr.url, "https://github.com/example/repo/pull/7");
+  assert.equal(forges.prCount, 2);
   // A link whose details have not synced yet falls back to the best synced PR, or to none.
   assert.equal(row({ linkedPullRequest: ref(9), pullRequests: [entry(9, null), entry(3, open("Synced"))] }).pr.title, "Synced");
   assert.equal(row({ linkedPullRequest: ref(9), pullRequests: [entry(9, null)] }).pr, null);

@@ -7,8 +7,8 @@ What changed in each version. [`VALIDATION.md`](VALIDATION.md) records how each 
 Fixes a crash reported in [#1](https://github.com/AmbitiousRealism2025/t3-loupe/issues/1).
 
 - **Threads with a linked PR no longer stop the collector.** T3's `linkedPullRequest` and `branchPullRequest` are bare references (repository, number, URL); the PR's details live on the matching `pullRequests[]` entry. The collector read the details straight off the reference, so any thread with a linked PR threw, and the widget stayed on "Collector stopped · restarting" with no threads. The reference is now resolved to its `pullRequests[]` entry. A linked PR still wins over more recent ones, and one whose details haven't synced yet gives way to the most relevant synced PR, or to none.
-- **Matching ignores the repository's case.** T3 stores `pullRequests[]` repositories lowercased and keeps the original case on the references, so `Owner/Repo` and `owner/repo` are the same PR. Without this, a link to a repository with capitals in its name would never find its details.
-- New test: linked and branch references resolved against T3's shapes, including the case difference and an entry not yet synced (73 pass).
+- **PRs are matched the way T3 identifies them: forge host, repository and number.** T3 stores `pullRequests[]` repositories lowercased and keeps the original case on the references, so `Owner/Repo` and `owner/repo` are the same PR. Without this, a link to a repository with capitals in its name would never find its details. The host comes from the entry, or from the reference's URL, so the same `owner/repo#7` on two forges stays two PRs instead of one overwriting the other.
+- New test: linked and branch references resolved against T3's shapes, including the case difference, the same PR path on two forges, and an entry not yet synced (73 pass).
 
 ## 2.5.4 — 2026-10-16
 
