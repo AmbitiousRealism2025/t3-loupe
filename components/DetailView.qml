@@ -211,6 +211,9 @@ Column {
   }
 
   // Activity trail, newest last — T3's timeline icons. Live steps get a dot and "now".
+  // The widest time an activity line shows, for its fixed time column.
+  Text { id: whenProbe; visible: false; text: "waiting"; font.family: root.fontFamily; font.pixelSize: Typo.caption }
+
   component ActivityTrail: Column {
     width: root.width
     spacing: Style.space(5)
@@ -245,23 +248,27 @@ Column {
           maximumLineCount: 3
           elide: Text.ElideRight
         }
+        // The time column has a fixed width (room for a dot and "waiting"), so it never shrinks;
+        // the activity text beside it wraps and elides instead.
         Row {
           id: aWhen
           anchors.right: parent.right
+          width: whenProbe.implicitWidth + Style.space(11)
+          layoutDirection: Qt.RightToLeft
           y: Math.max(0, (Typo.caption * 1.4 - height) / 2)
           spacing: Style.space(5)
-          Rectangle {
-            visible: parent.parent.live
-            anchors.verticalCenter: parent.verticalCenter
-            width: Style.space(6); height: width; radius: width / 2
-            color: modelData.status === "pending" ? root.colors.attention : root.colors.accent
-          }
           Text {
             text: modelData.status === "pending" ? "waiting" : parent.parent.live ? "now" : Format.ago(modelData.at, root.now).replace(" ago", "")
             textFormat: Text.PlainText
             color: root.colors.textFaint
             font.family: root.fontFamily
             font.pixelSize: Typo.caption
+          }
+          Rectangle {
+            visible: parent.parent.live
+            anchors.verticalCenter: parent.verticalCenter
+            width: Style.space(6); height: width; radius: width / 2
+            color: modelData.status === "pending" ? root.colors.attention : root.colors.accent
           }
         }
       }

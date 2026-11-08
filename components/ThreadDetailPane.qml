@@ -88,11 +88,12 @@ Item {
     boundsBehavior: Flickable.StopAtBounds
     interactive: contentHeight > height
     // A visible bar whenever the detail is longer than the pane, so cut-off content reads as "more".
-    ScrollBar.vertical: LoupeScrollBar { colors: root.colors; policy: flick.contentHeight > flick.height ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
+    ScrollBar.vertical: LoupeScrollBar { id: scrollBar; colors: root.colors; policy: ScrollBar.AlwaysOn }
 
     Column {
       id: column
-      width: flick.width - (flick.contentHeight > flick.height ? Style.space(10) : 0)
+      // A fixed inset for the scrollbar, whether or not it shows: content never runs under it.
+      width: flick.width - scrollBar.inset
       spacing: Style.space(14)
       // Room for the "more below" strip at the end, so the last block scrolls fully above it.
       bottomPadding: Style.space(24)

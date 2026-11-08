@@ -310,18 +310,3 @@ test("two runs are a sentence too; the chart starts at three", () => {
   assert.deepEqual({ ...Store.runsSummary(two, now) }, { chart: false, text: "2 runs  ·  current 14m 00s  ·  longest 14m 00s" });
   assert.equal(Store.runsSummary(two.concat([{ ordinal: 3, status: "completed", durationMs: 60_000 }]), now).chart, true);
 });
-
-test("usage limits: one row per provider, padded to the same columns, spent windows in words", () => {
-  const now = 10_000_000;
-  const p = (name, windows) => ({ name, status: "ready", auth: "authenticated", windows });
-  const table = Store.usageTable([
-    p("Claude", [{ usedPercent: 38, durationMins: 300 }, { usedPercent: 61, durationMins: 10080 }]),
-    p("Codex", [{ usedPercent: 100, durationMins: 300, resetsAt: now + 47 * 60_000 }]),
-  ], now, false);
-  assert.equal(table.columns, 7);
-  assert.equal(table.cells.length, 14, "both rows have every column");
-  assert.deepEqual(Array.from(table.cells.slice(7), (c) => c.kind + ":" + (c.text || "")),
-    ["name:Codex", "label:5-hour:", "meter:", "value:limit reached, resets in 47m", "blank:", "blank:", "blank:"]);
-  const compact = Store.usageTable([p("Codex", [{ usedPercent: 100, durationMins: 300, resetsAt: now + 47 * 60_000 }, { usedPercent: 82, durationMins: 10080 }])], now, true);
-  assert.deepEqual(Array.from(compact.cells, (c) => c.text || ""), ["Codex", "5h:", "", "limit reached, resets 47m", "week", "", "82%"]);
-});

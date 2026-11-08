@@ -478,8 +478,8 @@ TestCase {
 
   // Usage limits with real accounts: one to four windows per provider (Sean's live Claude has
   // three: 5-hour, weekly, weekly · Fable). In both layouts, at each text size and real width:
-  // each provider's windows stay in its own row or block, every label is distinct, it fits, and
-  // when it's a table the names and each window's label share columns.
+  // each provider's windows stay in its own row (wrapping inside it if they must), every label is
+  // distinct, and it fits.
   function test_usageLimitsKeepEachProvidersWindowsTogether() {
     var combos = [[2, 3], [3, 2], [1, 4], [4, 1], [3, 3], [1, 1]]
     var layouts = [{ compact: false, base: 820, step: 56, name: "panel" }, { compact: true, base: 540, step: 36, name: "dropdown" }]
@@ -499,8 +499,7 @@ TestCase {
         wait(20)
         var where = L.name + " at bump " + bumps[b] + " with " + combos[c].join("+") + " windows"
         verify(strip.implicitWidth <= width + 0.5, where + ": " + strip.implicitWidth + " wider than " + width)
-        var asTable = shown(strip, "cell:").length > 0
-        var prefix = asTable ? "cell:" : "block:"
+        var prefix = "block:"
         var bands = []
         for (var p = 0; p < providers.length; p++) {
           var nm = shown(strip, prefix + providers[p].name + ":name")
@@ -511,24 +510,17 @@ TestCase {
           var top = bands[q], bottom = q + 1 < bands.length ? bands[q + 1] : 1e9
           var labels = []
           for (var k = 0; k < providers[q].windows.length; k++) {
-            var items = asTable ? shown(strip, "cell:" + providers[q].name + ":" + k + ":label") : shown(strip, "block:" + providers[q].name + ":" + k)
+            var items = shown(strip, "block:" + providers[q].name + ":" + k)
             compare(items.length, 1, where + ": " + providers[q].name + " window " + k)
             var y = items[0].mapToItem(strip, 0, 0).y
             var x = items[0].mapToItem(strip, items[0].width, 0).x
             verify(y >= top - 1 && y < bottom - 1, where + ": " + providers[q].name + " window " + k + " at y " + y + " is outside its band " + top + "–" + bottom)
             verify(x <= width + 0.5, where + ": window " + k + " runs past the edge")
-            var label = asTable ? items[0].children[1].text : items[0].children[0].text
-            labels.push(label.replace(/:$/, ""))
+            labels.push(items[0].children[0].text)
           }
           var distinct = {}
           for (var d = 0; d < labels.length; d++) distinct[labels[d]] = true
           compare(Object.keys(distinct).length, labels.length, where + ": " + providers[q].name + " labels " + labels.join(", "))
-        }
-        if (asTable) {
-          // A table: names share a column, and so does each window's label.
-          compare(shown(strip, "cell:Codex:name")[0].mapToItem(strip, 0, 0).x, shown(strip, "cell:Claude:name")[0].mapToItem(strip, 0, 0).x, where)
-          for (var w = 0; w < Math.min(combos[c][0], combos[c][1]); w++)
-            compare(shown(strip, "cell:Codex:" + w + ":label")[0].mapToItem(strip, 0, 0).x, shown(strip, "cell:Claude:" + w + ":label")[0].mapToItem(strip, 0, 0).x, where + ": window " + w)
         }
       }
     } finally {
@@ -536,11 +528,12 @@ TestCase {
     }
   }
 
-  // Sean's live footer: Codex with two windows, Claude with three, in the two-pane footer.
-  function test_seansLiveFooterIsATable() {
+  // Sean's live footer: Codex with two windows, Claude with three, in the two-pane footer. Each
+  // provider's windows sit on its own row, side by side; a hit limit widens only its own row.
+  function test_seansLiveFooterKeepsEachProviderOnItsRow() {
     var providers = [
       { name: "Codex", driver: "codex", status: "ready", auth: "authenticated", checkedAt: now,
-        windows: [{ label: "Session", kind: "session", usedPercent: 49, resetsAt: now + 3 * 3600000, durationMins: 300 }, { label: "Weekly", kind: "weekly", usedPercent: 30, resetsAt: now + 4 * 86400000, durationMins: 10080 }] },
+        windows: [{ label: "Session", kind: "session", usedPercent: 100, resetsAt: now + 47 * 60000, durationMins: 300 }, { label: "Weekly", kind: "weekly", usedPercent: 30, resetsAt: now + 4 * 86400000, durationMins: 10080 }] },
       { name: "Claude", driver: "claudeAgent", status: "ready", auth: "authenticated", checkedAt: now,
         windows: [{ label: "Session", kind: "session", usedPercent: 95, resetsAt: now + 3600000, durationMins: 300 }, { label: "Weekly", kind: "weekly", usedPercent: 55, resetsAt: now + 3 * 86400000, durationMins: 10080 },
                   { label: "Weekly · Fable", kind: "weekly", usedPercent: 0, resetsAt: now + 3 * 86400000, durationMins: 10080 }] }
@@ -549,14 +542,19 @@ TestCase {
     strip.environments = [{ id: "e", label: "laptop", state: "live", providers: providers }]
     waitForRendering(strip)
     wait(20)
-    verify(shown(strip, "cell:").length > 0, "fits as a table at the panel's width")
     verify(has(strip, /^weekly · Fable$/), texts(strip).join(" | "))
     verify(has(strip, /^95% resets in 1h$/))
-    var codexRow = shown(strip, "cell:Codex:name")[0].mapToItem(strip, 0, 0).y
-    var claudeRow = shown(strip, "cell:Claude:name")[0].mapToItem(strip, 0, 0).y
-    verify(Math.abs(shown(strip, "cell:Claude:0:value")[0].mapToItem(strip, 0, 0).y - claudeRow) < 4, "Claude's 95% is on Claude's row")
-    verify(Math.abs(shown(strip, "cell:Codex:1:value")[0].mapToItem(strip, 0, 0).y - codexRow) < 4, "Codex's weekly is on Codex's row")
+    verify(has(strip, /^limit reached, resets in 47m$/))
+    verify(!texts(strip).some(function(t) { return /:$/.test(t) }), "no stray colon after a label")
+    function y(name) { return shown(strip, name)[0].mapToItem(strip, 0, 0).y }
+    function x(name) { return shown(strip, name)[0].mapToItem(strip, 0, 0).x }
+    for (var k = 0; k < 2; k++) compare(y("block:Codex:" + k), y("block:Codex:name"), "Codex window " + k + " on Codex's row")
+    for (var j = 0; j < 3; j++) compare(y("block:Claude:" + j), y("block:Claude:name"), "Claude window " + j + " on Claude's row")
+    compare(x("block:Codex:0"), x("block:Claude:0"), "first windows start in one column")
+    // Codex's long "limit reached" pushes only Codex's second window, not Claude's.
+    verify(x("block:Claude:1") < x("block:Codex:1"), "Claude's weekly sits right after its own 5-hour window")
   }
+
 
   // Both panes' scrollbars: a thumb at 3:1 against its track and the panel, on a visible track.
   function test_scrollbarsUseThePalettesScrollTones() {
@@ -573,8 +571,57 @@ TestCase {
     compare(String(bar.background.color), String(Qt.color(tc.colors.scrollTrack)))
     compare(bar.policy, ScrollBar.AlwaysOn, "shown while the list is longer than its pane")
     verify(bar.background.visible, "the track shows")
+    // Rows stop short of the bar.
+    var cell = p.listView.itemAtIndex(p.cursor)
+    verify(cell.x + cell.width <= p.listView.width - bar.width + 0.5, "row " + (cell.x + cell.width) + " runs under the bar at " + (p.listView.width - bar.width))
     verify(Palette.contrast(tc.colors.scrollThumb, tc.colors.scrollTrack) >= 3)
     verify(Palette.contrast(tc.colors.scrollThumb, tc.colors.background) >= 3)
+  }
+
+  // Text that can't elide or wrap, drawn past `edge` (in pane coordinates) or narrower than itself.
+  function clippedTexts(pane, edge) {
+    var bad = []
+    function walk(it) {
+      if (!it || it.visible === false || it.opacity === 0) return
+      if (it.font !== undefined && typeof it.text === "string" && it.text !== "" && it.elide === Text.ElideNone && it.wrapMode === Text.NoWrap) {
+        var right = it.mapToItem(pane, it.implicitWidth, 0).x
+        if (right > edge + 0.5) bad.push("'" + it.text + "' ends at " + Math.round(right) + " past " + Math.round(edge))
+        else if (it.width + 0.5 < it.implicitWidth) bad.push("'" + it.text + "' squeezed to " + Math.round(it.width) + " of " + Math.round(it.implicitWidth))
+      }
+      var kids = it.children || []
+      for (var i = 0; i < kids.length; i++) walk(kids[i])
+    }
+    walk(pane)
+    return bad
+  }
+
+  // The detail pane never runs content under its scrollbar, whether or not one is showing: no
+  // "copy titl", no "3r" or "waitin". At each text size, at the pane's real width, with a short
+  // detail (no scrollbar) and a long one (scrollbar on).
+  function test_detailContentStopsShortOfTheScrollbar() {
+    var approval = row({ state: "input", rawStatus: "running", pendingKind: "command", pendingSince: now - 124000, project: "web-app", branch: "feat/sessions-v2", model: "claude-opus-5-5" })
+    var shortDetail = { runs: [], context: { used: 412000, max: 1000000, cost: 3.42, currency: "USD" }, subagents: [], todo: null,
+      activity: [{ icon: "terminal", label: "pnpm vitest run auth", status: "completed", at: now - 180000 }, { icon: "message-circle", label: "Awaiting approval", status: "pending", at: now - 120000 }],
+      pending: [{ id: "r1", kind: "command", since: now - 124000, prompt: "git push --force-with-lease origin feat/sessions-v2 && pnpm db:migrate --env staging", appName: "", options: ["Allow once", "Allow for session", "Decline"], questions: [] }] }
+    var longDetail = { runs: shortDetail.runs, context: shortDetail.context, subagents: [], todo: { total: 6, done: 4, current: "Run the migration against staging" }, pending: shortDetail.pending,
+      activity: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(function(i) { return { icon: "terminal", label: "step " + i + " of a long thread", status: i === 12 ? "pending" : "completed", at: now - i * 7 * 60000 } }) }
+    var details = [{ d: shortDetail, name: "short" }, { d: longDetail, name: "long" }]
+    var bumps = [0, 2, 4, 6]
+    try {
+      for (var b = 0; b < bumps.length; b++) for (var k = 0; k < details.length; k++) {
+        Typo.bump = bumps[b]
+        var width = Math.round((820 + 56 * bumps[b]) * 0.56) - 30
+        var p = createTemporaryObject(paneC, tc, { row: approval, detail: details[k].d, machineLabel: "laptop", width: width, height: 640 })
+        waitForRendering(p)
+        wait(20)
+        var bad = clippedTexts(p, p.width - Style.space(8))
+        compare(bad.length, 0, details[k].name + " detail at bump " + bumps[b] + ": " + bad.join("; "))
+        verify(has(p, /^copy title$/) && has(p, /^open T3$/), "both actions are labelled in full")
+        verify(has(p, /^waiting$/), "the time column shows 'waiting' whole")
+      }
+    } finally {
+      Typo.bump = 0
+    }
   }
 
   function test_keyActionClicks() {

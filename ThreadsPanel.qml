@@ -620,13 +620,14 @@ Item {
       model: root.visible_
       reuseItems: false
       // Shown whenever the list is longer than its pane, in the palette's 3:1 scroll tones.
-      ScrollBar.vertical: LoupeScrollBar { colors: root.colors; policy: list.contentHeight > list.height ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
+      ScrollBar.vertical: LoupeScrollBar { id: listBar; colors: root.colors; policy: ScrollBar.AlwaysOn }
 
       delegate: Column {
         id: cell
         required property var modelData
         required property int index
-        width: list.width - (list.contentHeight > list.height ? Style.space(8) : 0)
+        // A fixed inset for the scrollbar, whether or not it shows: rows never run under it.
+        width: list.width - listBar.inset
         spacing: Style.space(4)
         // Grouped view: a heading whenever machine/project changes between roots.
         readonly property string group: root.filter === "all" && !modelData.parentId && !modelData.kind ? Store.groupKey(modelData, root.environments)
@@ -730,7 +731,7 @@ Item {
     Item {
       x: list.x
       y: list.y
-      width: list.width - Style.space(8)
+      width: list.width - listBar.inset
       height: sticky.stripHeight
       clip: true
       visible: sticky.heading !== null
@@ -784,7 +785,7 @@ Item {
       visible: list.visible && list.contentY + list.height < list.contentHeight + list.originY - 2
       x: list.x
       y: list.y + list.height - height
-      width: list.width - Style.space(8)
+      width: list.width - listBar.inset
       height: Style.space(22)
       color: root.colors.background
       Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: root.colors.line }
