@@ -88,7 +88,7 @@ Item {
     boundsBehavior: Flickable.StopAtBounds
     interactive: contentHeight > height
     // A visible bar whenever the detail is longer than the pane, so cut-off content reads as "more".
-    ScrollBar.vertical: ScrollBar { policy: flick.contentHeight > flick.height ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
+    ScrollBar.vertical: LoupeScrollBar { colors: root.colors; policy: flick.contentHeight > flick.height ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
 
     Column {
       id: column

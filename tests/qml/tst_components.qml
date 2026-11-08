@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtTest
 import "../../components"
 import "../.." as Plugin
@@ -454,44 +455,126 @@ TestCase {
     return t.mapToItem(item, 0, 0).x
   }
 
-  // Usage limits as a table: provider names in one column, each window's label and meter in shared
-  // columns, full words ("weekly"/"week", "limit reached"), fitting the footer, in both layouts.
-  function test_usageLimitsLineUpAsATable() {
-    var providers = [
-      { name: "Claude", driver: "claudeAgent", status: "ready", auth: "authenticated", checkedAt: now,
-        windows: [{ label: "Session", usedPercent: 38, resetsAt: now + 140 * 60000, durationMins: 300 }, { label: "Weekly", usedPercent: 61, resetsAt: now + 3 * 86400000, durationMins: 10080 }] },
-      { name: "Codex", driver: "codex", status: "ready", auth: "authenticated", checkedAt: now,
-        windows: [{ label: "Session", usedPercent: 100, resetsAt: now + 47 * 60000, durationMins: 300 }, { label: "Weekly", usedPercent: 82, resetsAt: now + 5 * 86400000, durationMins: 10080 }] },
-      { name: "Pi", driver: "pi", status: "ready", auth: "authenticated", checkedAt: now, windows: [] }
-    ]
-    var layouts = [{ compact: false, base: 820, step: 56, first: "5-hour", week: "weekly", spent: "limit reached, resets in 47m" },
-                   { compact: true, base: 540, step: 36, first: "5h", week: "week", spent: "limit reached, resets 47m" }]
-    var bumps = [0, 2, 4]
+  // Items in the shown layout (not hidden, not transparent) whose objectName starts with prefix.
+  function shown(item, prefix) {
+    var out = []
+    function walk(it) {
+      if (!it || it.visible === false || it.opacity === 0) return
+      if (it.objectName && it.objectName.indexOf(prefix) === 0) out.push(it)
+      var kids = it.children || []
+      for (var i = 0; i < kids.length; i++) walk(kids[i])
+    }
+    walk(item)
+    return out
+  }
+
+  function windowsOf(n) {
+    var all = [{ label: "Session", kind: "session", usedPercent: 95, resetsAt: now + 3600000, durationMins: 300 },
+               { label: "Weekly", kind: "weekly", usedPercent: 55, resetsAt: now + 3 * 86400000, durationMins: 10080 },
+               { label: "Weekly · Fable", kind: "weekly", usedPercent: 0, resetsAt: now + 3 * 86400000, durationMins: 10080 },
+               { label: "Session", kind: "session", usedPercent: 100, resetsAt: now + 47 * 60000, durationMins: 300 }]
+    return all.slice(0, n)
+  }
+
+  // Usage limits with real accounts: one to four windows per provider (Sean's live Claude has
+  // three: 5-hour, weekly, weekly · Fable). In both layouts, at each text size and real width:
+  // each provider's windows stay in its own row or block, every label is distinct, it fits, and
+  // when it's a table the names and each window's label share columns.
+  function test_usageLimitsKeepEachProvidersWindowsTogether() {
+    var combos = [[2, 3], [3, 2], [1, 4], [4, 1], [3, 3], [1, 1]]
+    var layouts = [{ compact: false, base: 820, step: 56, name: "panel" }, { compact: true, base: 540, step: 36, name: "dropdown" }]
+    var bumps = [0, 2, 4, 6]
     try {
-      for (var l = 0; l < layouts.length; l++) for (var b = 0; b < bumps.length; b++) {
+      for (var l = 0; l < layouts.length; l++) for (var b = 0; b < bumps.length; b++) for (var c = 0; c < combos.length; c++) {
         Typo.bump = bumps[b]
         var L = layouts[l]
         var width = L.base + L.step * bumps[b] - 24
+        var providers = [
+          { name: "Codex", driver: "codex", status: "ready", auth: "authenticated", checkedAt: now, windows: windowsOf(combos[c][0]) },
+          { name: "Claude", driver: "claudeAgent", status: "ready", auth: "authenticated", checkedAt: now, windows: windowsOf(combos[c][1]) }
+        ]
         var strip = createTemporaryObject(stripC, tc, { compact: L.compact, width: width })
         strip.environments = [{ id: "e", label: "laptop", state: "live", providers: providers }]
-        wait(0)
-        var where = (L.compact ? "dropdown" : "panel") + " at bump " + bumps[b]
-        compare(xOf(strip, "Claude"), xOf(strip, "Codex"), where + ": names")
-        compare(xOf(strip, L.first), xOf(strip, L.first + ":"), where + ": first window label")
-        var weekly = []
-        var all = []
-        function walk(it) { if (!it || it.visible === false) return; if (it.text === L.week && it.font !== undefined) weekly.push(it.mapToItem(strip, 0, 0).x); var k = it.children || []; for (var i = 0; i < k.length; i++) walk(k[i]) }
-        walk(strip)
-        compare(weekly.length, 2, where)
-        compare(weekly[0], weekly[1], where + ": second window label")
-        verify(textItem(strip, L.spent) !== null, where + ": " + texts(strip).join(" | "))
-        verify(!has(strip, /^Pi$/), "providers without data stay out")
-        verify(!has(strip, /^(wk|full)/), "no shorthand a newcomer has to decode")
+        waitForRendering(strip)
+        wait(20)
+        var where = L.name + " at bump " + bumps[b] + " with " + combos[c].join("+") + " windows"
         verify(strip.implicitWidth <= width + 0.5, where + ": " + strip.implicitWidth + " wider than " + width)
+        var asTable = shown(strip, "cell:").length > 0
+        var prefix = asTable ? "cell:" : "block:"
+        var bands = []
+        for (var p = 0; p < providers.length; p++) {
+          var nm = shown(strip, prefix + providers[p].name + ":name")
+          compare(nm.length, 1, where + ": " + providers[p].name + "'s name")
+          bands.push(nm[0].mapToItem(strip, 0, 0).y)
+        }
+        for (var q = 0; q < providers.length; q++) {
+          var top = bands[q], bottom = q + 1 < bands.length ? bands[q + 1] : 1e9
+          var labels = []
+          for (var k = 0; k < providers[q].windows.length; k++) {
+            var items = asTable ? shown(strip, "cell:" + providers[q].name + ":" + k + ":label") : shown(strip, "block:" + providers[q].name + ":" + k)
+            compare(items.length, 1, where + ": " + providers[q].name + " window " + k)
+            var y = items[0].mapToItem(strip, 0, 0).y
+            var x = items[0].mapToItem(strip, items[0].width, 0).x
+            verify(y >= top - 1 && y < bottom - 1, where + ": " + providers[q].name + " window " + k + " at y " + y + " is outside its band " + top + "–" + bottom)
+            verify(x <= width + 0.5, where + ": window " + k + " runs past the edge")
+            var label = asTable ? items[0].children[1].text : items[0].children[0].text
+            labels.push(label.replace(/:$/, ""))
+          }
+          var distinct = {}
+          for (var d = 0; d < labels.length; d++) distinct[labels[d]] = true
+          compare(Object.keys(distinct).length, labels.length, where + ": " + providers[q].name + " labels " + labels.join(", "))
+        }
+        if (asTable) {
+          // A table: names share a column, and so does each window's label.
+          compare(shown(strip, "cell:Codex:name")[0].mapToItem(strip, 0, 0).x, shown(strip, "cell:Claude:name")[0].mapToItem(strip, 0, 0).x, where)
+          for (var w = 0; w < Math.min(combos[c][0], combos[c][1]); w++)
+            compare(shown(strip, "cell:Codex:" + w + ":label")[0].mapToItem(strip, 0, 0).x, shown(strip, "cell:Claude:" + w + ":label")[0].mapToItem(strip, 0, 0).x, where + ": window " + w)
+        }
       }
     } finally {
       Typo.bump = 0
     }
+  }
+
+  // Sean's live footer: Codex with two windows, Claude with three, in the two-pane footer.
+  function test_seansLiveFooterIsATable() {
+    var providers = [
+      { name: "Codex", driver: "codex", status: "ready", auth: "authenticated", checkedAt: now,
+        windows: [{ label: "Session", kind: "session", usedPercent: 49, resetsAt: now + 3 * 3600000, durationMins: 300 }, { label: "Weekly", kind: "weekly", usedPercent: 30, resetsAt: now + 4 * 86400000, durationMins: 10080 }] },
+      { name: "Claude", driver: "claudeAgent", status: "ready", auth: "authenticated", checkedAt: now,
+        windows: [{ label: "Session", kind: "session", usedPercent: 95, resetsAt: now + 3600000, durationMins: 300 }, { label: "Weekly", kind: "weekly", usedPercent: 55, resetsAt: now + 3 * 86400000, durationMins: 10080 },
+                  { label: "Weekly · Fable", kind: "weekly", usedPercent: 0, resetsAt: now + 3 * 86400000, durationMins: 10080 }] }
+    ]
+    var strip = createTemporaryObject(stripC, tc, { width: 796 })
+    strip.environments = [{ id: "e", label: "laptop", state: "live", providers: providers }]
+    waitForRendering(strip)
+    wait(20)
+    verify(shown(strip, "cell:").length > 0, "fits as a table at the panel's width")
+    verify(has(strip, /^weekly · Fable$/), texts(strip).join(" | "))
+    verify(has(strip, /^95% resets in 1h$/))
+    var codexRow = shown(strip, "cell:Codex:name")[0].mapToItem(strip, 0, 0).y
+    var claudeRow = shown(strip, "cell:Claude:name")[0].mapToItem(strip, 0, 0).y
+    verify(Math.abs(shown(strip, "cell:Claude:0:value")[0].mapToItem(strip, 0, 0).y - claudeRow) < 4, "Claude's 95% is on Claude's row")
+    verify(Math.abs(shown(strip, "cell:Codex:1:value")[0].mapToItem(strip, 0, 0).y - codexRow) < 4, "Codex's weekly is on Codex's row")
+  }
+
+  // Both panes' scrollbars: a thumb at 3:1 against its track and the panel, on a visible track.
+  function test_scrollbarsUseThePalettesScrollTones() {
+    var svc = createTemporaryObject(serviceC, tc)
+    svc.environments = [liveEnv("e", "laptop")]
+    svc.rows = manyRows()
+    var p = createTemporaryObject(shortPanelC, tc, { service: svc })
+    p.opened = true
+    p.setFilter("all")
+    tryVerify(function() { return p.cursor >= 0 })
+    var bar = p.listView.ScrollBar.vertical
+    verify(bar !== null)
+    compare(String(bar.contentItem.color), String(Qt.color(tc.colors.scrollThumb)))
+    compare(String(bar.background.color), String(Qt.color(tc.colors.scrollTrack)))
+    compare(bar.policy, ScrollBar.AlwaysOn, "shown while the list is longer than its pane")
+    verify(bar.background.visible, "the track shows")
+    verify(Palette.contrast(tc.colors.scrollThumb, tc.colors.scrollTrack) >= 3)
+    verify(Palette.contrast(tc.colors.scrollThumb, tc.colors.background) >= 3)
   }
 
   function test_keyActionClicks() {

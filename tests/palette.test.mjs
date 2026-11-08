@@ -72,6 +72,10 @@ for (const name of themes) {
       // With hue to spare, an answer waiting is never the failure red, the working accent or the text.
       for (const other of ["attention", "accent", "text"]) assert.ok(Palette.distance(p.ask, p[other]) > 0.25, `ask vs ${other}: ${p.ask} ${p[other]}`);
     }
+    // Scrollbars: the thumb holds 3:1 against its track and the panel, and the track shows.
+    assert.ok(Palette.contrast(p.scrollThumb, p.scrollTrack) >= 3, `scroll thumb on its track: ${Palette.contrast(p.scrollThumb, p.scrollTrack).toFixed(2)}`);
+    assert.ok(Palette.contrast(p.scrollThumb, bg) >= 3, `scroll thumb on the panel: ${Palette.contrast(p.scrollThumb, bg).toFixed(2)}`);
+    assert.ok(Palette.contrast(p.scrollTrack, bg) > 1.1, "the scroll track is visible");
     // Needs-you red must not pass for routine text.
     assert.ok(Palette.distance(p.attention, p.text) > 0.16, `attention vs text: ${p.attention} ${p.text}`);
   });

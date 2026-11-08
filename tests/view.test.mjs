@@ -259,11 +259,30 @@ test("an activity line that repeats the error card is recognised", () => {
   assert.equal(Store.repeatsError({ status: "failed", label: "Preparing workspace" }, row), false);
 });
 
-test("usage windows are named by their length", () => {
-  assert.equal(Store.windowLabel({ label: "Session", durationMins: 300 }), "5-hour");
-  assert.equal(Store.windowLabel({ label: "Weekly", durationMins: 10080 }), "weekly");
-  assert.equal(Store.windowLabel({ label: "Monthly", durationMins: 43200 }), "30-day");
-  assert.equal(Store.windowLabel({ label: "Session" }), "session");
+test("usage windows are named from T3's label, qualifiers kept, every label distinct", () => {
+  const w = (label, durationMins) => ({ label, durationMins });
+  assert.equal(Store.windowLabel(w("Session", 300)), "5-hour");
+  assert.equal(Store.windowLabel(w("Session", 300), true), "5h");
+  assert.equal(Store.windowLabel(w("Weekly", 10080)), "weekly");
+  assert.equal(Store.windowLabel(w("Weekly · Fable", 10080)), "weekly · Fable");
+  assert.equal(Store.windowLabel(w("Weekly · Fable", 10080), true), "week · Fable");
+  assert.equal(Store.windowLabel(w("Session", 1440 * 30)), "30-day");
+  assert.equal(Store.windowLabel(w("Opus monthly cap", 43200)), "Opus monthly cap", "unknown labels stay as T3 wrote them");
+  assert.equal(Store.windowLabel(w("", 300)), "5-hour", "no label: the length names it");
+  const claude = [w("Session", 300), w("Weekly", 10080), w("Weekly · Fable", 10080)];
+  assert.deepEqual(Array.from(Store.windowLabels(claude, false)), ["5-hour", "weekly", "weekly · Fable"]);
+  assert.deepEqual(Array.from(Store.windowLabels([w("Weekly", 10080), w("Weekly", 10080)], false)), ["weekly", "weekly 2"]);
+  for (const n of [1, 2, 3, 4]) {
+    const ws = [w("Session", 300), w("Weekly", 10080), w("Weekly · Fable", 10080), w("Weekly", 10080)].slice(0, n);
+    for (const compact of [false, true]) {
+      const labels = Array.from(Store.windowLabels(ws, compact));
+      assert.equal(new Set(labels).size, labels.length, `${n} windows, compact ${compact}: ${labels}`);
+    }
+  }
+  const now = 10_000_000;
+  assert.equal(Store.windowValue({ usedPercent: 95, resetsAt: now + 3600_000 }, now, false), "95% resets in 1h", "near the limit: the reset, still with its meter");
+  assert.equal(Store.windowValue({ usedPercent: 100, resetsAt: now + 47 * 60_000 }, now, false), "limit reached, resets in 47m");
+  assert.equal(Store.windowValue({ usedPercent: 38 }, now, false), "38%");
 });
 
 test("detail metadata lists whole items", () => {

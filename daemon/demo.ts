@@ -72,7 +72,9 @@ export function runDemo(write: (m: Record<string, unknown>) => void, mode: DemoM
   ];
   const providers = [
     { id: "claudeAgent", name: "Claude", driver: "claudeAgent", status: "ready", auth: "authenticated", version: "", checkedAt: t0,
-      windows: [{ label: "Session", kind: "session", usedPercent: 38, resetsAt: t0 + 140 * MIN, durationMins: 300 }, { label: "Weekly", kind: "weekly", usedPercent: 61, resetsAt: t0 + 3 * 1440 * MIN, durationMins: 10080 }] },
+      windows: [{ label: "Session", kind: "session", usedPercent: 38, resetsAt: t0 + 140 * MIN, durationMins: 300 }, { label: "Weekly", kind: "weekly", usedPercent: 61, resetsAt: t0 + 3 * 1440 * MIN, durationMins: 10080 },
+        // A model-specific weekly window, as live T3 reports for Claude.
+        { label: "Weekly · Fable", kind: "weekly", usedPercent: 4, resetsAt: t0 + 3 * 1440 * MIN, durationMins: 10080 }] },
     { id: "codex", name: "Codex", driver: "codex", status: "ready", auth: "authenticated", version: "", checkedAt: t0,
       windows: [{ label: "Session", kind: "session", usedPercent: 100, resetsAt: t0 + 47 * MIN, durationMins: 300 }, { label: "Weekly", kind: "weekly", usedPercent: 82, resetsAt: t0 + 5 * 1440 * MIN, durationMins: 10080 }] },
     { id: "pi", name: "Pi", driver: "pi", status: "ready", auth: "authenticated", version: "", checkedAt: t0, windows: [] },

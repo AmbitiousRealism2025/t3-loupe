@@ -619,7 +619,8 @@ Item {
       boundsBehavior: Flickable.StopAtBounds
       model: root.visible_
       reuseItems: false
-      ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+      // Shown whenever the list is longer than its pane, in the palette's 3:1 scroll tones.
+      ScrollBar.vertical: LoupeScrollBar { colors: root.colors; policy: list.contentHeight > list.height ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
 
       delegate: Column {
         id: cell
