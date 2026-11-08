@@ -1,12 +1,13 @@
 import QtQuick
 import qs.Commons
+import qs.Commons as Omarchy
 
 // Thin gauge in the shell's style: ink fill on a faint ink track, attention only when alarming.
 Item {
   id: root
   property real value: 0          // 0..1
-  property color ink: Color.foreground
-  property color danger: Color.urgent
+  property color ink: Omarchy.Color.foreground
+  property color danger: Omarchy.Color.urgent
   property real dangerAt: 0.9
   property real fillOpacity: 0.7
   property real thickness: Math.max(Style.space(4), Math.round(Style.spacing.controlHeight * 0.14))

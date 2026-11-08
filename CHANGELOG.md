@@ -2,6 +2,13 @@
 
 What changed in each version. [`VALIDATION.md`](VALIDATION.md) records how each one was verified.
 
+## 2.5.6 — 2026-11-08
+
+Fixes the panel ignoring the Omarchy theme on Qt 6.12.
+
+- **The panel follows the theme again.** Qt 6.12 added a `Color` type to Qt Quick, and it wins over the shell's `qs.Commons` `Color` singleton whatever order the imports come in. T3 Loupe named the shell's palette as plain `Color`, so on Qt 6.12 the palette came out undefined: the centered panel drew white with black text and unstyled controls, the shell logged `Cannot read property 'background' of undefined`, and theme switches were missed because the watch listened on the wrong object. Every reference now goes through `import qs.Commons as Omarchy` as `Omarchy.Color`, which resolves the same way on every Qt version. Omarchy's own shell avoids the clash by pinning `import QtQuick 6.11`; a qualified name doesn't depend on a version.
+- New tests: `Theme.qml` run in Qt's test runner with the shell's tokens stubbed, checking that the palette resolves, follows token changes and detects a light background, and a check that no QML file names `Color` unqualified (75 pass).
+
 ## 2.5.5 — 2026-10-22
 
 Fixes a crash reported in [#1](https://github.com/AmbitiousRealism2025/t3-loupe/issues/1).

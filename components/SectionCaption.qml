@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import qs.Commons as Omarchy
 import qs.Ui
 
 // Section heading in the shell's PanelSectionHeader style: bold caption, darkened ink,
@@ -8,7 +9,7 @@ Row {
   id: root
   property string label: ""
   property int count: -1
-  property color foreground: Color.foreground
+  property color foreground: Omarchy.Color.foreground
   property color countColor: Qt.darker(foreground, 1.9)
   property string fontFamily: Style.font.family
   // When set, the label elides to fit instead of overflowing (e.g. narrow facts cells).

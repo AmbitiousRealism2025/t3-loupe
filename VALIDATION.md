@@ -312,3 +312,21 @@ Fixes [#1](https://github.com/AmbitiousRealism2025/t3-loupe/issues/1), reported 
 
 **Not verified:**
 - A live `linkedPullRequest` (as opposed to `branchPullRequest`). It has the same bare shape in T3's source and the report, and goes through the same lookup.
+
+## Theme fix — v2.5.6 (2026-11-08)
+
+Reported on the installed v2.5.5: with the Blue Clouds theme (background `#01041f`, foreground `#D6CAE3`), the centered panel drew a white background, black text and unstyled controls. It stayed that way after `omarchy-restart-shell`.
+
+**Cause:** Qt 6.12 exports `QtQuick/Color` (`QQuickColor`, in `plugins.qmltypes`). `Theme.qml` and five components named the shell's palette as plain `Color` after `import qs.Commons`. In Qt's test runner the Qt Quick type wins with either import order, so `Color.popups.background` read `undefined`, and the `Connections` on `Color` had no `shellValuesChanged` signal. The live shell logged `TypeError: Cannot read property 'background' of undefined`, `Unable to assign [undefined] to QColor` and the `Connections` warning. An IPC probe in the live shell found plain `Color` was `QQuickColor` and `qs.Commons.Color` was the shell's singleton with background `#01041f`. `lib/Palette.js` returned the right colours given the right tokens. Qt 6.12.0 arrived here on 2026-10-13. In October the installed checkout carried six local `import QtQuick 6.11` pins (see v2.5.5), which hide the new type. They were never upstream, and by this report the checkout matched upstream again, so the panel broke.
+
+**What changed:**
+- `Theme.qml`, `BarWidget.qml`, `components/CenteredWindow.qml`, `components/IconButton.qml`, `components/Meter.qml`, `components/SectionCaption.qml`: `import qs.Commons as Omarchy`, and every palette reference is `Omarchy.Color`. The theme watch targets `Omarchy.Color`. These files keep their unqualified `import qs.Commons` for `Style` and `Border`, which don't clash with Qt Quick 6.12.
+
+**Verified:**
+- `npm test`: 75 pass, 2 new. `tests/theme.test.mjs` runs the real `Theme.qml` and `lib/Palette.js` in `qmltestrunner` (offscreen, Qt 6.12.0) against a stubbed `qs.Commons` `Color`, `Quickshell` and `FileView`: the popup and bar palettes match the tokens, follow changes to the popup, bar and accent tokens, and detect a light background, with no `TypeError` or `Connections` warning. A second test reads every runtime QML file and fails on any unqualified `Color`. On the v2.5.5 files both fail: the first with `Omarchy Color must not resolve to Qt Quick Color`, the second listing the bare references.
+- Live, on the installed checkout with the same runtime change (Omarchy 4.0.2-2, Quickshell 0.3.2, Qt 6.12.0, Blue Clouds): after `omarchy-restart-shell` the panel is dark with themed text and controls, its rendered background pixel is `#01041f`, the collector reports `health: ready`, and the shell log has no plugin colour warnings.
+- `omarchy plugin validate .` passes. `git diff --check` is clean.
+
+**Not verified:**
+- A live theme switch. Dark-to-light token changes were exercised only in the test runner.
+- Qt 6.11. Qualified imports predate it, but the plugin wasn't run there for this release.
