@@ -87,7 +87,10 @@ Panel {
     : !paired ? "T3 Loupe: no paired environments"
     : !known ? "T3 Loupe: not connected to T3"
     : (tally.needs ? tally.needs + (tally.needs === 1 ? " thread needs" : " threads need") + " you" : "Nothing needs you")
-      + " · " + tally.working + " working"
+      + " · " + tally.working + " working · " + tally.done + " done"
+  // The badge takes the colour of the most pressing kind waiting (failed, then an answer, then a
+  // plan), as the panel's header count does.
+  readonly property string needsRole: service ? Store.needsRole(service.rows) : "attention"
 
   WidgetButton {
     id: button
@@ -157,7 +160,7 @@ Panel {
         y: root.vertical ? glyphRow.offset(ring) : (glyphRow.height - height) / 2
         readonly property real barSize: Number(root.barSize) || Style.bar.sizeHorizontal
         diameter: Math.max(12, Math.min(barSize - Style.space(8), Style.space(19)))
-        thickness: Math.max(2, Math.round(diameter / 7.5))
+        thickness: Math.max(3, Math.round(diameter / 5))
         // Ink like its bar neighbours; what needs you in the colour of its kind, as in the panel.
         // Every arc, and the track when shown, is a 3:1 mark against the bar.
         segments: root.service ? Store.ringSegments(root.service.rows) : []
@@ -196,18 +199,16 @@ Panel {
         y: root.vertical ? glyphRow.offset(badge) : (glyphRow.height - height) / 2
         height: Math.round(ring.diameter * 0.78)
         width: Math.max(height, badgeText.implicitWidth + Style.space(9))
-        // Outlined pill in ink: one number, meaning "needs you" (see the tooltip); the kinds' colours
-        // are on the ring beside it, so red stays for failures.
+        // Filled pill while anything needs you: the one number in the bar that asks for a look, in the
+        // needs-you colour (ink-strength, 4.5:1 on the bar), the numeral in the bar's own background.
         radius: height / 2
-        color: "transparent"
-        border.width: Math.max(1, Math.round(ring.thickness * 0.6))
-        border.color: root.ink
+        color: root.theme ? root.theme.bar[root.needsRole + "Ink"] : root.ink
         Text {
           id: badgeText
           anchors.centerIn: parent
           text: String(root.tally.needs)
           textFormat: Text.PlainText
-          color: root.ink
+          color: root.theme ? root.theme.bar.background : "black"
           font.family: button.fontFamily
           font.pixelSize: Math.max(8, Math.round(ring.diameter * 0.5))
           font.bold: true

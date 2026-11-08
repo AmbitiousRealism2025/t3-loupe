@@ -60,6 +60,15 @@ Item {
     }
     return showActivity ? activity.label : ""
   }
+  // Where it runs, longest first, for the row to fit what it can: "build-box · sdk", "build-box", "sdk".
+  readonly property var whereOptions: {
+    if (subtitleWhere === "") return []
+    var machine = showMachine && machineLabel ? machineLabel : ""
+    var project = child ? "" : row.project
+    var out = [subtitleWhere]
+    if (machine && project) out.push(machine, project)
+    return out
+  }
   readonly property string subtitleWhere: {
     switch (row.state) {
       case "failed": case "plan": case "queued": case "stopped": case "idle": return where
@@ -139,10 +148,26 @@ Item {
         font.family: root.fontFamily
         font.pixelSize: root.child ? Typo.caption : Typo.bodySmall
       }
-      Row {
+      // Second line: the reason first, in full when it fits; where it runs takes what room is left,
+      // right-aligned: machine and project, then just one of them, then nothing (the group heading
+      // and the detail pane carry them too).
+      Item {
+        id: line
         visible: root.subtitle !== "" || root.subtitleWhere !== ""
         width: parent.width
-        spacing: Style.space(6)
+        height: Math.max(subIcon.visible ? subIcon.height : 0, reason.implicitHeight, whereText.implicitHeight)
+        readonly property real gap: Style.space(6)
+        readonly property real reasonX: subIcon.visible ? subIcon.width + gap : 0
+        readonly property real reasonFull: root.subtitle !== "" ? lineMetrics.advanceWidth(root.subtitle) + 1 : 0
+        readonly property real room: width - reasonX - (reasonFull > 0 ? Math.min(reasonFull, width - reasonX) + gap * 2 : 0)
+        readonly property string where: {
+          var options = root.whereOptions
+          for (var i = 0; i < options.length; i++) if (whereMetrics.advanceWidth(options[i]) + 1 <= room) return options[i]
+          return ""
+        }
+        FontMetrics { id: lineMetrics; font: reason.font }
+        FontMetrics { id: whereMetrics; font: whereText.font }
+
         LucideIcon {
           id: subIcon
           visible: root.subtitleIcon !== ""
@@ -154,27 +179,25 @@ Item {
         ElidedText {
           id: reason
           visible: root.subtitle !== ""
+          x: line.reasonX
           anchors.verticalCenter: parent.verticalCenter
-          width: Math.max(0, parent.width - (subIcon.visible ? subIcon.width + parent.spacing : 0)
-            - (whereText.visible ? whereText.width + parent.spacing : 0))
+          width: Math.max(0, Math.min(line.reasonFull, line.width - line.reasonX))
           fullText: root.subtitle
           // Rows that need you say so in their colour; everything else stays ink.
           color: root.needsYou ? root.wordInk : root.showActivity ? root.colors.textDim : root.colors.textFaint
           font.family: root.subtitleIcon === "terminal" ? root.monoFamily : root.fontFamily
           font.pixelSize: Typo.caption
         }
-        // Where it runs, whole, in plain ink: never the part that gets cut.
-        ElidedText {
+        Text {
           id: whereText
-          visible: root.subtitleWhere !== ""
+          visible: text !== ""
+          anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
-          readonly property string label: (root.subtitle !== "" ? "· " : "") + root.subtitleWhere
-          width: Math.min(whereMetrics.advanceWidth(label) + 1, parent.width * (root.subtitle !== "" ? 0.45 : 1))
-          fullText: label
+          text: line.where
+          textFormat: Text.PlainText
           color: root.colors.textFaint
           font.family: root.fontFamily
           font.pixelSize: Typo.caption
-          FontMetrics { id: whereMetrics; font: whereText.font }
         }
       }
     }

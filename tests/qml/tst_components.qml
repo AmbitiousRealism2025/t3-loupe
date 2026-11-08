@@ -117,7 +117,7 @@ TestCase {
       error: "This thread's workspace folder no longer exists or is not a directory: /home/dev/code/web-app. Restore the folder at this path before retrying." })
     var c = createTemporaryObject(rowC, tc, { row: r })
     verify(has(c, /^Failed · folder missing$/), texts(c).join(" | "))
-    verify(has(c, /^· web-app$/), "the project is kept whole, apart from the reason")
+    verify(has(c, /^web-app$/), "the project is kept whole, apart from the reason")
     compare(c.needsYou, true)
     compare(c.wordInk, tc.colors.attentionInk)
   }
@@ -164,7 +164,7 @@ TestCase {
                 row({ key: "e:i", id: "i", state: "idle", completedAt: now - 7200000 })]
     var p = createTemporaryObject(panelC, tc, { service: svc })
     p.opened = true
-    verify(has(p, /^4 ACTIVE: 2 NEED YOU, 2 WORKING  ·  2 DONE$/), texts(p).join(" | "))
+    verify(has(p, /^2 NEED YOU  ·  2 WORKING  ·  2 DONE$/), texts(p).join(" | "))
     compare(p.needCount, 2)
     compare(p.activeCount, 4)
     compare(p.doneCount, 2)
@@ -314,6 +314,33 @@ TestCase {
     verify(!has(p, /j\/k select/), "no selection keys when there is nothing to select")
     verify(!has(p, /next needing you/))
     verify(has(p, /r refresh/))
+  }
+
+  // The reason is what tells failed rows apart: it gets its full width before machine or project.
+  function test_rowReasonBeatsWhereItRuns() {
+    var r = row({ state: "failed", rawStatus: "failed", errorClass: "provider_error", completedAt: now - 60000, project: "a-long-project-name",
+      error: '401: {"code":"1000","message":"Authentication Failed"}' })
+    var widths = [260, 330, 420]
+    for (var i = 0; i < widths.length; i++) {
+      var c = createTemporaryObject(rowC, tc, { row: r, width: widths[i], showMachine: true, machineLabel: "build-box" })
+      wait(0)
+      verify(has(c, /^Failed · sign-in rejected$/), widths[i] + ": " + texts(c).join(" | "))
+    }
+    var wide = createTemporaryObject(rowC, tc, { row: r, width: 700, showMachine: true, machineLabel: "build-box" })
+    verify(has(wide, /^build-box · a-long-project-name$/), texts(wide).join(" | "))
+  }
+
+  Component { id: ringC; ActivityRing { diameter: 40; colors: ({ attention: "red", ask: "violet", warning: "orange", ink: "white", rest: "gray" }) } }
+
+  function test_ringGivesEverySegmentARealArc() {
+    var ring = createTemporaryObject(ringC, tc, { segments: [{ role: "attention", count: 0 }, { role: "ask", count: 0 }, { role: "warning", count: 1 },
+      { role: "ink", count: 30 }, { role: "rest", count: 2 }] })
+    verify(ring.sweepOf(2) >= 34, "a lone plan is a segment, not a tick: " + ring.sweepOf(2))
+    verify(ring.sweepOf(4) >= 34)
+    compare(ring.sweepOf(0), 0)
+    var total = 0
+    for (var i = 0; i < 5; i++) total += ring.sweepOf(i)
+    verify(Math.abs(total + ring.present * ring.gap - 360) < 0.5, "the arcs still close the circle: " + total)
   }
 
   function test_keyActionClicks() {

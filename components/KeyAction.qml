@@ -11,13 +11,14 @@ Item {
   property var colors: ({})
   property string fontFamily: Style.font.family
   property string monoFamily: "monospace"
-  // Quiet: plain ink instead of the accent, for secondary actions (detail header).
+  // Quiet: dim ink, for secondary actions (detail header). Otherwise full-strength text: it says
+  // what to do next, and it must not look like a link.
   property bool quiet: false
   // Wraps: the label wraps inside a width the parent gives (a sentence in a callout). Otherwise it is
   // one line at its natural width and never breaks: its width must not depend on its own width, or
   // the layout can settle on a narrow one and stack the label a letter per line.
   property bool wraps: false
-  readonly property color ink: quiet ? colors.textDim : colors.accentInk
+  readonly property color ink: quiet ? colors.textDim : colors.text
 
   signal clicked()
 

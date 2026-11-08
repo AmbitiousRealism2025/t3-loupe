@@ -5,6 +5,7 @@ import qs.Commons
 Item {
   id: root
   property int count: 0
+  property string label: "Idle"
   property bool open: false
   property bool selected: false
   property var colors: ({})
@@ -46,7 +47,7 @@ Item {
     }
     SectionCaption {
       anchors.verticalCenter: parent.verticalCenter
-      label: "Idle"
+      label: root.label
       count: root.count
       foreground: root.colors.text
       countColor: root.colors.textFaint

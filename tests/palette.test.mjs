@@ -59,7 +59,8 @@ for (const name of themes) {
     const sel = p.surfaceSelected;
     assert.ok(Palette.contrast(p.textDim, sel) >= 6, `dim text on the selected row: ${Palette.contrast(p.textDim, sel).toFixed(2)}`);
     assert.ok(Palette.contrast(p.textFaint, sel) >= 4.5, `faint text on the selected row: ${Palette.contrast(p.textFaint, sel).toFixed(2)}`);
-    for (const role of ["attention", "warning", "accent", "success"]) assert.ok(Palette.contrast(p[role + "Ink"], sel) >= 4.5, `${role} ink on the selected row`);
+    // State words keep a margin over 4.5:1, since they also sit on washes.
+    for (const role of ["attention", "warning", "accent", "success", "ask"]) assert.ok(Palette.contrast(p[role + "Ink"], sel) >= 5.5, `${role} ink on the selected row: ${Palette.contrast(p[role + "Ink"], sel).toFixed(2)}`);
     assert.ok(Palette.contrast(p.focus, sel) >= 3, "selection outline on the selected fill");
     // Graphics that carry meaning (tracks, pending steps, past runs, borders) hold 3:1 wherever they sit.
     for (const surface of [bg, p.surface, sel]) assert.ok(Palette.contrast(p.edge, surface) >= 3, `edge on ${surface}: ${Palette.contrast(p.edge, surface).toFixed(2)}`);

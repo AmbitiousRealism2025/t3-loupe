@@ -96,14 +96,15 @@ Flow {
             thickness: Style.space(3)
             value: modelData.usedPercent / 100
             ink: root.colors.text
-            danger: root.colors.warning
+            // A spent quota is a wait, not a warning: the bar stays ink and the words say when it resets.
+            danger: root.colors.text
             track: root.colors.edge
           }
           Text {
             anchors.verticalCenter: parent.verticalCenter
             text: Math.round(modelData.usedPercent) + "%" + (parent.high && modelData.resetsAt ? " resets " + Format.until(modelData.resetsAt, root.now) : "")
             textFormat: Text.PlainText
-            color: parent.high ? root.colors.warningInk : root.colors.textFaint
+            color: parent.high ? root.colors.text : root.colors.textFaint
             font.family: root.fontFamily
             font.pixelSize: Typo.caption
           }

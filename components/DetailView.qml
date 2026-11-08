@@ -24,6 +24,12 @@ Column {
   spacing: Style.space(12)
   topPadding: Style.space(6)
 
+  // part: "all", or the two halves the two-pane view puts either side of its stats:
+  // "lead" (the callout and any pending request: what to act on) and "rest" (everything else).
+  property string part: "all"
+  readonly property bool lead: part !== "rest"
+  readonly property bool rest: part !== "lead"
+  readonly property bool hasLead: callout !== null || hasPending
   readonly property bool loading: detail === null
   readonly property bool hasPending: detail !== null && detail.pending.length > 0
   readonly property var callout: Store.statusCallout(row, now, hasPending)
@@ -67,7 +73,7 @@ Column {
 
   StatusCallout {
     width: root.width
-    callout: root.callout
+    callout: root.lead ? root.callout : null
     colors: root.colors
     fontFamily: root.fontFamily
     monoFamily: root.monoFamily
@@ -75,14 +81,14 @@ Column {
   }
 
   Note {
-    visible: root.loading
+    visible: root.rest && root.loading
     width: root.width
     text: root.waited ? "No activity from T3 for this thread yet." : "Loading activity…"
   }
 
   // Pending approval / question, with the actual text, in the "waiting for your answer" colour.
   Repeater {
-    model: root.detail ? root.detail.pending : []
+    model: root.lead && root.detail ? root.detail.pending : []
     Rectangle {
       required property var modelData
       width: root.width
@@ -206,7 +212,7 @@ Column {
 
   // Activity trail, newest last — T3's timeline icons. Live steps get a dot and "now".
   Column {
-    visible: root.detail !== null && root.detail.activity.length > 0
+    visible: root.rest && root.detail !== null && root.detail.activity.length > 0
     width: root.width
     spacing: Style.space(5)
     Caption { label: "Activity" }
@@ -265,7 +271,7 @@ Column {
 
   // Plan steps and runs: side by side when there is room for both captions in full, else stacked.
   Flow {
-    visible: root.todo !== null || root.runs.length > 0 || (!root.paneMode && root.ctx !== null)
+    visible: root.rest && (root.todo !== null || root.runs.length > 0 || (!root.paneMode && root.ctx !== null))
     width: root.width
     spacing: Style.space(24)
     readonly property real colWidth: width >= Style.space(720) ? (width - spacing) / 2 : width
@@ -379,7 +385,7 @@ Column {
         width: parent.width
         value: root.ctx ? root.ctx.used / root.ctx.max : 0
         ink: root.colors.text
-        danger: root.colors.warning
+        danger: root.colors.text
         track: root.colors.edge
       }
       Note {
@@ -392,7 +398,7 @@ Column {
 
   // Subagents
   Column {
-    visible: root.detail !== null && root.detail.subagents.length > 0
+    visible: root.rest && root.detail !== null && root.detail.subagents.length > 0
     width: root.width
     spacing: Style.space(5)
     Caption { label: "Subagents"; count: root.detail ? root.detail.subagents.length : 0 }

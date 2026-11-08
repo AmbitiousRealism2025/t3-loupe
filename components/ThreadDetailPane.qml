@@ -169,6 +169,22 @@ Item {
         ActionKeys { visible: !stateLine.actionsInline }
       }
 
+      // What to act on comes first: the callout and any pending request, right under the title.
+      DetailView {
+        visible: hasLead
+        width: parent.width
+        topPadding: 0
+        paneMode: true
+        part: "lead"
+        row: root.hasRow ? root.row : ({})
+        detail: root.detail
+        colors: root.colors
+        now: root.now
+        fontFamily: root.fontFamily
+        monoFamily: root.monoFamily
+        onActionRequested: function(action) { root.actionRequested(action) }
+      }
+
       // Facts: a hairline grid of label / value / note cells, as many columns as fit cells about
       // 210 px wide (two in the usual pane), so a value and its note each stay on one line.
       Rectangle {
@@ -216,7 +232,7 @@ Item {
                   width: parent.width
                   value: modelData.meter || 0
                   ink: root.colors.text
-                  danger: root.colors.warning
+                  danger: root.colors.text
                   track: root.colors.edge
                 }
                 ElidedText {
@@ -237,6 +253,7 @@ Item {
         width: parent.width
         topPadding: 0
         paneMode: true
+        part: "rest"
         row: root.hasRow ? root.row : ({})
         detail: root.detail
         colors: root.colors

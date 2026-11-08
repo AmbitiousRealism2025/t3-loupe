@@ -5,6 +5,7 @@ import qs.Ui
 import "components"
 import "lib/Store.js" as Store
 import "lib/Format.js" as Format
+import "lib/Palette.js" as Palette
 
 // Panel content: header, state distribution, machines, filters, thread list, providers.
 Item {
@@ -233,8 +234,9 @@ Item {
       text: !parent.ok ? Store.environmentLabel(modelData.state).toLowerCase() + (modelData.stale && modelData.lastLiveAt ? " · " + Format.ago(modelData.lastLiveAt, root.now) : "")
         : "pairing expires " + Format.until(modelData.sessionExpiresAt, root.now)
       textFormat: Text.PlainText
-      // Broken is red; still working but expiring soon is amber.
-      color: parent.ok ? root.colors.warningInk : root.colors.attentionInk
+      // Broken is red. An expiry is a note in dim ink; amber is kept for plans, so even the last
+      // day before it lapses is full ink, not a colour.
+      color: !parent.ok ? root.colors.attentionInk : modelData.sessionExpiresAt - root.now < 86400000 ? root.colors.text : root.colors.textDim
       font.family: root.fontFamily
       font.pixelSize: Typo.caption
     }
@@ -363,14 +365,17 @@ Item {
               if (!root.environments.length) return "NO T3 MACHINES PAIRED"
               var sep = "&nbsp;&nbsp;·&nbsp;&nbsp;"
               var strong = root.colors.text
+              var quiet = root.colors.textFaint
               if (root.disconnected) return tint(alarm, "NOT CONNECTED") + sep + Format.plural(root.link.total, "MACHINE", "MACHINES")
-              // The tabs' own words and numbers: Active is what needs you plus what's working, and
-              // Active + Done + Idle is All. Counts in full ink; the kinds' colours stay in the list.
+              // The tabs' own words and numbers, scannable: what needs you first, in the colour of the
+              // most pressing kind waiting; working in full ink; done, stopped and idle dimmed.
+              // The parts add up to All, and match the All view's folds.
               var t = root.tally
-              var parts = [tint(strong, t.active + " ACTIVE") + ": " + tint(strong, String(t.needs)) + " NEED" + (t.needs === 1 ? "S" : "") + " YOU, "
-                + tint(strong, String(t.working)) + " WORKING"]
-              parts.push(tint(strong, String(t.done)) + " DONE")
-              if (t.other) parts.push(tint(strong, String(t.other)) + " IDLE")
+              var parts = [t.needs ? tint(root.colors[Store.needsRole(root.rows) + "Ink"], t.needs + " NEED" + (t.needs === 1 ? "S" : "") + " YOU") : tint(quiet, "NOTHING NEEDS YOU")]
+              parts.push(tint(strong, t.working + " WORKING"))
+              parts.push(tint(quiet, t.done + " DONE"))
+              if (t.stopped) parts.push(tint(quiet, t.stopped + " STOPPED"))
+              if (t.other) parts.push(tint(quiet, t.other + " IDLE"))
               if (root.link.connected !== root.link.total) parts.push(tint(alarm, root.link.connected + " OF " + root.link.total + " MACHINES CONNECTED"))
               return parts.join(sep)
             }
@@ -423,10 +428,10 @@ Item {
           anchors.left: parent.left
           anchors.top: parent.top
           options: [
-            { value: "attention", label: "  Inbox  " + root.needCount, tooltip: "1" },
-            { value: "active", label: "  Active  " + root.activeCount, tooltip: "2" },
-            { value: "done", label: "  Done  " + root.doneCount, tooltip: "3" },
-            { value: "all", label: "  All  " + root.allCount, tooltip: "4" }
+            { value: "attention", label: "   Inbox  " + root.needCount, tooltip: "1" },
+            { value: "active", label: "   Active  " + root.activeCount, tooltip: "2" },
+            { value: "done", label: "   Done  " + root.doneCount, tooltip: "3" },
+            { value: "all", label: "   All  " + root.allCount, tooltip: "4" }
           ]
           value: root.filter
           foreground: root.colors.text
@@ -462,19 +467,30 @@ Item {
               border.width: 1
               border.color: parent.tab && parent.tab.selected === true ? root.colors.focus : root.colors.edge
             }
-            // The digit sits in the label's first two (blank) character cells, at the label's own
-            // size: "1 Inbox 6", with the key dimmed. The shell centres the label in the tab.
-            Text {
-              id: digit
+            // The tab's key, drawn as a small keycap in the label's first two (blank) character cells,
+            // so it reads as a key, not a second count: "[1] Inbox 6". The shell centres the label.
+            Rectangle {
+              id: digitCap
               readonly property string label: parent.tab ? String(parent.tab.text) : ""
-              x: Math.round((parent.width - tabMetrics.advanceWidth(label)) / 2)
+              readonly property real cell: tabMetrics.advanceWidth("  ")
+              x: Math.round((parent.width - tabMetrics.advanceWidth(label)) / 2) - Style.space(2)
               anchors.verticalCenter: parent.verticalCenter
-              text: String(parent.index + 1)
-              textFormat: Text.PlainText
-              color: root.colors.textDim
-              font.family: root.fontFamily
-              font.pixelSize: Typo.caption
-              FontMetrics { id: tabMetrics; font.family: root.fontFamily; font.pixelSize: Typo.caption; font.bold: digit.parent.tab ? digit.parent.tab.selected === true : false }
+              width: Math.max(digit.implicitWidth + Style.space(6), cell - Style.space(1))
+              height: digit.implicitHeight + Style.space(2)
+              radius: Math.min(Style.cornerRadius, Style.space(2))
+              color: "transparent"
+              border.width: 1
+              border.color: root.colors.edge
+              Text {
+                id: digit
+                anchors.centerIn: parent
+                text: String(digitCap.parent.index + 1)
+                textFormat: Text.PlainText
+                color: root.colors.textDim
+                font.family: root.fontFamily
+                font.pixelSize: Math.max(7, Typo.caption - 1)
+              }
+              FontMetrics { id: tabMetrics; font.family: root.fontFamily; font.pixelSize: Typo.caption; font.bold: digitCap.parent.tab ? digitCap.parent.tab.selected === true : false }
             }
           }
         }
@@ -626,6 +642,7 @@ Item {
           id: lineComponent
           IdleLine {
             count: cell.modelData.count
+            label: cell.modelData.label || "Idle"
             open: cell.modelData.open
             selected: cell.index === root.cursor
             colors: root.colors
@@ -678,6 +695,63 @@ Item {
 
       add: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 160; easing.type: Easing.OutCubic } }
       displaced: Transition { NumberAnimation { properties: "y"; duration: 160; easing.type: Easing.OutCubic } }
+    }
+
+    // Scrolled lists keep their place: the heading of whatever is at the top stays pinned there
+    // (machine and project in All, the section in Active), and a cue says when more is below.
+    Rectangle {
+      id: sticky
+      readonly property var heading: {
+        if (!list.visible || list.contentY - list.originY < 2) return null
+        var top = list.indexAt(Style.space(20), list.contentY + 2)
+        for (var k = top; k >= 0 && k < root.visible_.length; k--) {
+          var it = root.visible_[k]
+          if (it.kind === "section") return { label: it.label, count: it.count }
+          if (root.filter === "all" && !it.parentId) return { label: Store.groupKey(it, root.environments), count: -1 }
+        }
+        return null
+      }
+      visible: heading !== null
+      x: list.x
+      y: list.y
+      width: list.width - Style.space(8)
+      height: stickyCaption.implicitHeight + Style.space(10)
+      color: root.colors.background
+      SectionCaption {
+        id: stickyCaption
+        x: Style.space(4)
+        anchors.verticalCenter: parent.verticalCenter
+        label: sticky.heading ? sticky.heading.label : ""
+        count: sticky.heading ? sticky.heading.count : -1
+        foreground: root.colors.text
+        countColor: root.colors.textFaint
+        fontFamily: root.fontFamily
+      }
+      Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: root.colors.line }
+    }
+    Item {
+      visible: list.visible && list.contentY + list.height < list.contentHeight + list.originY - 2
+      x: list.x
+      y: list.y + list.height - height
+      width: list.width - Style.space(8)
+      height: Style.space(30)
+      Rectangle {
+        anchors.fill: parent
+        gradient: Gradient {
+          GradientStop { position: 0.0; color: Palette.alpha(root.colors.background, 0) }
+          GradientStop { position: 0.65; color: root.colors.background }
+        }
+      }
+      Text {
+        anchors.right: parent.right
+        anchors.rightMargin: Style.space(4)
+        anchors.bottom: parent.bottom
+        text: "more below ↓"
+        textFormat: Text.PlainText
+        color: root.colors.textFaint
+        font.family: root.fontFamily
+        font.pixelSize: Typo.caption
+      }
     }
 
     // Two-pane: divider and the selected thread's detail.
@@ -740,10 +814,15 @@ Item {
         now: root.now
         fontFamily: root.fontFamily
       }
-      // Bottom row: text size control left, key hints right (hints wrap between hints if narrow).
+      // Bottom row: text size control left, key hints right on one line when they fit there;
+      // otherwise the hints get their own full-width line(s) under it, as even lines of whole hints.
+      FontMetrics { id: legendMetrics; font.family: root.fontFamily; font.pixelSize: Typo.caption }
       Item {
+        id: bottomRow
         width: parent.width
-        height: Math.max(sizeControl.implicitHeight, hints.implicitHeight)
+        readonly property real besideWidth: width - sizeControl.width - Style.space(20)
+        readonly property bool fitsBeside: legendMetrics.advanceWidth(root.legendPlain(root.legendHints)) <= besideWidth
+        height: Math.max(sizeControl.implicitHeight, fitsBeside ? hints.implicitHeight : 0)
         TextSizeControl {
           id: sizeControl
           anchors.left: parent.left
@@ -754,23 +833,30 @@ Item {
           onStepRequested: function(delta) { if (root.service) root.service.stepTextSize(delta) }
           onSizeRequested: function(size) { if (root.service) root.service.setTextSize(size) }
         }
-        FontMetrics { id: legendMetrics; font: hints.font }
         Text {
           id: hints
+          visible: bottomRow.fitsBeside
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
-          width: parent.width - sizeControl.width - Style.space(20)
           horizontalAlignment: Text.AlignRight
           textFormat: Text.StyledText
-          // One line when it fits; otherwise even lines of whole hints, never a hint split.
-          text: Store.legendLines(root.legendHints, function(shown) {
-            return legendMetrics.advanceWidth(root.legendPlain(shown)) <= hints.width
-          }).map(function(line) { return root.legendStyled(line) }).join("<br>")
-          lineHeight: 1.2
+          text: root.legendStyled(root.legendHints)
           color: root.colors.textDim
           font.family: root.fontFamily
           font.pixelSize: Typo.caption
         }
+      }
+      Text {
+        visible: !bottomRow.fitsBeside
+        width: parent.width
+        textFormat: Text.StyledText
+        text: Store.legendLines(root.legendHints, function(shown) {
+          return legendMetrics.advanceWidth(root.legendPlain(shown)) <= width
+        }).map(function(line) { return root.legendStyled(line) }).join("<br>")
+        lineHeight: 1.2
+        color: root.colors.textDim
+        font.family: root.fontFamily
+        font.pixelSize: Typo.caption
       }
     }
   }

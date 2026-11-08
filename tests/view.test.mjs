@@ -22,8 +22,8 @@ test("header, tabs and ring count the same sets", () => {
     r("w", "working", { rawStatus: "running" }), r("q", "queued", { rawStatus: "queued" }), r("bg", "background"), r("d", "review"),
     r("i", "idle"), r("s", "stopped", { rawStatus: "interrupted" }), r("kid", "working", { parentId: "w", rawStatus: "running" })];
   const t = Store.tally(rows);
-  assert.deepEqual({ ...t }, { needs: 3, working: 4, active: 7, done: 2, unread: 1, all: 10, other: 1 });
-  assert.equal(t.active + t.done + t.other, t.all, "the header's parts add up to All");
+  assert.deepEqual({ ...t }, { needs: 3, working: 4, active: 7, done: 2, unread: 1, all: 10, stopped: 1, other: 0 });
+  assert.equal(t.active + t.done + t.stopped + t.other, t.all, "the header's parts add up to All");
   assert.equal(Store.filterCount(rows, "attention"), t.needs);
   assert.equal(Store.filterCount(rows, "active"), t.active);
   assert.equal(Store.filterCount(rows, "done"), t.done);
@@ -104,7 +104,7 @@ test("colour budget: violet for an answer, red for failed, amber for a plan or l
   assert.equal(Store.stateRole("input"), "ask");
   assert.equal(Store.stateRole("failed"), "attention");
   assert.equal(Store.stateRole("plan"), "warning");
-  assert.equal(Store.stateRole("limited"), "warning");
+  assert.equal(Store.stateRole("limited"), "textDim", "amber is for plans only");
   assert.equal(Store.stateRole("working"), "accent");
   assert.equal(Store.stateRole("review"), "success");
   for (const s of ["queued", "background", "idle", "stopped"]) assert.equal(Store.stateRole(s), "textDim", s);
@@ -170,7 +170,7 @@ test("the detail leads with the state, why, and the next step", () => {
   assert.equal(failed.body, "Failed 8d ago · sign-in rejected");
   assert.match(failed.next, /Sign in/);
   const limited = Store.statusCallout(r("l", "limited", { errorClass: "usage_limit", usageResetAt: now + 47 * 60_000, error: "Usage limit reached." }), now, false);
-  assert.equal(limited.tone, "warning");
+  assert.equal(limited.tone, "idle");
   assert.match(limited.body, /^Resets in 47m · at \d\d:\d\d$/);
   const plan = Store.statusCallout(r("p", "plan", { completedAt: now - 4 * 60_000, lastRunMs: 6 * 60_000 }), now, false);
   assert.match(plan.body, /after a 6m 00s run/);
@@ -264,4 +264,18 @@ test("usage windows are named by their length", () => {
 test("detail metadata lists whole items", () => {
   assert.deepEqual(Array.from(Store.metaParts(r("a", "working", { project: "web-app", branch: "feat/x", worktree: true, model: "zai/glm-5.3" }), "laptop")),
     ["laptop", "web-app", "feat/x (worktree)", "glm-5.3"]);
+});
+
+test("idle folds are named for what they hold, in the header's words", () => {
+  const rows = [r("d1", "idle", { project: "X" }), r("s1", "stopped", { project: "Y", rawStatus: "interrupted" }),
+    r("d2", "idle", { project: "Z" }), r("s2", "stopped", { project: "Z", rawStatus: "cancelled" }), r("n", "idle", { project: "W", rawStatus: "" })];
+  const labels = Array.from(Store.visibleRows(rows, "all", "", {}, {})).filter((x) => x.kind === "idle-line").map((x) => x.project + ":" + x.label);
+  assert.deepEqual(labels, ["W:Idle", "X:Done", "Y:Stopped", "Z:Done & Stopped"]);
+});
+
+test("a single run is a sentence, not a one-bar chart", () => {
+  const now = 10_000_000;
+  assert.deepEqual({ ...Store.runsSummary([{ ordinal: 1, status: "running", startedAt: now - 9 * 60_000, completedAt: null, durationMs: null }], now) },
+    { chart: false, text: "1 run, running for 9m 00s" });
+  assert.equal(Store.runsSummary([{ ordinal: 1, status: "completed", durationMs: 6 * 60_000 }], now).text, "1 run, took 6m 00s");
 });

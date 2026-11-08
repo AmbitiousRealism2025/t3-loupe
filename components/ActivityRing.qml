@@ -36,15 +36,36 @@ Item {
   }
   readonly property real gap: present > 1 ? 14 : 0
 
+  // Least arc a present segment gets, so one thread among many still reads as a segment, not a tick.
+  property real minSweep: 34
+  // Sweep per segment: proportional, with every present segment raised to minSweep and the room
+  // taken from the larger ones.
+  readonly property var sweeps: {
+    var n = segments.length, out = []
+    var room = 360 - present * gap
+    if (total <= 0) { for (var i = 0; i < n; i++) out.push(0); return out }
+    var floor = Math.min(minSweep, room / Math.max(1, present))
+    var raised = 0, rest = 0
+    for (var j = 0; j < n; j++) {
+      var c = segments[j] ? segments[j].count : 0
+      var share = c > 0 ? c / total * room : 0
+      out.push(share)
+      if (c > 0 && share < floor) raised += floor - share
+      else if (c > 0) rest += share - floor
+    }
+    for (var k = 0; k < n; k++) {
+      if (out[k] <= 0) continue
+      if (out[k] < floor) out[k] = floor
+      else if (rest > 0) out[k] -= (out[k] - floor) / rest * raised
+    }
+    return out
+  }
   function startOf(index) {
     var acc = 0
-    for (var i = 0; i < index; i++) acc += segments[i] ? segments[i].count : 0
-    return total > 0 ? -90 + acc / total * 360 + gap / 2 : -90
+    for (var i = 0; i < index; i++) acc += sweeps[i] > 0 ? sweeps[i] + gap : 0
+    return -90 + acc + gap / 2
   }
-  function sweepOf(index) {
-    var c = segments[index] ? segments[index].count : 0
-    return total > 0 && c > 0 ? Math.max(4, c / total * 360 - gap) : 0
-  }
+  function sweepOf(index) { return sweeps[index] || 0 }
   function colorOf(index) {
     var s = segments[index]
     return s && colors[s.role] ? colors[s.role] : "transparent"
