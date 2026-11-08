@@ -35,30 +35,41 @@ Item {
     return parts.join(" · ")
   }
 
-  // What the second line says: the state in words, then the most useful detail.
+  // What the second line says: the state in words and the most useful detail, which is cut short
+  // if it must be; then, for states with no live detail, where it runs, which is kept whole.
   readonly property string subtitle: {
     var r = row
     switch (r.state) {
       case "input": return Store.stateLabel(r) + (activity ? " · " + activity.label : "")
       case "failed": {
         var cause = Store.failureCause(r).label
-        return "Failed" + (cause ? " · " + cause : "") + (where ? " · " + where : "")
+        return "Failed" + (cause ? " · " + cause : "")
       }
-      case "plan": return "Plan ready" + (where ? " · " + where : "")
+      case "plan": return "Plan ready"
       case "limited": return "Usage limit" + (r.usageResetAt ? " · resets " + Format.until(r.usageResetAt, now) : "")
-      case "queued": return "Queued" + (where ? " · " + where : "")
+      case "queued": return "Queued"
       case "review":
         if (r.pr) return "#" + r.pr.number + (r.pr.checks === "passing" ? " ✓ checks" : r.pr.checks === "failing" ? " ✗ checks" : "") + (r.lastRunMs ? " · " + Format.duration(r.lastRunMs) + " run" : "")
-        return "Done" + (r.lastRunMs ? " · " + Format.duration(r.lastRunMs) + " run" : "") + (where ? " · " + where : "")
+        return "Done" + (r.lastRunMs ? " · " + Format.duration(r.lastRunMs) + " run" : "")
       case "background": {
         var subs = Math.max(r.background ? r.background.subagents : 0, r.activeChildren || 0)
         return (subs ? Format.plural(subs, "subagent") : "Background") + (activity ? " · " + activity.label : "")
       }
-      case "stopped": return Store.stateLabel(r) + (where ? " · " + where : "")
-      case "idle": return where
+      case "stopped": return Store.stateLabel(r)
+      case "idle": return ""
     }
-    return showActivity ? activity.label : where
+    return showActivity ? activity.label : ""
   }
+  readonly property string subtitleWhere: {
+    switch (row.state) {
+      case "failed": case "plan": case "queued": case "stopped": case "idle": return where
+      case "review": return row.pr ? "" : where
+    }
+    return showActivity ? "" : where
+  }
+  // Rows waiting on your answer are the ones to act on now: only they get a wash. Failures and plans
+  // carry their rail and words, so the two needs-you hues never sit side by side as two fills.
+  readonly property bool washed: row.state === "input"
   readonly property string subtitleIcon: {
     if (row.state === "input") return Store.pendingInfo(row.pendingKind).icon
     if (row.state === "failed") return Store.failureCause(row).icon
@@ -78,7 +89,7 @@ Item {
     // Shaded rows (subagents sit unshaded under their parent); hover and selection step up from there.
     color: root.selected ? Style.selectedFillFor(root.colors.text, root.colors.accent)
       : hover.hovered ? Style.hoverFillFor(root.colors.text, root.colors.accent)
-      : root.needsYou ? Qt.tint(root.colors.surface, Qt.rgba(root.glyphColor.r, root.glyphColor.g, root.glyphColor.b, 0.08))
+      : root.washed ? Qt.tint(root.colors.surface, Qt.rgba(root.glyphColor.r, root.glyphColor.g, root.glyphColor.b, 0.07))
       : root.child ? "transparent" : root.colors.surface
     border.width: root.selected ? Style.space(2) : 0
     border.color: root.colors.focus
@@ -129,7 +140,7 @@ Item {
         font.pixelSize: root.child ? Typo.caption : Typo.bodySmall
       }
       Row {
-        visible: root.subtitle !== ""
+        visible: root.subtitle !== "" || root.subtitleWhere !== ""
         width: parent.width
         spacing: Style.space(6)
         LucideIcon {
@@ -141,13 +152,29 @@ Item {
           size: Math.round(Typo.caption * 1.1)
         }
         ElidedText {
+          id: reason
+          visible: root.subtitle !== ""
           anchors.verticalCenter: parent.verticalCenter
-          width: parent.width - (subIcon.visible ? subIcon.width + parent.spacing : 0)
+          width: Math.max(0, parent.width - (subIcon.visible ? subIcon.width + parent.spacing : 0)
+            - (whereText.visible ? whereText.width + parent.spacing : 0))
           fullText: root.subtitle
           // Rows that need you say so in their colour; everything else stays ink.
           color: root.needsYou ? root.wordInk : root.showActivity ? root.colors.textDim : root.colors.textFaint
           font.family: root.subtitleIcon === "terminal" ? root.monoFamily : root.fontFamily
           font.pixelSize: Typo.caption
+        }
+        // Where it runs, whole, in plain ink: never the part that gets cut.
+        ElidedText {
+          id: whereText
+          visible: root.subtitleWhere !== ""
+          anchors.verticalCenter: parent.verticalCenter
+          readonly property string label: (root.subtitle !== "" ? "· " : "") + root.subtitleWhere
+          width: Math.min(whereMetrics.advanceWidth(label) + 1, parent.width * (root.subtitle !== "" ? 0.45 : 1))
+          fullText: label
+          color: root.colors.textFaint
+          font.family: root.fontFamily
+          font.pixelSize: Typo.caption
+          FontMetrics { id: whereMetrics; font: whereText.font }
         }
       }
     }

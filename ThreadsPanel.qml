@@ -39,13 +39,11 @@ Item {
   // Idle folds start collapsed and keep their state while the shell runs.
   property var idleOpen: ({})
   readonly property var visible_: Store.visibleRows(rows, filter, query, expanded, idleOpen)
-  // Ring: only "needs you" is coloured; working is ink, the rest faint ink.
+  // Ring: what needs you in the colour of its kind (as in the list), working in ink, the rest in the
+  // 3:1 edge tone. No number in it: the header beside it says what is counted.
   readonly property var ringSegs: Store.ringSegments(rows)
-  // "Needs you" in one colour where only one fits: the most severe kind present.
-  readonly property string needsRole: Store.needsRole(rows)
   readonly property var ringColors: ({
-    needs: colors[needsRole], ink: colors.text, track: colors.track,
-    inkFaint: colors.text ? Qt.rgba(colors.text.r, colors.text.g, colors.text.b, 0.3) : "transparent"
+    attention: colors.attention, ask: colors.ask, warning: colors.warning, ink: colors.text, rest: colors.edge, track: colors.edge
   })
   // One tally feeds the header, the tabs and the ring, so they always agree.
   readonly property var tally: Store.tally(rows)
@@ -192,10 +190,13 @@ Item {
     list.positionViewAtIndex(cursor, ListView.Contain)
   }
 
-  // The key legend: only keys that work here, the same verbs in both layouts, cut by priority to
-  // fit one line (Store.legend / Store.fitLegend).
+  // The key legend: every key that works here, the same in both layouts; Enter named for what it
+  // does on the item under the cursor. On one line when it fits, else on even lines of whole hints
+  // (Store.legend / Store.legendLines).
   readonly property string legendMode: disconnected ? "offline" : visible_.length === 0 ? "empty" : "list"
-  readonly property var legendHints: Store.legend(legendMode, !!(selectedRow && selectedRow.pr && selectedRow.pr.url))
+  readonly property var cursorItem: cursor >= 0 && cursor < visible_.length ? visible_[cursor] : null
+  readonly property var legendHints: Store.legend(legendMode,
+    Store.enterVerb(cursorItem, centered, cursorItem && !cursorItem.kind ? expanded[cursorItem.key] === true : false))
   readonly property string legendSep: "&nbsp;&nbsp;·&nbsp;&nbsp;"
   function legendPlain(hints) { return hints.map(function(h) { return h.key + " " + h.verb }).join("  ·  ") }
   function legendStyled(hints) {
@@ -230,7 +231,7 @@ Item {
       visible: !parent.ok || parent.expiring
       anchors.verticalCenter: parent.verticalCenter
       text: !parent.ok ? Store.environmentLabel(modelData.state).toLowerCase() + (modelData.stale && modelData.lastLiveAt ? " · " + Format.ago(modelData.lastLiveAt, root.now) : "")
-        : "re-pair " + Format.until(modelData.sessionExpiresAt, root.now)
+        : "pairing expires " + Format.until(modelData.sessionExpiresAt, root.now)
       textFormat: Text.PlainText
       // Broken is red; still working but expiring soon is amber.
       color: parent.ok ? root.colors.warningInk : root.colors.attentionInk
@@ -326,10 +327,9 @@ Item {
           segments: root.ringSegs
           colors: root.ringColors
           spinning: root.service && root.service.counts.busy > 0
-          alert: root.needCount > 0
           reduceMotion: root.reduceMotion
           offline: root.service && !root.service.known
-          centerText: root.service && root.service.known ? String(root.activeCount) : "—"
+          centerText: root.service && root.service.known ? "" : "—"
           textColor: root.colors.text
           fontFamily: root.fontFamily
           fontSize: Typo.bodySmall
@@ -351,7 +351,7 @@ Item {
             font.pixelSize: Typo.heading
             font.bold: true
           }
-          // The same three numbers as the Inbox, Active and Done tabs; "need you" in its colour.
+          // The tabs' numbers in the tabs' words, adding up to All.
           Text {
             width: parent.width
             text: {
@@ -362,14 +362,16 @@ Item {
               if (root.service.configError) return tint(alarm, "SETTINGS UNREADABLE · " + root.service.configError.toUpperCase())
               if (!root.environments.length) return "NO T3 MACHINES PAIRED"
               var sep = "&nbsp;&nbsp;·&nbsp;&nbsp;"
-              var machines = root.link.connected === root.link.total ? Format.plural(root.link.total, "MACHINE", "MACHINES")
-                : tint(alarm, root.link.connected + " OF " + root.link.total + " MACHINES CONNECTED")
+              var strong = root.colors.text
               if (root.disconnected) return tint(alarm, "NOT CONNECTED") + sep + Format.plural(root.link.total, "MACHINE", "MACHINES")
-              var parts = []
-              parts.push(root.needCount ? tint(root.colors[root.needsRole + "Ink"], root.needCount + " NEED" + (root.needCount === 1 ? "S" : "") + " YOU") : "NOTHING NEEDS YOU")
-              parts.push(root.tally.working + " WORKING")
-              parts.push(root.doneCount + " DONE")
-              parts.push(machines)
+              // The tabs' own words and numbers: Active is what needs you plus what's working, and
+              // Active + Done + Idle is All. Counts in full ink; the kinds' colours stay in the list.
+              var t = root.tally
+              var parts = [tint(strong, t.active + " ACTIVE") + ": " + tint(strong, String(t.needs)) + " NEED" + (t.needs === 1 ? "S" : "") + " YOU, "
+                + tint(strong, String(t.working)) + " WORKING"]
+              parts.push(tint(strong, String(t.done)) + " DONE")
+              if (t.other) parts.push(tint(strong, String(t.other)) + " IDLE")
+              if (root.link.connected !== root.link.total) parts.push(tint(alarm, root.link.connected + " OF " + root.link.total + " MACHINES CONNECTED"))
               return parts.join(sep)
             }
             textFormat: Text.StyledText
@@ -421,10 +423,10 @@ Item {
           anchors.left: parent.left
           anchors.top: parent.top
           options: [
-            { value: "attention", label: "Inbox  " + root.needCount, tooltip: "1" },
-            { value: "active", label: "Active  " + root.activeCount, tooltip: "2" },
-            { value: "done", label: "Done  " + root.doneCount, tooltip: "3" },
-            { value: "all", label: "All  " + root.allCount, tooltip: "4" }
+            { value: "attention", label: "  Inbox  " + root.needCount, tooltip: "1" },
+            { value: "active", label: "  Active  " + root.activeCount, tooltip: "2" },
+            { value: "done", label: "  Done  " + root.doneCount, tooltip: "3" },
+            { value: "all", label: "  All  " + root.allCount, tooltip: "4" }
           ]
           value: root.filter
           foreground: root.colors.text
@@ -460,14 +462,19 @@ Item {
               border.width: 1
               border.color: parent.tab && parent.tab.selected === true ? root.colors.focus : root.colors.edge
             }
+            // The digit sits in the label's first two (blank) character cells, at the label's own
+            // size: "1 Inbox 6", with the key dimmed. The shell centres the label in the tab.
             Text {
-              x: Style.space(3)
-              y: Style.space(1)
+              id: digit
+              readonly property string label: parent.tab ? String(parent.tab.text) : ""
+              x: Math.round((parent.width - tabMetrics.advanceWidth(label)) / 2)
+              anchors.verticalCenter: parent.verticalCenter
               text: String(parent.index + 1)
               textFormat: Text.PlainText
-              color: root.colors.textFaint
-              font.family: root.monoFamily
-              font.pixelSize: Math.max(7, Math.round(Typo.caption * 0.8))
+              color: root.colors.textDim
+              font.family: root.fontFamily
+              font.pixelSize: Typo.caption
+              FontMetrics { id: tabMetrics; font.family: root.fontFamily; font.pixelSize: Typo.caption; font.bold: digit.parent.tab ? digit.parent.tab.selected === true : false }
             }
           }
         }
@@ -604,7 +611,7 @@ Item {
             anchors.bottom: parent.bottom
             label: cell.isSection ? cell.modelData.label : cell.group
             count: cell.isSection ? cell.modelData.count : -1
-            foreground: cell.isSection && cell.modelData.key === "sec:needs" ? root.colors[root.needsRole + "Ink"] : root.colors.text
+            foreground: root.colors.text
             countColor: root.colors.textFaint
             fontFamily: root.fontFamily
           }
@@ -755,10 +762,11 @@ Item {
           width: parent.width - sizeControl.width - Style.space(20)
           horizontalAlignment: Text.AlignRight
           textFormat: Text.StyledText
-          // One line: the lowest-priority hints drop out until the rest fit.
-          text: root.legendStyled(Store.fitLegend(root.legendHints, function(shown) {
+          // One line when it fits; otherwise even lines of whole hints, never a hint split.
+          text: Store.legendLines(root.legendHints, function(shown) {
             return legendMetrics.advanceWidth(root.legendPlain(shown)) <= hints.width
-          }))
+          }).map(function(line) { return root.legendStyled(line) }).join("<br>")
+          lineHeight: 1.2
           color: root.colors.textDim
           font.family: root.fontFamily
           font.pixelSize: Typo.caption

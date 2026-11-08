@@ -44,6 +44,18 @@ Flow {
 
   function unhealthy(p) { return p.status === "error" || p.auth === "unauthenticated" }
 
+  // What the bars are: each provider's share of its usage limits, per window.
+  Text {
+    visible: root.metered.length > 0
+    text: "USAGE"
+    textFormat: Text.PlainText
+    color: root.colors.textDim
+    font.family: root.fontFamily
+    font.pixelSize: Typo.caption
+    font.bold: true
+    font.letterSpacing: 1.2
+  }
+
   Repeater {
     model: root.metered
     Row {

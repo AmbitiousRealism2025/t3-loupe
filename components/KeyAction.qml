@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import "../lib/Palette.js" as Palette
 
 // A key and what it does, as an action: "[o] Answer in T3". The key works from anywhere in the
 // panel; clicking the line does the same thing.
@@ -12,16 +13,19 @@ Item {
   property string monoFamily: "monospace"
   // Quiet: plain ink instead of the accent, for secondary actions (detail header).
   property bool quiet: false
+  // Wraps: the label wraps inside a width the parent gives (a sentence in a callout). Otherwise it is
+  // one line at its natural width and never breaks: its width must not depend on its own width, or
+  // the layout can settle on a narrow one and stack the label a letter per line.
+  property bool wraps: false
   readonly property color ink: quiet ? colors.textDim : colors.accentInk
 
   signal clicked()
 
-  implicitWidth: row.implicitWidth
+  implicitWidth: cap.width + row.spacing + label.implicitWidth
   implicitHeight: row.implicitHeight
 
   Row {
     id: row
-    width: root.width
     spacing: Style.space(8)
     // A keycap: raised face on a darker base, the letter in full ink, so it reads as a key, not a box.
     Item {
@@ -38,7 +42,7 @@ Item {
         width: parent.width
         height: parent.height - Style.space(2)
         radius: Math.min(Style.cornerRadius, Style.space(3))
-        color: hover.hovered ? root.colors.surfaceSelected : Qt.tint(root.colors.background, Qt.rgba(root.colors.text.r, root.colors.text.g, root.colors.text.b, 0.12))
+        color: hover.hovered ? root.colors.surfaceSelected : Palette.mix(root.colors.background, root.colors.text, 0.12)
         border.width: 1
         border.color: root.colors.edge
         Text {
@@ -54,8 +58,9 @@ Item {
       }
     }
     Text {
+      id: label
       anchors.verticalCenter: parent.verticalCenter
-      width: root.width > 0 ? root.width - cap.width - parent.spacing : implicitWidth
+      width: root.wraps ? Math.max(0, root.width - cap.width - parent.spacing) : implicitWidth
       text: root.text
       textFormat: Text.PlainText
       color: root.ink
@@ -63,7 +68,7 @@ Item {
       font.pixelSize: Typo.caption
       font.weight: Font.Medium
       font.underline: hover.hovered
-      wrapMode: Text.Wrap
+      wrapMode: root.wraps ? Text.Wrap : Text.NoWrap
     }
   }
 

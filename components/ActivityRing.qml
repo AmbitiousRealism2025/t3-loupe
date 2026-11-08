@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Shapes
 
 // Segmented ring: one arc per state group, sized by its share of active threads.
-// Rotates slowly while anything works; the attention arc breathes when a thread needs you.
+// Rotates slowly while anything works. No halo: the arcs carry the state, each at 3:1 or more.
 Item {
   id: root
 
@@ -56,9 +56,9 @@ Item {
     preferredRendererType: Shape.CurveRenderer
     readonly property real r: (root.diameter - root.thickness) / 2
 
-    // Track
+    // Track: only when there is nothing to show (or offline, dashed), so no faint ring sits behind the arcs.
     ShapePath {
-      strokeColor: root.colors.track || "#40808080"
+      strokeColor: root.total > 0 && !root.offline ? "transparent" : (root.colors.track || "#40808080")
       strokeWidth: root.thickness
       fillColor: "transparent"
       strokeStyle: root.offline ? ShapePath.DashLine : ShapePath.SolidLine
@@ -97,26 +97,6 @@ Item {
     Behavior on rotation { enabled: !root.spinning; NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
   }
   onSpinningChanged: if (!spinning) ring.rotation = 0
-
-  // Breathing halo for attention.
-  Rectangle {
-    anchors.centerIn: parent
-    width: root.diameter + root.thickness * 2
-    height: width
-    radius: width / 2
-    color: "transparent"
-    border.width: Math.max(1, root.thickness * 0.5)
-    border.color: root.colors.needs || root.colors.attention || "red"
-    visible: root.alert
-    opacity: 0
-    SequentialAnimation on opacity {
-      running: root.alert && !root.reduceMotion && root.visible
-      loops: Animation.Infinite
-      NumberAnimation { from: 0.0; to: 0.55; duration: 700; easing.type: Easing.OutCubic }
-      NumberAnimation { from: 0.55; to: 0.0; duration: 1100; easing.type: Easing.InCubic }
-    }
-    Component.onCompleted: if (root.reduceMotion) opacity = 0.4
-  }
 
   Text {
     anchors.centerIn: parent

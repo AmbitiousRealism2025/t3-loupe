@@ -39,11 +39,9 @@ Row {
           width: Style.space(4)
           height: Style.space(5 + index * 3)
           radius: Style.cornerRadius > 0 ? 1 : 0
-          // Sizes up to the current one are solid ink; larger ones an outline in the 3:1 edge tone.
-          color: parent.on ? root.colors.text : barHover.hovered ? root.colors.edge : "transparent"
-          border.width: parent.on ? 0 : 1
-          border.color: root.colors.edge
-          opacity: parent.on && index !== root.step ? 0.7 : 1
+          // Graduated steps, all solid: sizes up to the current one in ink, larger ones in the 3:1 edge
+          // tone (an outline at this size reads as a missing-glyph box).
+          color: parent.on || barHover.hovered ? root.colors.text : root.colors.edge
         }
         HoverHandler { id: barHover; cursorShape: Qt.PointingHandCursor }
         TapHandler { onTapped: root.sizeRequested(root.sizes[index]) }
@@ -59,5 +57,16 @@ Row {
     hoverForeground: root.colors.text
     available: root.step < root.sizes.length - 1
     onClicked: root.stepRequested(1)
+  }
+
+  // Its keys, where they act (the legend leaves them out).
+  Text {
+    anchors.verticalCenter: parent.verticalCenter
+    leftPadding: Style.space(4)
+    text: "+/− size"
+    textFormat: Text.PlainText
+    color: root.colors.textDim
+    font.family: Style.font.family
+    font.pixelSize: Typo.caption
   }
 }

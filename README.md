@@ -139,7 +139,7 @@ Set these with `omarchy bar set ambitiousrealism.t3-loupe <key> <value>`.
 | Key | Values | Default |
 |---|---|---|
 | `display` | `label`: "T3 Loupe" + ring · `ring`: the ring alone · `ring-count`: the active count beside the ring. The needs-you badge shows in all three | `label` |
-| `reduceMotion` | `true` stops the spin, pulse and halo | `false` |
+| `reduceMotion` | `true` stops the spin and pulse | `false` |
 | `presentation` | `centered`: two-pane floating window · `dropdown`: compact panel under the bar | `centered` |
 | `panelWidth` | `420` – `900` (dropdown width) | `540` |
 

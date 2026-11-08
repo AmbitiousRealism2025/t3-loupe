@@ -3,6 +3,7 @@ import qs.Commons
 import qs.Ui
 import "../lib/Store.js" as Store
 import "../lib/Format.js" as Format
+import "../lib/Palette.js" as Palette
 
 // Thread detail. Data arrives lazily from a live thread subscription.
 // paneMode (two-pane window): the header above already shows context, PR and actions,
@@ -87,7 +88,7 @@ Column {
       width: root.width
       height: pend.implicitHeight + Style.space(18)
       radius: Style.cornerRadius
-      color: Qt.rgba(root.colors.ask.r, root.colors.ask.g, root.colors.ask.b, 0.09)
+      color: Palette.alpha(root.colors.ask, 0.09)
 
       Rectangle { width: Style.space(3); height: parent.height; color: root.colors.ask }
 
@@ -191,6 +192,7 @@ Column {
 
         KeyAction {
           width: parent.width
+          wraps: true
           key: "o"
           text: modelData.kind === "user_input" ? "Answer in T3 (Loupe only shows the question)" : "Decide in T3 (Loupe only shows the request)"
           colors: root.colors
@@ -277,7 +279,7 @@ Column {
       Row {
         id: steps
         width: parent.width
-        height: Style.space(8)
+        height: Style.space(12)
         spacing: Style.space(3)
         readonly property int total: root.todo ? Math.min(root.todo.total, 24) : 0
         Repeater {
@@ -289,9 +291,10 @@ Column {
             readonly property bool current: root.todo && index === root.todo.done
             width: (steps.width - steps.spacing * (steps.total - 1)) / Math.max(1, steps.total)
             radius: Style.cornerRadius > 0 ? 1 : 0
-            // Done: solid dim ink. Current: the accent, taller. To do: an outline in the 3:1 edge tone,
-            // so every step is drawn and the bar's length is the plan's length.
-            height: current ? steps.height : steps.height - Style.space(2)
+            // Done: solid dim ink. Current: the accent at twice the height, so it stands out by shape
+            // as well as hue. To do: an outline in the 3:1 edge tone, so every step is drawn and the
+            // bar's length is the plan's length.
+            height: current ? steps.height : Math.round(steps.height / 2)
             anchors.verticalCenter: parent.verticalCenter
             color: current ? root.colors.accent : done ? root.colors.textDim : "transparent"
             border.width: current || done ? 0 : 1
@@ -315,6 +318,12 @@ Column {
       Caption {
         label: "Runs"
         count: root.runs.length
+      }
+      Note {
+        visible: parent.summary.chart
+        width: parent.width
+        text: "One bar per run, its height the run's length"
+        wrapMode: Text.Wrap
       }
       Item {
         visible: parent.summary.chart

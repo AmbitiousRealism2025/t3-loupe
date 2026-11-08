@@ -3,6 +3,7 @@ import QtQuick.Controls
 import qs.Commons
 import "../lib/Store.js" as Store
 import "../lib/Format.js" as Format
+import "../lib/Palette.js" as Palette
 
 // Right side of the two-pane view: everything about the selected thread.
 // Header (title, state-led meta, icon actions) → facts strip → detail.
@@ -20,6 +21,18 @@ Item {
 
   signal actionRequested(string action)
 
+  // The thread's actions, labelled with their keys (o, p and c also work from anywhere in the panel).
+  component ActionKeys: Row {
+    spacing: Style.space(14)
+    KeyAction { key: "o"; text: "open T3"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily; onClicked: root.actionRequested("focus") }
+    KeyAction {
+      visible: root.hasRow && !!root.row.pr && root.row.pr.url !== ""
+      key: "p"; text: "PR"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily
+      onClicked: root.actionRequested("pr")
+    }
+    KeyAction { key: "c"; text: "copy title"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily; onClicked: root.actionRequested("copy") }
+  }
+
   readonly property bool hasRow: row !== null && row !== undefined
   readonly property bool working: hasRow && Store.BUSY[row.state] === true
   readonly property var ctx: detail && detail.context && detail.context.max > 0 ? detail.context : null
@@ -32,12 +45,12 @@ Item {
     var f = []
     if (subs > 0 || subTotal > 0) f.push({ label: "Subagents", value: subs > 0 ? subs + " running" : String(subTotal), note: subs > 0 && subTotal > subs ? subTotal + " total" : "" })
     if (row.pr) {
-      // The number is the value; checks and size go underneath, so a narrow cell never wraps it.
+      // The number is the value; checks and size go on one line underneath.
       var c = row.pr.checks === "passing" ? "✓ checks pass" : row.pr.checks === "failing" ? "✗ checks fail" : row.pr.checks === "pending" ? "checks pending" : row.pr.state
       var size = (row.pr.additions || row.pr.deletions) ? "+" + row.pr.additions + " −" + row.pr.deletions : ""
-      f.push({ label: "PR", value: "#" + row.pr.number, note: c + (size ? "\n" + size : ""), alarm: row.pr.checks === "failing" })
+      f.push({ label: "PR", value: "#" + row.pr.number, note: c + (size ? " · " + size + " lines" : ""), alarm: row.pr.checks === "failing" })
     }
-    if (ctx) f.push({ label: "Context", value: Format.tokens(ctx.used) + " / " + Format.tokens(ctx.max), meter: ctx.used / ctx.max, note: "tokens in use" })
+    if (ctx) f.push({ label: "Context", value: Format.tokens(ctx.used) + " / " + Format.tokens(ctx.max) + " tokens", meter: ctx.used / ctx.max })
     if (ctx && ctx.cost !== null) f.push({ label: "Cost", value: Format.money(ctx.cost, ctx.currency), note: "at API prices" })
     if (!f.length && row.lastRunMs) f.push({ label: "Last run", value: Format.duration(row.lastRunMs) })
     return f
@@ -67,7 +80,8 @@ Item {
     clip: true
     boundsBehavior: Flickable.StopAtBounds
     interactive: contentHeight > height
-    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+    // A visible bar whenever the detail is longer than the pane, so cut-off content reads as "more".
+    ScrollBar.vertical: ScrollBar { policy: flick.contentHeight > flick.height ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
 
     Column {
       id: column
@@ -93,9 +107,13 @@ Item {
           elide: Text.ElideRight
         }
 
+        // State on the left; the thread's actions on the right when they fit there in full,
+        // otherwise on their own line under the metadata. A key label never wraps.
         Item {
+          id: stateLine
           width: parent.width
-          height: Math.max(stateRow.implicitHeight, actions.implicitHeight)
+          readonly property bool actionsInline: stateRow.implicitWidth + inlineActions.implicitWidth + Style.space(24) <= width
+          height: Math.max(stateRow.implicitHeight, actionsInline ? inlineActions.implicitHeight : 0)
           Row {
             id: stateRow
             anchors.verticalCenter: parent.verticalCenter
@@ -120,19 +138,11 @@ Item {
               font.weight: Font.DemiBold
             }
           }
-          // The thread's actions, labelled and keyed (o, p, c also work from anywhere in the panel).
-          Row {
-            id: actions
+          ActionKeys {
+            id: inlineActions
+            visible: stateLine.actionsInline
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.space(14)
-            KeyAction { key: "o"; text: "open T3"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily; onClicked: root.actionRequested("focus") }
-            KeyAction {
-              visible: root.hasRow && !!root.row.pr && root.row.pr.url !== ""
-              key: "p"; text: "PR"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily
-              onClicked: root.actionRequested("pr")
-            }
-            KeyAction { key: "c"; text: "copy title"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily; onClicked: root.actionRequested("copy") }
           }
         }
 
@@ -155,26 +165,37 @@ Item {
           }
           readonly property int count: root.hasRow ? Store.metaParts(root.row, root.machineLabel).length : 0
         }
+
+        ActionKeys { visible: !stateLine.actionsInline }
       }
 
-      // Facts strip: hairline grid of label / value cells.
+      // Facts: a hairline grid of label / value / note cells, as many columns as fit cells about
+      // 210 px wide (two in the usual pane), so a value and its note each stay on one line.
       Rectangle {
         visible: root.facts.length > 0
         width: parent.width
-        height: factsRow.implicitHeight + 2
+        height: factsGrid.implicitHeight + 2
         color: root.colors.line
         radius: Style.cornerRadius
-        Row {
-          id: factsRow
+        Grid {
+          id: factsGrid
           x: 1; y: 1
           width: parent.width - 2
           spacing: 1
+          columns: Math.max(1, Math.min(root.facts.length, Math.floor(width / Style.space(210))))
+          readonly property real cellWidth: (width - spacing * (columns - 1)) / columns
+          // All cells share the tallest height.
+          readonly property real cellHeight: {
+            var h = 0
+            for (var i = 0; i < children.length; i++) if (children[i].children && children[i].children.length) h = Math.max(h, children[i].children[0].implicitHeight + Style.space(18))
+            return h
+          }
           Repeater {
             model: root.facts
             Rectangle {
               required property var modelData
-              width: (factsRow.width - factsRow.spacing * (root.facts.length - 1)) / root.facts.length
-              height: Math.max(factsRow.cellHeight, cell.implicitHeight + Style.space(18))
+              width: factsGrid.cellWidth
+              height: Math.max(factsGrid.cellHeight, cell.implicitHeight + Style.space(18))
               color: root.colors.background
               Column {
                 id: cell
@@ -182,17 +203,13 @@ Item {
                 width: parent.width - Style.space(24)
                 spacing: Style.space(4)
                 SectionCaption { label: modelData.label; foreground: root.colors.text; fontFamily: root.fontFamily; maxWidth: cell.width }
-                Text {
+                ElidedText {
                   width: parent.width
-                  text: modelData.value
-                  textFormat: Text.PlainText
+                  fullText: modelData.value
                   color: modelData.alarm ? root.colors.attentionInk : root.colors.text
                   font.family: root.fontFamily
                   font.pixelSize: Typo.bodySmall
                   font.weight: Font.Medium
-                  wrapMode: Text.Wrap
-                  maximumLineCount: 2
-                  elide: Text.ElideRight
                 }
                 Meter {
                   visible: modelData.meter !== undefined
@@ -202,24 +219,16 @@ Item {
                   danger: root.colors.warning
                   track: root.colors.edge
                 }
-                Text {
+                ElidedText {
                   visible: !!modelData.note
                   width: parent.width
-                  text: modelData.note || ""
-                  textFormat: Text.PlainText
+                  fullText: modelData.note || ""
                   color: root.colors.textFaint
                   font.family: root.fontFamily
                   font.pixelSize: Typo.caption
-                  wrapMode: Text.Wrap
                 }
               }
             }
-          }
-          // All cells share the tallest height.
-          readonly property real cellHeight: {
-            var h = 0
-            for (var i = 0; i < children.length; i++) if (children[i].children && children[i].children.length) h = Math.max(h, children[i].children[0].implicitHeight + Style.space(18))
-            return h
           }
         }
       }
@@ -236,6 +245,32 @@ Item {
         monoFamily: root.monoFamily
         onActionRequested: function(action) { root.actionRequested(action) }
       }
+    }
+  }
+
+  // More below: the last line fades out over a "more" note instead of stopping mid-line.
+  Item {
+    visible: root.hasRow && flick.contentY + flick.height < flick.contentHeight - 2
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.rightMargin: Style.space(12)
+    anchors.bottom: parent.bottom
+    height: Style.space(34)
+    Rectangle {
+      anchors.fill: parent
+      gradient: Gradient {
+        GradientStop { position: 0.0; color: Palette.alpha(root.colors.background, 0) }
+        GradientStop { position: 0.6; color: root.colors.background }
+      }
+    }
+    Text {
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      text: "more below ↓"
+      textFormat: Text.PlainText
+      color: root.colors.textFaint
+      font.family: root.fontFamily
+      font.pixelSize: Typo.caption
     }
   }
 }

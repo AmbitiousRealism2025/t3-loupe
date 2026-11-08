@@ -116,7 +116,8 @@ TestCase {
     var r = row({ state: "failed", rawStatus: "failed", errorClass: "provider_error", completedAt: now - 51 * 60000, project: "web-app",
       error: "This thread's workspace folder no longer exists or is not a directory: /home/dev/code/web-app. Restore the folder at this path before retrying." })
     var c = createTemporaryObject(rowC, tc, { row: r })
-    verify(has(c, /^Failed · folder missing · web-app$/), texts(c).join(" | "))
+    verify(has(c, /^Failed · folder missing$/), texts(c).join(" | "))
+    verify(has(c, /^· web-app$/), "the project is kept whole, apart from the reason")
     compare(c.needsYou, true)
     compare(c.wordInk, tc.colors.attentionInk)
   }
@@ -163,9 +164,7 @@ TestCase {
                 row({ key: "e:i", id: "i", state: "idle", completedAt: now - 7200000 })]
     var p = createTemporaryObject(panelC, tc, { service: svc })
     p.opened = true
-    verify(has(p, /2 NEEDS? YOU/), texts(p).join(" | "))
-    verify(has(p, /2 WORKING/))
-    verify(has(p, /2 DONE/))
+    verify(has(p, /^4 ACTIVE: 2 NEED YOU, 2 WORKING  ·  2 DONE$/), texts(p).join(" | "))
     compare(p.needCount, 2)
     compare(p.activeCount, 4)
     compare(p.doneCount, 2)
@@ -256,7 +255,48 @@ TestCase {
     verify(!all.some(function(t) { return /^·/.test(t) }), "no item starts with a separator")
     verify(has(p, /^open T3$/) && has(p, /^PR$/) && has(p, /^copy title$/), "each action is labelled")
     verify(has(p, /^#412$/), "the PR number stands alone")
-    verify(has(p, /^checks pending\n\+2140 −388$/))
+    verify(has(p, /^checks pending · \+2140 −388 lines$/), texts(p).join(" | "))
+  }
+
+  function textItem(item, value) {
+    var found = null
+    function walk(it) {
+      if (!it || found || it.visible === false) return
+      if (it.text === value && it.font !== undefined) { found = it; return }
+      var kids = it.children || []
+      for (var i = 0; i < kids.length; i++) walk(kids[i])
+    }
+    walk(item)
+    return found
+  }
+
+  function test_actionKeysNeverBreakAtAnyWidth() {
+    var r = row({ state: "input", rawStatus: "running", pendingKind: "command", pendingSince: now - 120000, project: "web-app", branch: "feat/sessions-v2",
+      pr: { number: 412, title: "x", url: "https://example.invalid/pr/412", state: "open", checks: "pending", draft: false, additions: 1, deletions: 1, review: "" } })
+    var widths = [360, 440, 520, 700]
+    for (var i = 0; i < widths.length; i++) {
+      var p = createTemporaryObject(paneC, tc, { row: r, machineLabel: "laptop", width: widths[i] })
+      wait(0)
+      var labels = ["open T3", "PR", "copy title"]
+      for (var j = 0; j < labels.length; j++) {
+        var t = textItem(p, labels[j])
+        verify(t !== null && t.visible, labels[j])
+        compare(t.lineCount, 1, labels[j] + " at " + widths[i])
+        verify(t.width >= t.implicitWidth - 0.5, labels[j] + " has its full width at " + widths[i])
+      }
+    }
+  }
+
+  function test_dropdownLegendKeepsEveryKey() {
+    var svc = createTemporaryObject(serviceC, tc)
+    svc.environments = [liveEnv("e", "laptop")]
+    svc.rows = [row({ key: "e:a", id: "a", state: "working", rawStatus: "running", activeSince: now - 60000 })]
+    var p = createTemporaryObject(dropdownC, tc, { service: svc })
+    p.opened = true
+    tryVerify(function() { return p.cursor >= 0 && !p.visible_[p.cursor].kind })
+    var all = texts(p).join(" | ")
+    var keys = ["j/k select", "↵ details", "g next needing you", "1–4 view", "/ filter", "o open T3", "f layout", "r refresh", "esc close"]
+    for (var i = 0; i < keys.length; i++) verify(all.indexOf(keys[i]) >= 0, keys[i] + " in " + all)
   }
 
   function test_legendShowsOnlyWorkingKeys() {
@@ -272,6 +312,7 @@ TestCase {
     svc.environments = [{ id: "a", label: "laptop", sshHost: "", state: "expired", stale: false, url: "http://127.0.0.1:3773", sessionExpiresAt: now - 1000, providers: [] }]
     tryVerify(function() { return p.disconnected })
     verify(!has(p, /j\/k select/), "no selection keys when there is nothing to select")
+    verify(!has(p, /next needing you/))
     verify(has(p, /r refresh/))
   }
 

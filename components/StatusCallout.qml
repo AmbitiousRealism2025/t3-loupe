@@ -95,6 +95,7 @@ Rectangle {
     KeyAction {
       visible: root.callout !== null && root.callout.next !== ""
       width: parent.width
+      wraps: true
       key: "o"
       text: root.callout ? root.callout.next : ""
       colors: root.colors

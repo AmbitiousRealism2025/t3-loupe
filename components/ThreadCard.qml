@@ -52,11 +52,11 @@ Item {
     width: root.width - root.indent
     height: content.implicitHeight + Style.space(root.child ? 12 : 18)
     radius: Style.cornerRadius
-    // Shell state fills: normal / hover / selected. Rows that need you get a rail and a faint wash
-    // in their colour; the selected card an accent outline.
+    // Shell state fills: normal / hover / selected. Rows that need you get a rail in their colour,
+    // and those waiting on your answer a faint wash too; the selected card an accent outline.
     color: root.selected ? Style.selectedFillFor(root.colors.text, root.colors.accent)
       : hover.hovered ? Style.hoverFillFor(root.colors.text, root.colors.accent)
-      : root.needsYou ? Qt.tint(root.colors.surface, Qt.rgba(root.tone.r, root.tone.g, root.tone.b, 0.08))
+      : root.row.state === "input" ? Qt.tint(root.colors.surface, Qt.rgba(root.tone.r, root.tone.g, root.tone.b, 0.07))
       : root.child ? "transparent" : root.colors.surface
     border.width: root.selected ? Style.space(2) : 0
     border.color: root.colors.focus

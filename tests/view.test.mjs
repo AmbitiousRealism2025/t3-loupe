@@ -22,7 +22,8 @@ test("header, tabs and ring count the same sets", () => {
     r("w", "working", { rawStatus: "running" }), r("q", "queued", { rawStatus: "queued" }), r("bg", "background"), r("d", "review"),
     r("i", "idle"), r("s", "stopped", { rawStatus: "interrupted" }), r("kid", "working", { parentId: "w", rawStatus: "running" })];
   const t = Store.tally(rows);
-  assert.deepEqual({ ...t }, { needs: 3, working: 4, active: 7, done: 2, unread: 1, all: 10 });
+  assert.deepEqual({ ...t }, { needs: 3, working: 4, active: 7, done: 2, unread: 1, all: 10, other: 1 });
+  assert.equal(t.active + t.done + t.other, t.all, "the header's parts add up to All");
   assert.equal(Store.filterCount(rows, "attention"), t.needs);
   assert.equal(Store.filterCount(rows, "active"), t.active);
   assert.equal(Store.filterCount(rows, "done"), t.done);
@@ -112,8 +113,8 @@ test("colour budget: violet for an answer, red for failed, amber for a plan or l
   assert.equal(Store.inkRole("input"), "askInk");
   assert.equal(Store.inkRole("plan"), "warningInk");
   assert.equal(Store.inkRole("working"), "");
-  const segs = Array.from(Store.ringSegments([r("a", "input"), r("b", "plan"), r("c", "working"), r("d", "limited"), r("e", "review"), r("f", "idle")]), (x) => `${x.role}:${x.count}`);
-  assert.deepEqual(segs, ["needs:2", "ink:2", "inkFaint:2"]);
+  const segs = Array.from(Store.ringSegments([r("a", "input"), r("b", "plan"), r("x", "failed"), r("c", "working"), r("d", "limited"), r("e", "review"), r("f", "idle")]), (x) => `${x.role}:${x.count}`);
+  assert.deepEqual(segs, ["attention:1", "ask:1", "warning:1", "ink:2", "rest:2"], "each kind in its own colour, as in the list");
 });
 
 test("filter editing: typing, deleting, word and line clears, and the keys that finish it", () => {
@@ -210,17 +211,28 @@ test("one needs-you colour where only one fits: the most severe kind present", (
   assert.equal(Store.needsRole([r("k", "failed", { parentId: "w" }), r("a", "input")]), "ask", "subagents don't count");
 });
 
-test("legend: same verbs in both layouts, only keys that work, cut by priority", () => {
-  const keys = (mode, pr) => Array.from(Store.legend(mode, pr), (h) => h.key + " " + h.verb);
-  assert.deepEqual(keys("list", true), ["j/k select", "↵ expand", "g next needing you", "1–4 view", "/ filter", "o open T3", "p PR", "c copy title", "f layout", "+/− text size", "esc close"]);
-  assert.ok(!keys("list", false).includes("p PR"), "no PR key without a PR");
-  assert.deepEqual(keys("offline", false), ["o open T3", "r refresh", "f layout", "+/− text size", "esc close"]);
-  for (const k of ["j/k select", "↵ expand", "g next needing you", "/ filter"]) assert.ok(!keys("offline", false).includes(k), k);
-  // Fitting drops the least important first and keeps the display order.
-  const fit = (n) => Array.from(Store.fitLegend(Store.legend("list", true), (shown) => shown.length <= n), (h) => h.key);
-  assert.deepEqual(fit(4), ["j/k", "g", "o", "esc"]);
-  assert.deepEqual(fit(6), ["j/k", "↵", "g", "1–4", "o", "esc"]);
-  assert.equal(fit(99).length, 11);
+test("legend: same keys in both layouts, only keys that work, Enter named for what it does", () => {
+  const keys = (mode, enter) => Array.from(Store.legend(mode, enter), (h) => h.key + " " + h.verb);
+  assert.deepEqual(keys("list", "show subagents"), ["j/k select", "↵ show subagents", "g next needing you", "1–4 view", "/ filter", "o open T3", "f layout", "r refresh", "esc close"]);
+  assert.ok(!keys("list", "").some((k) => k.startsWith("↵")), "no Enter hint where Enter does nothing");
+  assert.deepEqual(keys("offline", ""), ["o open T3", "f layout", "r refresh", "esc close"]);
+  assert.deepEqual(keys("empty", ""), ["1–4 view", "/ filter", "o open T3", "f layout", "r refresh", "esc close"]);
+  // Enter's verb follows the item under the cursor.
+  assert.equal(Store.enterVerb({ kind: "idle-line", open: false }, true, false), "show idle");
+  assert.equal(Store.enterVerb({ kind: "idle-line", open: true }, false, false), "fold idle");
+  assert.equal(Store.enterVerb(r("a", "working", { childCount: 2 }), true, false), "show subagents");
+  assert.equal(Store.enterVerb(r("a", "working", { childCount: 0 }), true, false), "");
+  assert.equal(Store.enterVerb(r("a", "working"), false, true), "hide details");
+  assert.equal(Store.enterVerb(null, true, false), "");
+});
+
+test("legend lines hold whole hints, as evenly as they fit", () => {
+  const hints = Store.legend("list", "details");
+  const ids = (lines) => Array.from(lines, (l) => Array.from(l, (h) => h.key).join(" "));
+  assert.deepEqual(ids(Store.legendLines(hints, () => true)), ["j/k ↵ g 1–4 / o f r esc"]);
+  assert.deepEqual(ids(Store.legendLines(hints, (l) => l.length <= 5)), ["j/k ↵ g 1–4 /", "o f r esc"]);
+  assert.deepEqual(ids(Store.legendLines(hints, (l) => l.length <= 3)), ["j/k ↵ g", "1–4 / o", "f r esc"]);
+  assert.equal(Store.legendLines([], () => false).length, 1);
 });
 
 test("runs caption names failed runs; sub-second runs get words, not a chart", () => {
@@ -243,9 +255,9 @@ test("an activity line that repeats the error card is recognised", () => {
 });
 
 test("usage windows are named by their length", () => {
-  assert.equal(Store.windowLabel({ label: "Session", durationMins: 300 }), "5h");
-  assert.equal(Store.windowLabel({ label: "Weekly", durationMins: 10080 }), "week");
-  assert.equal(Store.windowLabel({ label: "Monthly", durationMins: 43200 }), "30d");
+  assert.equal(Store.windowLabel({ label: "Session", durationMins: 300 }), "5-hour");
+  assert.equal(Store.windowLabel({ label: "Weekly", durationMins: 10080 }), "weekly");
+  assert.equal(Store.windowLabel({ label: "Monthly", durationMins: 43200 }), "30-day");
   assert.equal(Store.windowLabel({ label: "Session" }), "session");
 });
 
