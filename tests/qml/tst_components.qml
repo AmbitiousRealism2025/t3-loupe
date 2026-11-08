@@ -32,7 +32,7 @@ TestCase {
   function texts(item) {
     var out = []
     function walk(it) {
-      if (!it || it.visible === false) return
+      if (!it || it.visible === false || it.opacity === 0) return
       if (it.text !== undefined && typeof it.text === "string" && it.text !== "" && it.font !== undefined)
         out.push(it.text.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " "))
       var kids = it.children || []
@@ -263,7 +263,7 @@ TestCase {
   function textItem(item, value) {
     var found = null
     function walk(it) {
-      if (!it || found || it.visible === false) return
+      if (!it || found || it.visible === false || it.opacity === 0) return
       if (it.text === value && it.font !== undefined) { found = it; return }
       var kids = it.children || []
       for (var i = 0; i < kids.length; i++) walk(kids[i])
@@ -618,6 +618,57 @@ TestCase {
         compare(bad.length, 0, details[k].name + " detail at bump " + bumps[b] + ": " + bad.join("; "))
         verify(has(p, /^copy title$/) && has(p, /^open T3$/), "both actions are labelled in full")
         verify(has(p, /^waiting$/), "the time column shows 'waiting' whole")
+      }
+    } finally {
+      Typo.bump = 0
+    }
+  }
+
+  // Round 10: the working thread (03) has three actions, PR included, the widest action row; and
+  // the usage-limit thread shows a reset time ("resets in 47m") in its list row, its detail and the
+  // footer. At each text size and real width, nothing of either is clipped.
+  function test_threeActionsAndResetTimesAreNeverClipped() {
+    var working = row({ state: "working", rawStatus: "running", activeSince: now - 23 * 60000, project: "t3-loupe", branch: "main", model: "claude-opus-5-5", childCount: 3, activeChildren: 2,
+      background: { subagents: 2, commands: 0, monitors: 0, other: 0 },
+      pr: { number: 412, title: "x", url: "https://example.invalid/pr/412", state: "open", checks: "pending", draft: false, additions: 2140, deletions: 388, review: "" } })
+    var limited = row({ key: "e:l", id: "l", title: "Bulk-translate docs to German", state: "limited", rawStatus: "failed", project: "docs", model: "gpt-6.1-sol",
+      errorClass: "usage_limit", error: "Usage limit reached for this session window.", usageResetAt: now + 47 * 60000 })
+    var detail = { pending: [], runs: [], context: { used: 731000, max: 1000000, cost: 12.8, currency: "USD" }, subagents: [], todo: null,
+      activity: [{ icon: "terminal", label: "node --test tests/", status: "completed", at: now - 180000 }] }
+    var bumps = [0, 2, 4, 6]
+    try {
+      for (var b = 0; b < bumps.length; b++) {
+        Typo.bump = bumps[b]
+        var paneWidth = Math.round((820 + 56 * bumps[b]) * 0.56) - 30
+        var listWidth = Math.round((820 + 56 * bumps[b]) * 0.44) - 14
+        var cases = [{ r: working, d: detail, name: "working" }, { r: limited, d: null, name: "usage limit" }]
+        for (var c = 0; c < cases.length; c++) {
+          var p = createTemporaryObject(paneC, tc, { row: cases[c].r, detail: cases[c].d, machineLabel: "build-box", width: paneWidth, height: 640 })
+          waitForRendering(p)
+          wait(20)
+          var bad = clippedTexts(p, p.width - Style.space(8))
+          compare(bad.length, 0, cases[c].name + " detail at bump " + bumps[b] + ": " + bad.join("; "))
+          // The action row ends with clear space before the scrollbar's track (round 9 ran it right
+          // up to it, which reads as cut), wrapping below the metadata when it doesn't fit.
+          var copy = textItem(p, "copy title") || textItem(p, "copy")
+          verify(copy !== null, cases[c].name + " at bump " + bumps[b] + ": copy action shown")
+          var end = copy.mapToItem(p, copy.implicitWidth, 0).x
+          verify(end <= p.width - Style.space(14) - Style.space(16) + 0.5, cases[c].name + " at bump " + bumps[b] + ": action row ends at " + Math.round(end) + ", too close to the scrollbar at " + Math.round(p.width - Style.space(14)))
+          if (cases[c].r.pr) verify(textItem(p, "PR") !== null, "three actions, PR included")
+        }
+        // The list row, from the list's width at this size down to a narrow one (the shell's spacing
+        // scale makes the real list narrower against its text than the card's nominal width).
+        for (var lw = listWidth; lw >= 260; lw -= 40) {
+          var r = createTemporaryObject(rowC, tc, { row: limited, width: lw, showMachine: true, machineLabel: "build-box" })
+          waitForRendering(r)
+          var where = "usage-limit row " + lw + " px wide at bump " + bumps[b]
+          var badRow = clippedTexts(r, r.width)
+          compare(badRow.length, 0, where + ": " + badRow.join("; "))
+          verify(has(r, /^resets in 47m$/), where + ": " + texts(r).join(" | "))
+          // A reset time is never cut: anything that says "resets" says it with its unit.
+          var times = texts(r).filter(function(t) { return /resets/.test(t) })
+          for (var t = 0; t < times.length; t++) verify(/resets in \d+[smhd]$/.test(times[t]), where + ": cut reset time '" + times[t] + "'")
+        }
       }
     } finally {
       Typo.bump = 0

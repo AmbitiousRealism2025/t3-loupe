@@ -40,7 +40,9 @@ Item {
         return "Failed" + (cause ? " · " + cause : "")
       }
       case "plan": return "Plan ready"
-      case "limited": return "Usage limit" + (r.usageResetAt ? " · resets " + Format.until(r.usageResetAt, now) : "")
+      // The reset time is the row's time column ("resets in 47m"), which is never cut; repeating it
+      // here only put it where a narrow row could cut it ("resets in 4…").
+      case "limited": return "Usage limit"
       case "queued": return "Queued"
       case "review":
         if (r.pr) return "#" + r.pr.number + (r.pr.checks === "passing" ? " ✓ checks" : r.pr.checks === "failing" ? " ✗ checks" : "") + (r.lastRunMs ? " · " + Format.duration(r.lastRunMs) + " run" : "")

@@ -29,16 +29,20 @@ Item {
   }
 
   // The thread's actions, labelled with their keys (o, p and c also work from anywhere in the panel).
+  // short: "open" and "copy", for when even a line of their own is too narrow for the full labels.
   component ActionKeys: Row {
+    property bool short: false
     spacing: Style.space(14)
-    KeyAction { key: "o"; text: "open T3"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily; onClicked: root.actionRequested("focus") }
+    KeyAction { key: "o"; text: parent.short ? "open" : "open T3"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily; onClicked: root.actionRequested("focus") }
     KeyAction {
       visible: root.hasRow && !!root.row.pr && root.row.pr.url !== ""
       key: "p"; text: "PR"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily
       onClicked: root.actionRequested("pr")
     }
-    KeyAction { key: "c"; text: "copy title"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily; onClicked: root.actionRequested("copy") }
+    KeyAction { key: "c"; text: parent.short ? "copy" : "copy title"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily; onClicked: root.actionRequested("copy") }
   }
+  // The space the action row keeps before the pane's edge (and the scrollbar beyond it).
+  readonly property real actionsMargin: Style.space(16)
 
   readonly property bool hasRow: row !== null && row !== undefined
   readonly property bool working: hasRow && Store.BUSY[row.state] === true
@@ -122,7 +126,8 @@ Item {
         Item {
           id: stateLine
           width: parent.width
-          readonly property bool actionsInline: stateRow.implicitWidth + inlineActions.implicitWidth + Style.space(24) <= width
+          // Inline only when the whole row fits after the state with room to spare before the edge.
+          readonly property bool actionsInline: stateRow.implicitWidth + Style.space(24) + fullActions.implicitWidth + root.actionsMargin <= width
           height: Math.max(stateRow.implicitHeight, actionsInline ? inlineActions.implicitHeight : 0)
           Row {
             id: stateRow
@@ -148,10 +153,13 @@ Item {
               font.weight: Font.DemiBold
             }
           }
+          // Measured, not shown: the full row's width decides where it goes.
+          ActionKeys { id: fullActions; opacity: 0; enabled: false; y: -10000 }
           ActionKeys {
             id: inlineActions
             visible: stateLine.actionsInline
-            anchors.right: parent.right
+            // Right after the state, not pinned to the pane's edge: it never runs up to the scrollbar.
+            x: stateRow.implicitWidth + Style.space(24)
             anchors.verticalCenter: parent.verticalCenter
           }
         }
@@ -178,7 +186,11 @@ Item {
           readonly property int count: root.hasRow ? Store.metaParts(root.row, root.machineLabel).length : 0
         }
 
-        ActionKeys { visible: !stateLine.actionsInline }
+        // Below the metadata when it doesn't fit beside the state; short labels if even this is too narrow.
+        ActionKeys {
+          visible: !stateLine.actionsInline
+          short: fullActions.implicitWidth + root.actionsMargin > parent.width
+        }
       }
 
       // What to act on comes first: the callout and any pending request, right under the title.
