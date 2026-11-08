@@ -3,8 +3,9 @@ import qs.Commons
 import "../lib/Store.js" as Store
 import "../lib/Format.js" as Format
 
-// Two-pane list row. Flat on the surface; the shell's hover/selected fills mark state,
-// a 2px accent marker marks the selection, and only the glyph carries colour.
+// Two-pane list row. Flat on the surface; the shell's hover/selected fills mark state.
+// Rows that need you carry a rail and a faint wash in their colour (red: blocked or failed;
+// amber: plan to review); the selected row adds an accent outline and rail.
 Item {
   id: root
 
@@ -22,6 +23,8 @@ Item {
 
   readonly property bool child: row.parentId !== ""
   readonly property color glyphColor: colors[Store.stateRole(row.state)] || colors.textDim
+  readonly property bool needsYou: Store.ATTENTION[row.state] === true
+  readonly property color wordInk: Store.inkRole(row.state) ? colors[Store.inkRole(row.state)] : colors.textDim
   readonly property var activity: Store.currentActivity(row)
   readonly property bool working: Store.BUSY[row.state] === true
   readonly property bool showActivity: activity !== null && (working || row.state === "input")
@@ -37,7 +40,10 @@ Item {
     var r = row
     switch (r.state) {
       case "input": return Store.stateLabel(r) + (activity ? " · " + activity.label : "")
-      case "failed": return "Failed" + (r.errorClass ? " · " + r.errorClass.replace("_", " ") : "") + (where ? " · " + where : "")
+      case "failed": {
+        var cause = Store.failureCause(r).label
+        return "Failed" + (cause ? " · " + cause : "") + (where ? " · " + where : "")
+      }
       case "plan": return "Plan ready" + (where ? " · " + where : "")
       case "limited": return "Usage limit" + (r.usageResetAt ? " · resets " + Format.until(r.usageResetAt, now) : "")
       case "queued": return "Queued" + (where ? " · " + where : "")
@@ -55,6 +61,7 @@ Item {
   }
   readonly property string subtitleIcon: {
     if (row.state === "input") return Store.pendingInfo(row.pendingKind).icon
+    if (row.state === "failed") return Store.failureCause(row).icon
     if (row.state === "review" && row.pr) return "git-pull-request"
     if (row.state === "background") return "bot"
     if (showActivity) return activity.icon
@@ -71,13 +78,17 @@ Item {
     // Shaded rows (subagents sit unshaded under their parent); hover and selection step up from there.
     color: root.selected ? Style.selectedFillFor(root.colors.text, root.colors.accent)
       : hover.hovered ? Style.hoverFillFor(root.colors.text, root.colors.accent)
+      : root.needsYou ? Qt.tint(root.colors.surface, Qt.rgba(root.glyphColor.r, root.glyphColor.g, root.glyphColor.b, 0.08))
       : root.child ? "transparent" : root.colors.surface
+    border.width: root.selected ? 1 : 0
+    border.color: root.colors.focus
     Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
+    // Rail: the state's colour on rows that need you, the accent on the selected row.
     Rectangle {
-      visible: root.selected
-      y: Style.space(6); width: Style.space(2); height: parent.height - Style.space(12)
-      color: root.colors.accent
+      visible: root.needsYou || root.selected
+      width: Style.space(3); height: parent.height
+      color: root.needsYou ? root.glyphColor : root.colors.focus
     }
   }
 
@@ -128,7 +139,7 @@ Item {
           visible: root.subtitleIcon !== ""
           anchors.verticalCenter: parent.verticalCenter
           name: root.subtitleIcon || "zap"
-          color: root.subtitleLive ? root.colors.accentInk : Store.isAlarm(root.row.state) ? root.colors.attentionInk : root.colors.textFaint
+          color: root.subtitleLive ? root.colors.accentInk : root.needsYou ? root.wordInk : root.colors.textFaint
           size: Math.round(Typo.caption * 1.1)
         }
         Text {
@@ -136,8 +147,8 @@ Item {
           width: parent.width - (subIcon.visible ? subIcon.width + parent.spacing : 0)
           text: root.subtitle
           textFormat: Text.PlainText
-          // Alarm exception: needs-input and failed read in attention ink; everything else stays ink.
-          color: Store.isAlarm(root.row.state) ? root.colors.attentionInk : root.showActivity ? root.colors.textDim : root.colors.textFaint
+          // Rows that need you say so in their colour; everything else stays ink.
+          color: root.needsYou ? root.wordInk : root.showActivity ? root.colors.textDim : root.colors.textFaint
           font.family: root.subtitleIcon === "terminal" ? root.monoFamily : root.fontFamily
           font.pixelSize: Typo.caption
           elide: Text.ElideRight
@@ -151,7 +162,7 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       text: Format.elapsed(root.row, root.now, root.working)
       textFormat: Text.PlainText
-      color: root.working || Store.isAlarm(root.row.state) ? root.colors.textDim : root.colors.textFaint
+      color: root.working || root.needsYou ? root.colors.textDim : root.colors.textFaint
       font.family: root.monoFamily
       font.pixelSize: Typo.caption
     }

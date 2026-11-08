@@ -19,12 +19,14 @@ Item {
     radius: Style.cornerRadius
     color: root.selected ? Style.selectedFillFor(root.colors.text, root.colors.accent)
       : hover.hovered ? Style.hoverFillFor(root.colors.text, root.colors.accent) : "transparent"
+    border.width: root.selected ? 1 : 0
+    border.color: root.colors.focus
     Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
   }
   Rectangle {
     visible: root.selected
-    x: 0; y: Style.space(5); width: Style.space(2); height: parent.height - Style.space(10)
-    color: root.colors.accent
+    width: Style.space(3); height: parent.height
+    color: root.colors.focus
   }
 
   HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }

@@ -145,8 +145,10 @@ Item {
 
   readonly property var nodeCommand: {
     var node = settings && typeof settings.node === "string" && settings.node ? settings.node : "node"
-    var mode = settings && settings.demo === true ? "demo" : "run"
-    return [node, "--disable-warning=ExperimentalWarning", root.pluginDir + "/daemon/main.ts", mode]
+    // "demo": true streams the synthetic feed; "demo": "offline" the same machines with expired pairings.
+    var demo = settings ? settings.demo : undefined
+    var mode = demo === true ? ["demo"] : demo === "offline" ? ["demo", "offline"] : ["run"]
+    return [node, "--disable-warning=ExperimentalWarning", root.pluginDir + "/daemon/main.ts"].concat(mode)
   }
   // Settings can switch node binary or demo mode: restart the collector with the new command.
   onNodeCommandChanged: if (daemon.running) { root.details = ({}); daemon.running = false; restart.interval = 300; restart.restart() }

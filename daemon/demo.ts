@@ -1,5 +1,6 @@
 // Synthetic feed covering every display state, for UI development and screenshots.
 // Enable with {"demo": true} in ~/.config/t3-loupe/settings.json, or run `main.ts demo`.
+// {"demo": "offline"} (or `main.ts demo offline`) shows both machines with expired pairings and no threads.
 import { createInterface } from "node:readline";
 import { handleDesktopCommand } from "./desktop.ts";
 import type { Row } from "./model.ts";
@@ -18,10 +19,13 @@ function row(partial: Partial<Row> & Pick<Row, "id" | "envId" | "title" | "state
   };
 }
 
-export function runDemo(write: (m: Record<string, unknown>) => void) {
+export type DemoMode = "full" | "offline";
+
+export function runDemo(write: (m: Record<string, unknown>) => void, mode: DemoMode = "full") {
   const t0 = Date.now();
   const at = (minsAgo: number) => t0 - minsAgo * MIN;
   const env = { a: "demo-laptop", b: "demo-server" };
+  if (mode === "offline") return runOffline(write, env, at);
   const rows: Row[] = [
     row({ envId: env.a, id: "approve", title: "Migrate auth middleware to sessions v2", state: "input", rawStatus: "running", pendingKind: "command",
       pendingSince: at(2), activeSince: at(14), project: "web-app", branch: "feat/sessions-v2",
@@ -56,6 +60,15 @@ export function runDemo(write: (m: Record<string, unknown>) => void) {
     row({ envId: env.a, id: "idle", title: "Explore notch-aware bar layouts", state: "idle", project: "omarchy", completedAt: at(95), settled: false }),
     row({ envId: env.b, id: "idle2", title: "Draft release notes for 2.4", state: "idle", project: "docs", completedAt: at(180), settled: false }),
     row({ envId: env.a, id: "idle3", title: "Investigate flaky e2e on CI runners", state: "stopped", rawStatus: "interrupted", project: "web-app", completedAt: at(240), settled: false }),
+    // The provider rejected the thread's credentials; T3 classes this as a provider error and sends no thread detail.
+    row({ envId: env.b, id: "auth-error", title: "Nightly dependency audit (8AM daily)", state: "failed", rawStatus: "failed", project: "ops",
+      provider: "acpRegistry_glm_agent", model: "glm-5.3", errorClass: "provider_error", error: '401: {"code":"1000","message":"Authentication Failed"}',
+      completedAt: at(8 * 1440), lastRunMs: 400 }),
+    // The thread's working folder was deleted; T3 raises ProviderWorkspaceMissingError, classed as a provider error.
+    row({ envId: env.a, id: "no-workspace", title: "Tidy the web-app settings routes", state: "failed", rawStatus: "failed", project: "web-app", branch: "chore/settings-routes",
+      errorClass: "provider_error",
+      error: "This thread's workspace folder no longer exists or is not a directory: /home/dev/code/web-app. Restore the folder at this path before retrying.",
+      completedAt: at(51), lastRunMs: 0 }),
   ];
   const providers = [
     { id: "claudeAgent", name: "Claude", driver: "claudeAgent", status: "ready", auth: "authenticated", version: "", checkedAt: t0,
@@ -72,8 +85,8 @@ export function runDemo(write: (m: Record<string, unknown>) => void) {
       review: roots.filter((r) => r.state === "review").length };
   };
   const environments = [
-    { id: env.a, label: "laptop", hostLabel: "laptop", state: "live", stale: false, url: "http://127.0.0.1:3773", serverVersion: "demo", lastLiveAt: t0, sessionExpiresAt: t0 + 20 * 1440 * MIN, retryAt: null, providers, counts: counts(env.a) },
-    { id: env.b, label: "build-box", hostLabel: "build-box", state: "live", stale: false, url: "http://127.0.0.1:46363", serverVersion: "demo", lastLiveAt: t0, sessionExpiresAt: t0 + 2 * 1440 * MIN, retryAt: null, providers: providers.slice(0, 2), counts: counts(env.b) },
+    { id: env.a, label: "laptop", hostLabel: "laptop", sshHost: "", state: "live", stale: false, url: "http://127.0.0.1:3773", serverVersion: "demo", lastLiveAt: t0, sessionExpiresAt: t0 + 20 * 1440 * MIN, retryAt: null, providers, counts: counts(env.a) },
+    { id: env.b, label: "build-box", hostLabel: "build-box", sshHost: "build-box", state: "live", stale: false, url: "http://127.0.0.1:46363", serverVersion: "demo", lastLiveAt: t0, sessionExpiresAt: t0 + 2 * 1440 * MIN, retryAt: null, providers: providers.slice(0, 2), counts: counts(env.b) },
   ];
   const total = { active: 0, busy: 0, attention: 0, input: 0, review: 0 } as Record<string, number>;
   for (const e of environments) for (const k of Object.keys(total)) total[k] += (e.counts as any)[k];
@@ -109,7 +122,18 @@ export function runDemo(write: (m: Record<string, unknown>) => void) {
       ],
       todo: { total: 9, done: 6, current: "Polish the panel and verify every theme" },
     },
+    "no-workspace": {
+      activity: [
+        { icon: "terminal", label: "Preparing workspace", status: "completed", at: at(51) },
+        { icon: "circle-alert", label: "This thread's workspace folder no longer exists or is not a directory: /home/dev/code/web-app. Restore the folder at this path before retrying.", status: "failed", at: at(51) },
+      ],
+      pending: [],
+      runs: [{ ordinal: 1, status: "failed", startedAt: at(51), completedAt: at(51), durationMs: 0 }],
+      context: null, subagents: [], todo: null,
+    },
   };
+  // Threads T3 returns no detail for: the panel keeps waiting, as it does live.
+  const noDetail = new Set(["auth-error"]);
 
   const emit = () => write({ type: "state", at: Date.now(), environments, rows, counts: total, known: true });
   emit();
@@ -121,6 +145,7 @@ export function runDemo(write: (m: Record<string, unknown>) => void) {
         void handleDesktopCommand(cmd);
       } else if (cmd.cmd === "detail") {
         const id = String(cmd.threadId);
+        if (noDetail.has(id)) return;
         const d = details[id] ?? { activity: rows.find((r) => r.id === id)?.activity ?? [], pending: [], runs: [], context: null, subagents: [], todo: null };
         write({ type: "detail", envId: cmd.envId, threadId: id, detail: d });
       } else if (cmd.cmd === "notice-test") {
@@ -128,4 +153,19 @@ export function runDemo(write: (m: Record<string, unknown>) => void) {
       }
     } catch {}
   });
+}
+
+/** Both pairings expired: no threads, nothing live, the way the panel looks before re-pairing. */
+function runOffline(write: (m: Record<string, unknown>) => void, env: { a: string; b: string }, at: (minsAgo: number) => number) {
+  const none = { active: 0, busy: 0, attention: 0, input: 0, review: 0 };
+  const environments = [
+    { id: env.a, label: "laptop", hostLabel: "laptop", sshHost: "", state: "expired", stale: false, url: "http://127.0.0.1:3773", serverVersion: "", lastLiveAt: at(2 * 1440),
+      sessionExpiresAt: at(2 * 1440), retryAt: null, providers: [], counts: none },
+    { id: env.b, label: "build-box", hostLabel: "build-box", sshHost: "build-box", state: "expired", stale: false, url: "http://127.0.0.1:46363", serverVersion: "", lastLiveAt: at(5 * 60),
+      sessionExpiresAt: at(5 * 60), retryAt: null, providers: [], counts: none },
+  ];
+  const emit = () => write({ type: "state", at: Date.now(), environments, rows: [], counts: none, known: false });
+  emit();
+  setInterval(emit, 5000);
+  createInterface({ input: process.stdin }).on("line", () => {});
 }

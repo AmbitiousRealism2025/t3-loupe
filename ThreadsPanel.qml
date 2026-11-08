@@ -45,10 +45,15 @@ Item {
     attention: colors.attention, ink: colors.text, track: colors.track,
     inkFaint: colors.text ? Qt.rgba(colors.text.r, colors.text.g, colors.text.b, 0.3) : "transparent"
   })
-  readonly property int needCount: Store.filterCount(rows, "attention")
-  readonly property int activeCount: Store.filterCount(rows, "active")
-  readonly property int doneCount: Store.filterCount(rows, "done")
-  readonly property int allCount: Store.filterCount(rows, "all")
+  // One tally feeds the header, the tabs and the ring, so they always agree.
+  readonly property var tally: Store.tally(rows)
+  readonly property int needCount: tally.needs
+  readonly property int activeCount: tally.active
+  readonly property int doneCount: tally.done
+  readonly property int allCount: tally.all
+  readonly property var link: Store.connection(environments)
+  // Nothing reachable and nothing to show: the disconnected state replaces the list and detail.
+  readonly property bool disconnected: link.none && rows.length === 0
   readonly property bool multiMachine: environments.length > 1
   readonly property bool hasMetered: {
     for (var i = 0; i < environments.length; i++)
@@ -110,13 +115,13 @@ Item {
   }
   onOpenedChanged: if (opened) {
     filterChosen = false; pickDefaultFilter(); cursor = -1; list.positionViewAtBeginning()
-    if (centered) Qt.callLater(selectFirst)
+    Qt.callLater(selectFirst)
   }
   onNeedCountChanged: if (opened && !filterChosen && filter === "attention" && needCount === 0) pickDefaultFilter()
 
   function setFilter(f) {
     filter = f; filterChosen = true; cursor = -1; list.positionViewAtBeginning()
-    if (centered) Qt.callLater(selectFirst)
+    Qt.callLater(selectFirst)
   }
 
   function toggleIdle(key) {
@@ -221,7 +226,8 @@ Item {
       text: !parent.ok ? Store.environmentLabel(modelData.state).toLowerCase() + (modelData.stale && modelData.lastLiveAt ? " · " + Format.ago(modelData.lastLiveAt, root.now) : "")
         : "re-pair " + Format.until(modelData.sessionExpiresAt, root.now)
       textFormat: Text.PlainText
-      color: root.colors.attentionInk
+      // Broken is red; still working but expiring soon is amber.
+      color: parent.ok ? root.colors.warningInk : root.colors.attentionInk
       font.family: root.fontFamily
       font.pixelSize: Typo.caption
     }
@@ -310,10 +316,10 @@ Item {
           segments: root.ringSegs
           colors: root.ringColors
           spinning: root.service && root.service.counts.busy > 0
-          alert: root.service && root.service.counts.attention > 0
+          alert: root.needCount > 0
           reduceMotion: root.reduceMotion
           offline: root.service && !root.service.known
-          centerText: root.service && root.service.known ? String(root.service.counts.active) : "—"
+          centerText: root.service && root.service.known ? String(root.activeCount) : "—"
           textColor: root.colors.text
           fontFamily: root.fontFamily
           fontSize: Typo.bodySmall
@@ -335,22 +341,28 @@ Item {
             font.pixelSize: Typo.heading
             font.bold: true
           }
+          // The same three numbers as the Inbox, Active and Done tabs; "need you" in its colour.
           Text {
             width: parent.width
             text: {
+              function tint(color, words) { return "<font color=\"" + color + "\">" + words + "</font>" }
+              var alarm = root.colors.attentionInk
               if (!root.service) return "SERVICE NOT LOADED"
-              if (root.service.health === "down") return "COLLECTOR STOPPED · RESTARTING"
-              if (root.service.configError) return "SETTINGS UNREADABLE · " + root.service.configError.toUpperCase()
+              if (root.service.health === "down") return tint(alarm, "COLLECTOR STOPPED · RESTARTING")
+              if (root.service.configError) return tint(alarm, "SETTINGS UNREADABLE · " + root.service.configError.toUpperCase())
               if (!root.environments.length) return "NO T3 MACHINES PAIRED"
-              var c = root.service.counts
+              var sep = "&nbsp;&nbsp;·&nbsp;&nbsp;"
+              var machines = root.link.connected === root.link.total ? Format.plural(root.link.total, "MACHINE", "MACHINES")
+                : tint(alarm, root.link.connected + " OF " + root.link.total + " MACHINES CONNECTED")
+              if (root.disconnected) return tint(alarm, "NOT CONNECTED") + sep + Format.plural(root.link.total, "MACHINE", "MACHINES")
               var parts = []
-              if (c.attention) parts.push(c.attention + " NEED" + (c.attention === 1 ? "S" : "") + " YOU")
-              parts.push(c.busy + " WORKING")
-              if (c.review) parts.push(c.review + " DONE")
-              parts.push(Format.plural(root.environments.length, "MACHINE", "MACHINES"))
-              return parts.join("  ·  ")
+              parts.push(root.needCount ? tint(alarm, root.needCount + " NEED" + (root.needCount === 1 ? "S" : "") + " YOU") : "NOTHING NEEDS YOU")
+              parts.push(root.tally.working + " WORKING")
+              parts.push(root.doneCount + " DONE")
+              parts.push(machines)
+              return parts.join(sep)
             }
-            textFormat: Text.PlainText
+            textFormat: Text.StyledText
             color: root.colors.textDim
             font.family: root.fontFamily
             font.pixelSize: Typo.caption
@@ -392,12 +404,12 @@ Item {
       // Filters + search
       Item {
         width: parent.width
-        height: Math.max(filters.implicitHeight, search.implicitHeight)
-        visible: root.environments.length > 0
+        height: Math.max(filters.implicitHeight, search.implicitHeight) + Style.space(4)
+        visible: root.environments.length > 0 && !root.disconnected
         ButtonGroup {
           id: filters
           anchors.left: parent.left
-          anchors.verticalCenter: parent.verticalCenter
+          anchors.top: parent.top
           options: [
             { value: "attention", label: "Inbox  " + root.needCount, tooltip: "1" },
             { value: "active", label: "Active  " + root.activeCount, tooltip: "2" },
@@ -412,6 +424,19 @@ Item {
           fontSize: Typo.caption
           focusable: false
           onChanged: function(v) { root.setFilter(v) }
+        }
+        // The current view, marked under its tab in the accent: the shell's selected fill alone is faint.
+        Rectangle {
+          readonly property Item tab: {
+            for (var i = 0; i < filters.children.length; i++) if (filters.children[i].selected === true) return filters.children[i]
+            return null
+          }
+          visible: tab !== null
+          x: filters.x + (tab ? tab.x : 0)
+          y: filters.y + filters.height + Style.space(1)
+          width: tab ? tab.width : 0
+          height: Style.space(3)
+          color: root.colors.focus
         }
         FilterField {
           id: search
@@ -434,9 +459,22 @@ Item {
         }
       }
 
+      // No machine reachable: what is wrong with each, and the step that fixes it.
+      DisconnectedState {
+        visible: root.disconnected
+        width: Math.min(parent.width, Style.space(640))
+        anchors.horizontalCenter: parent.horizontalCenter
+        topPadding: Style.space(24)
+        environments: root.environments
+        colors: root.colors
+        now: root.now
+        fontFamily: root.fontFamily
+        monoFamily: root.monoFamily
+      }
+
       // Setup / empty states
       Column {
-        visible: root.visible_.length === 0
+        visible: root.visible_.length === 0 && !root.disconnected
         width: parent.width
         spacing: Style.space(6)
         topPadding: Style.space(10)
@@ -452,7 +490,7 @@ Item {
           horizontalAlignment: Text.AlignHCenter
           text: !root.environments.length ? "Pair a T3 environment to start"
             : root.query ? "No threads match “" + root.query + "”"
-            : root.filter === "attention" ? "Inbox zero — nothing needs you" : root.filter === "active" ? "No active threads"
+            : root.filter === "attention" ? "Nothing needs you right now" : root.filter === "active" ? "Nothing in progress"
             : root.filter === "done" ? "Nothing finished recently" : "No recent threads"
           textFormat: Text.PlainText
           color: root.colors.textDim
@@ -465,7 +503,7 @@ Item {
           wrapMode: Text.Wrap
           visible: text !== ""
           text: !root.environments.length ? "Run:  t3-loupe pair-local   (see README for remote machines)"
-            : root.filter === "attention" && root.activeCount > 0 ? root.activeCount + " active — press 2 to see them" : ""
+            : root.filter === "attention" && root.tally.working > 0 ? Format.plural(root.tally.working, "thread") + " working — press 2 to see them" : ""
           textFormat: Text.PlainText
           color: root.colors.textFaint
           font.family: root.monoFamily
@@ -476,6 +514,7 @@ Item {
 
     ListView {
       id: list
+      visible: !root.disconnected
       anchors.top: chrome.bottom
       anchors.topMargin: Style.space(10)
       anchors.bottom: footer.top
@@ -519,7 +558,7 @@ Item {
             anchors.bottom: parent.bottom
             label: cell.isSection ? cell.modelData.label : cell.group
             count: cell.isSection ? cell.modelData.count : -1
-            foreground: root.colors.text
+            foreground: cell.isSection && cell.modelData.key === "sec:needs" ? root.colors.attentionInk : root.colors.text
             countColor: root.colors.textFaint
             fontFamily: root.fontFamily
           }
@@ -590,7 +629,7 @@ Item {
 
     // Two-pane: divider and the selected thread's detail.
     Rectangle {
-      visible: root.centered
+      visible: root.centered && !root.disconnected
       anchors.top: list.top
       anchors.bottom: list.bottom
       x: list.width + Style.space(8)
@@ -599,7 +638,7 @@ Item {
     }
     Loader {
       active: root.centered
-      visible: active
+      visible: active && !root.disconnected
       anchors.top: list.top
       anchors.bottom: list.bottom
       anchors.left: list.right

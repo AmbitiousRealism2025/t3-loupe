@@ -8,7 +8,7 @@
 //   pair-local [--url http://127.0.0.1:3773] [--label]    issue + exchange on this machine
 //   pair-ssh --ssh-host HOST --url FORWARD_URL [--label]  issue on HOST over SSH (one-time remote command)
 //   forget --id ENV_ID_PREFIX                             drop a pairing from the local store
-//   demo                     stream synthetic data (UI development)
+//   demo [offline]           stream synthetic data (UI development); offline: expired pairings, no threads
 import { statSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -237,7 +237,7 @@ async function main() {
       return;
     case "demo": {
       const { runDemo } = await import("./demo.ts");
-      runDemo(write);
+      runDemo(write, process.argv[3] === "offline" ? "offline" : "full");
       return;
     }
     case "status":

@@ -16,7 +16,7 @@ test("FilterField: key handling, no paste, no editable text input", { skip: runn
   const tmp = mkdtempSync(join(tmpdir(), "loupe-filter-"));
   try {
     for (const dir of ["components", "lib", "tests/qml"]) mkdirSync(join(tmp, dir), { recursive: true });
-    for (const file of ["components/FilterField.qml", "lib/Store.js", "tests/qml/tst_filterfield.qml"]) copyFileSync(join(root, file), join(tmp, file));
+    for (const file of ["components/FilterField.qml", "lib/Store.js", "lib/Format.js", "tests/qml/tst_filterfield.qml"]) copyFileSync(join(root, file), join(tmp, file));
     const result = spawnSync(runner, ["-input", join(tmp, "tests/qml")], {
       env: { ...process.env, QT_QPA_PLATFORM: "offscreen", QML_DISABLE_DISK_CACHE: "1" },
       encoding: "utf8",

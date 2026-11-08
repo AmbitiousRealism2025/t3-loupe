@@ -19,6 +19,8 @@ Panel {
   readonly property var counts: service ? service.counts : ({ active: 0, busy: 0, attention: 0, input: 0, review: 0 })
   readonly property bool known: service ? service.known : false
   readonly property bool paired: service ? service.environments.length > 0 : false
+  // The panel's own tally, so the ring shows the same number as the Active tab.
+  readonly property var tally: service ? Store.tally(service.rows) : ({ needs: 0, working: 0, active: 0 })
 
   // Widget settings (omarchy bar set ambitiousrealism.t3-loupe <key> <value>)
   readonly property string display: String(setting("display", "label"))  // label | ring | ring-count
@@ -75,7 +77,7 @@ Panel {
   implicitHeight: button.implicitHeight
 
   readonly property color ink: button.foreground
-  readonly property string centerText: !service ? "" : !paired ? "+" : !known ? "—" : String(counts.active)
+  readonly property string centerText: !service ? "" : !paired ? "+" : !known ? "—" : String(tally.active)
   readonly property bool showRingCount: display !== "ring-count"
 
   WidgetButton {
@@ -87,10 +89,11 @@ Panel {
     hasVisualContent: true
     fixedWidth: root.vertical ? -1 : glyphRow.implicitWidth + scaledHorizontalMargin * 2
     fixedHeight: root.vertical ? glyphRow.implicitHeight + scaledVerticalPadding * 2 : -1
-    active: root.counts.attention > 0
+    active: root.tally.needs > 0
     tooltipText: !root.service ? "T3 Loupe: service not running"
       : !root.paired ? "T3 Loupe: no paired environments"
-      : root.counts.active + " active · " + root.counts.busy + " working · " + root.counts.attention + " need you"
+      : !root.known ? "T3 Loupe: not connected to T3"
+      : root.tally.needs + " need you · " + root.tally.working + " working"
     onPressed: function(mouseButton) {
       if (mouseButton === Qt.MiddleButton && root.service) root.service.refresh()
       else root.toggle()
@@ -156,7 +159,7 @@ Panel {
           track: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.16)
         })
         spinning: root.counts.busy > 0
-        alert: root.counts.attention > 0
+        alert: root.tally.needs > 0
         reduceMotion: root.reduceMotion
         offline: root.service !== null && root.paired && !root.known
         centerText: root.showRingCount ? root.centerText : ""
@@ -182,7 +185,7 @@ Panel {
       // Attention badge: how many threads are waiting on you.
       Rectangle {
         id: badge
-        visible: root.counts.attention > 0
+        visible: root.tally.needs > 0
         x: root.vertical ? (glyphRow.width - width) / 2 : glyphRow.offset(badge)
         y: root.vertical ? glyphRow.offset(badge) : (glyphRow.height - height) / 2
         height: Math.round(ring.diameter * 0.78)
@@ -195,7 +198,7 @@ Panel {
         Text {
           id: badgeText
           anchors.centerIn: parent
-          text: String(root.counts.attention)
+          text: String(root.tally.needs)
           textFormat: Text.PlainText
           color: root.theme ? root.theme.bar.attentionInk : Omarchy.Color.urgent
           font.family: button.fontFamily

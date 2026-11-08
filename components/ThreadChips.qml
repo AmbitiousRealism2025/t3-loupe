@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import "../lib/Format.js" as Format
+import "../lib/Store.js" as Store
 
 // Tags for a thread (dropdown cards): neutral ink; only failures and failing checks use attention.
 Flow {
@@ -18,7 +19,8 @@ Flow {
   readonly property int subs: Math.max(row.background ? row.background.subagents : 0, row.activeChildren || 0)
   readonly property int tasks: row.background ? row.background.commands + row.background.monitors : 0
   // Decided from data, not from child.visible (which already folds in this Flow's own visibility).
-  readonly property bool showError: row.state === "failed" && !!row.errorClass
+  readonly property var cause: row.state === "failed" ? Store.failureCause(row) : null
+  readonly property bool showError: cause !== null && cause.label !== ""
   readonly property bool showSubs: !child && (subs > 0 || (row.childCount > 0 && showSubagentTotal))
   readonly property bool showTasks: tasks > 0
   readonly property bool showPr: pr !== null
@@ -36,8 +38,8 @@ Flow {
 
   Chip {
     visible: root.showError
-    icon: "circle-alert"
-    text: String(root.row.errorClass || "").replace("_", " ")
+    icon: root.cause ? root.cause.icon : "circle-alert"
+    text: root.cause ? root.cause.label : ""
     tone: root.colors.attention
     ink: root.colors.attentionInk
     outlined: true

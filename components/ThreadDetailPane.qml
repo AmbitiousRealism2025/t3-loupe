@@ -93,48 +93,49 @@ Item {
             font.pixelSize: Typo.title
             font.bold: true
             wrapMode: Text.Wrap
-            maximumLineCount: 2
+            maximumLineCount: 4
             elide: Text.ElideRight
           }
-          Row {
+          // State first, then where it runs; wraps rather than cutting the branch or model short.
+          Flow {
             width: parent.width
             spacing: Style.space(7)
             StateGlyph {
               id: glyph
-              anchors.verticalCenter: parent.verticalCenter
               icon: root.hasRow ? Store.stateIcon(root.row) : "circle-dot"
               threadState: root.hasRow ? root.row.state : "idle"
               color: root.hasRow ? (root.colors[Store.stateRole(root.row.state)] || root.colors.textDim) : root.colors.textDim
               size: Math.round(Typo.body * 1.05)
+              y: Math.max(0, (stateText.implicitHeight - height) / 2)
               reduceMotion: root.reduceMotion
             }
             Text {
               id: stateText
-              anchors.verticalCenter: parent.verticalCenter
               text: root.hasRow ? Store.stateLabel(root.row) + " " + Format.elapsed(root.row, root.now, root.working) : ""
               textFormat: Text.PlainText
-              color: root.hasRow && Store.isAlarm(root.row.state) ? root.colors.attentionInk : root.colors.text
+              color: root.hasRow && Store.inkRole(root.row.state) ? root.colors[Store.inkRole(root.row.state)] : root.colors.text
               font.family: root.fontFamily
               font.pixelSize: Typo.caption
               font.weight: Font.Medium
             }
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              width: parent.width - glyph.width - stateText.implicitWidth - parent.spacing * 2
-              text: {
-                if (!root.hasRow) return ""
-                var parts = [""]
+            Repeater {
+              model: {
+                if (!root.hasRow) return []
+                var parts = []
                 if (root.machineLabel) parts.push(root.machineLabel)
                 parts.push(root.row.project)
                 if (root.row.branch) parts.push(root.row.branch + (root.row.worktree ? " (worktree)" : ""))
                 if (root.row.model) parts.push(Format.model(root.row.model))
-                return parts.join(" · ")
+                return parts
               }
-              textFormat: Text.PlainText
-              color: root.colors.textFaint
-              font.family: root.fontFamily
-              font.pixelSize: Typo.caption
-              elide: Text.ElideRight
+              Text {
+                required property var modelData
+                text: "·  " + modelData
+                textFormat: Text.PlainText
+                color: root.colors.textFaint
+                font.family: root.fontFamily
+                font.pixelSize: Typo.caption
+              }
             }
           }
         }

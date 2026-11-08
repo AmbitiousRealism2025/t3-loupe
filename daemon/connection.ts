@@ -26,6 +26,8 @@ export interface EnvironmentView {
   id: string;
   label: string;
   hostLabel: string;
+  /** SSH host the URL is forwarded from, when paired with pair-ssh; tells the panel how to re-pair. */
+  sshHost: string;
   state: ConnectionState;
   stale: boolean;
   url: string;
@@ -390,6 +392,7 @@ export class EnvironmentConnection {
       id: this.env.environmentId,
       label: this.env.label,
       hostLabel: this.hostLabel,
+      sshHost: this.env.sshHost ?? "",
       state: this.state,
       stale: !live && this.hasData,
       url: this.base || (this.env.sshHost ? "" : this.env.url),

@@ -24,6 +24,13 @@ Column {
   topPadding: Style.space(6)
 
   readonly property bool loading: detail === null
+  readonly property bool hasPending: detail !== null && detail.pending.length > 0
+  readonly property var callout: Store.statusCallout(row, now, hasPending)
+  // T3 may never send detail for a thread (a failed one, say). Say so instead of loading forever.
+  property bool waited: false
+  readonly property string rowKey: row && row.key ? row.key : ""
+  onRowKeyChanged: { waited = false; waitTimer.restart() }
+  Timer { id: waitTimer; interval: 4000; running: true; onTriggered: root.waited = true }
   readonly property var runs: detail ? detail.runs : []
   function runDuration(r) { return r.durationMs !== null ? r.durationMs : (r.startedAt ? now - r.startedAt : 0) }
   readonly property real longestRun: {
@@ -57,9 +64,19 @@ Column {
     elide: Text.ElideRight
   }
 
+  StatusCallout {
+    width: root.width
+    callout: root.callout
+    colors: root.colors
+    fontFamily: root.fontFamily
+    monoFamily: root.monoFamily
+    onActionRequested: function(action) { root.actionRequested(action) }
+  }
+
   Note {
     visible: root.loading
-    text: "Loading thread…"
+    width: root.width
+    text: root.waited ? "No activity from T3 for this thread yet." : "Loading activity…"
   }
 
   // Pending approval / question, with the actual text. The alarm exception: attention tint.
@@ -125,9 +142,7 @@ Column {
             color: root.colors.text
             font.family: modelData.kind === "command" ? root.monoFamily : root.fontFamily
             font.pixelSize: Typo.bodySmall
-            wrapMode: Text.WrapAnywhere
-            maximumLineCount: 10
-            elide: Text.ElideRight
+            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
           }
         }
 
@@ -146,28 +161,43 @@ Column {
               font.pixelSize: Typo.bodySmall
               wrapMode: Text.Wrap
             }
-            Flow {
-              width: parent.width
-              spacing: Style.space(4)
-              Repeater {
-                model: modelData.options
-                Chip { required property var modelData; text: modelData; tone: root.colors.textFaint; ink: root.colors.textDim; outlined: true }
+            // The choices T3 offers, as a plain list: Loupe shows them, it can't pick one.
+            Repeater {
+              model: modelData.options
+              Text {
+                required property var modelData
+                width: parent.width
+                text: "·  " + modelData
+                textFormat: Text.PlainText
+                color: root.colors.textDim
+                font.family: root.fontFamily
+                font.pixelSize: Typo.caption
+                wrapMode: Text.Wrap
               }
             }
           }
         }
 
-        Flow {
+        Text {
           visible: modelData.options.length > 0
           width: parent.width
-          spacing: Style.space(4)
-          Repeater {
-            model: modelData.options
-            Chip { required property var modelData; text: modelData; tone: root.colors.textFaint; ink: root.colors.textDim; outlined: true }
-          }
+          text: "Choices in T3:  " + modelData.options.join("  ·  ")
+          textFormat: Text.PlainText
+          color: root.colors.textDim
+          font.family: root.fontFamily
+          font.pixelSize: Typo.caption
+          wrapMode: Text.Wrap
         }
 
-        Note { text: "Answer in T3 — Loupe is read-only."; font.italic: true }
+        KeyAction {
+          width: parent.width
+          key: "o"
+          text: modelData.kind === "user_input" ? "Answer in T3 (Loupe only shows the question)" : "Decide in T3 (Loupe only shows the request)"
+          colors: root.colors
+          fontFamily: root.fontFamily
+          monoFamily: root.monoFamily
+          onClicked: root.actionRequested("focus")
+        }
       }
     }
   }
@@ -187,7 +217,7 @@ Column {
         height: Math.max(aText.implicitHeight, aIcon.height) + Style.space(2)
         LucideIcon {
           id: aIcon
-          anchors.verticalCenter: parent.verticalCenter
+          y: Math.max(0, (Typo.caption * 1.4 - height) / 2)
           name: modelData.icon
           color: parent.live ? root.colors.accentInk : modelData.status === "failed" ? root.colors.attentionInk : root.colors.textFaint
           size: Math.round(Typo.body * 1.05)
@@ -198,18 +228,19 @@ Column {
           anchors.leftMargin: Style.space(9)
           anchors.right: aWhen.left
           anchors.rightMargin: Style.space(10)
-          anchors.verticalCenter: parent.verticalCenter
           text: modelData.label
           textFormat: Text.PlainText
-          color: parent.live ? root.colors.text : root.colors.textDim
+          color: parent.live ? root.colors.text : modelData.status === "failed" ? root.colors.attentionInk : root.colors.textDim
           font.family: modelData.icon === "terminal" ? root.monoFamily : root.fontFamily
           font.pixelSize: Typo.caption
+          wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+          maximumLineCount: 3
           elide: Text.ElideRight
         }
         Row {
           id: aWhen
           anchors.right: parent.right
-          anchors.verticalCenter: parent.verticalCenter
+          y: Math.max(0, (Typo.caption * 1.4 - height) / 2)
           spacing: Style.space(5)
           Rectangle {
             visible: parent.parent.live
@@ -229,12 +260,12 @@ Column {
     }
   }
 
-  // Plan steps and runs, side by side.
-  Row {
+  // Plan steps and runs: side by side when there is room for both captions in full, else stacked.
+  Flow {
     visible: root.todo !== null || root.runs.length > 0 || (!root.paneMode && root.ctx !== null)
     width: root.width
     spacing: Style.space(24)
-    readonly property real colWidth: (width - spacing) / 2
+    readonly property real colWidth: width >= Style.space(720) ? (width - spacing) / 2 : width
 
     // Plan: one segment per step (the step is the unit), current step in accent.
     Column {
@@ -264,7 +295,8 @@ Column {
       }
       Note {
         width: parent.width
-        text: root.todo ? root.todo.done + " of " + root.todo.total + (root.todo.current ? "  ·  now: " + root.todo.current : "") : ""
+        text: root.todo ? root.todo.done + " of " + root.todo.total + " steps done" + (root.todo.current ? "  ·  now: " + root.todo.current : "") : ""
+        wrapMode: Text.Wrap
       }
     }
 
@@ -306,6 +338,7 @@ Column {
         readonly property var last: root.runs.length ? root.runs[root.runs.length - 1] : null
         text: last ? (last.durationMs === null ? "current " + Format.duration(root.now - (last.startedAt || root.now)) : "last " + Format.duration(last.durationMs))
           + "  ·  longest " + Format.duration(root.longestRun) + (root.failedRuns ? "  ·  " + Format.plural(root.failedRuns, "failed", "failed") : "") : ""
+        wrapMode: Text.Wrap
       }
     }
 
@@ -346,7 +379,7 @@ Column {
         height: Math.max(sText.implicitHeight, sGlyph.height) + Style.space(2)
         StateGlyph {
           id: sGlyph
-          anchors.verticalCenter: parent.verticalCenter
+          y: Math.max(0, (Typo.caption * 1.4 - height) / 2)
           icon: parent.live ? "loader-circle" : parent.st === "completed" ? "circle-check" : parent.st === "failed" ? "circle-x" : "circle-dot"
           threadState: parent.live ? "working" : "idle"
           color: parent.live ? root.colors.accent : parent.st === "failed" ? root.colors.attention : root.colors.textFaint
@@ -358,18 +391,18 @@ Column {
           anchors.leftMargin: Style.space(9)
           anchors.right: sMeta.left
           anchors.rightMargin: Style.space(10)
-          anchors.verticalCenter: parent.verticalCenter
           text: modelData.title + (modelData.progress ? "  —  " + modelData.progress : "")
           textFormat: Text.PlainText
           color: parent.live ? root.colors.text : root.colors.textDim
           font.family: root.fontFamily
           font.pixelSize: Typo.caption
+          wrapMode: Text.Wrap
+          maximumLineCount: 2
           elide: Text.ElideRight
         }
         Text {
           id: sMeta
           anchors.right: parent.right
-          anchors.verticalCenter: parent.verticalCenter
           text: Format.model(modelData.model) + (modelData.completedAt && modelData.startedAt ? "  ·  " + Format.duration(modelData.completedAt - modelData.startedAt)
             : modelData.startedAt && parent.live ? "  ·  " + Format.duration(root.now - modelData.startedAt) : "")
           textFormat: Text.PlainText
@@ -379,20 +412,6 @@ Column {
         }
       }
     }
-  }
-
-  // Error text for failed / limited threads
-  Text {
-    visible: !!root.row.error
-    width: root.width
-    text: root.row.error || ""
-    textFormat: Text.PlainText
-    color: root.colors.attentionInk
-    font.family: root.monoFamily
-    font.pixelSize: Typo.caption
-    wrapMode: Text.Wrap
-    maximumLineCount: 5
-    elide: Text.ElideRight
   }
 
   // Dropdown only: PR title and actions (the two-pane header carries these).

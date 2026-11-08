@@ -55,8 +55,40 @@ for (const name of themes) {
       for (let j = i + 1; j < key.length; j++)
         assert.ok(Palette.distance(p[key[i]], p[key[j]]) > 0.12, `${key[i]} vs ${key[j]}: ${p[key[i]]} ${p[key[j]]}`);
     for (const state of Object.keys(Palette.STATE_ROLE)) assert.match(Palette.stateColor(p, state), /^#[0-9a-f]{6}$/);
+    // The selected row is the lightest surface text sits on in a dark theme (darkest in a light one).
+    const sel = p.surfaceSelected;
+    assert.ok(Palette.contrast(p.textDim, sel) >= 6, `dim text on the selected row: ${Palette.contrast(p.textDim, sel).toFixed(2)}`);
+    assert.ok(Palette.contrast(p.textFaint, sel) >= 4.5, `faint text on the selected row: ${Palette.contrast(p.textFaint, sel).toFixed(2)}`);
+    for (const role of ["attention", "warning", "accent", "success"]) assert.ok(Palette.contrast(p[role + "Ink"], sel) >= 4.5, `${role} ink on the selected row`);
+    assert.ok(Palette.contrast(p.focus, sel) >= 3, "selection outline on the selected fill");
+    // Needs-you red must not pass for routine text.
+    assert.ok(Palette.distance(p.attention, p.text) > 0.16, `attention vs text: ${p.attention} ${p.text}`);
   });
 }
+
+// Blue Clouds: its "red" is lavender, beside its lavender foreground, and its "yellow" is cyan.
+const BLUE_CLOUDS = { background: "#01041f", foreground: "#D6CAE3", accent: "#647dad", urgent: "#958bbb",
+  colors: { red: "#958bbb", yellow: "#9dfeff", orange: "#a59cc5", green: "#83cbee", cyan: "#96dfff", blue: "#647dad", magenta: "#9ba3e5", bright_red: "#ab9eda" } };
+
+test("a theme whose red is not red still gets a red for needs-you and an amber for plans", () => {
+  const p = Palette.derive(BLUE_CLOUDS);
+  const hue = (c) => Palette.hsl(c).h;
+  assert.ok(hue(p.attention) >= 340 || hue(p.attention) <= 15, `attention hue ${hue(p.attention)} (${p.attention})`);
+  assert.ok(hue(p.warning) >= 22 && hue(p.warning) <= 62, `warning hue ${hue(p.warning)} (${p.warning})`);
+  assert.ok(Palette.contrast(p.attentionInk, p.surfaceSelected) >= 4.5);
+  assert.ok(Palette.distance(p.attention, p.text) > 0.3, "far from the lavender text");
+});
+
+test("a theme with a real red keeps it", () => {
+  const p = Palette.derive({ background: "#eff1f5", foreground: "#4c4f69", accent: "#1e66f5", urgent: "#d20f39", colors: { red: "#d20f39", yellow: "#df8e1d" } });
+  assert.equal(p.attention, "#d20f39");
+});
+
+test("a monochrome theme stays monochrome: lightness, not hue, separates its states", () => {
+  const p = Palette.derive({ background: "#000000", foreground: "#cecece", accent: "#8d8d8d", urgent: "#a4a4a4", colors: { red: "#a4a4a4", yellow: "#cecece", green: "#bbbbbb" } });
+  assert.ok(Palette.hsl(p.attention).s < 0.05, `attention ${p.attention}`);
+  assert.ok(Palette.distance(p.attention, p.accent) > 0.12);
+});
 
 test("survives a theme that only has the base tokens", () => {
   const p = Palette.derive({ background: "#101010", foreground: "#eeeeee", accent: "#3399ff", urgent: "#ff4455", colors: {} });

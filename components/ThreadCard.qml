@@ -27,6 +27,8 @@ Item {
   // Colour budget: the glyph carries the state hue; words stay ink except the alarm states.
   readonly property color tone: colors[Store.stateRole(row.state)] || colors.textDim
   readonly property bool alarm: Store.isAlarm(row.state)
+  readonly property bool needsYou: Store.ATTENTION[row.state] === true
+  readonly property color wordInk: Store.inkRole(row.state) ? colors[Store.inkRole(row.state)] : colors.textDim
   readonly property bool loud: Store.isLoud(row.state)
   readonly property var activity: Store.currentActivity(row)
   readonly property real indent: child ? Style.space(22) : 0
@@ -50,17 +52,20 @@ Item {
     width: root.width - root.indent
     height: content.implicitHeight + Style.space(root.child ? 12 : 18)
     radius: Style.cornerRadius
-    // Shell state fills: normal / hover / selected. No borders, no coloured edges.
+    // Shell state fills: normal / hover / selected. Rows that need you get a rail and a faint wash
+    // in their colour; the selected card an accent outline.
     color: root.selected ? Style.selectedFillFor(root.colors.text, root.colors.accent)
       : hover.hovered ? Style.hoverFillFor(root.colors.text, root.colors.accent)
+      : root.needsYou ? Qt.tint(root.colors.surface, Qt.rgba(root.tone.r, root.tone.g, root.tone.b, 0.08))
       : root.child ? "transparent" : root.colors.surface
+    border.width: root.selected ? 1 : 0
+    border.color: root.colors.focus
     Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
-    // Selection marker.
     Rectangle {
-      visible: root.selected
-      y: Style.space(6); width: Style.space(2); height: parent.height - Style.space(12)
-      color: root.colors.accent
+      visible: root.needsYou || root.selected
+      width: Style.space(3); height: parent.height
+      color: root.needsYou ? root.tone : root.colors.focus
     }
 
     HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
@@ -125,10 +130,10 @@ Item {
             visible: !root.child || root.loud
             text: Store.stateLabel(root.row)
             textFormat: Text.PlainText
-            color: root.alarm ? root.colors.attentionInk : root.loud ? root.colors.textDim : root.colors.textFaint
+            color: root.needsYou ? root.wordInk : root.loud ? root.colors.textDim : root.colors.textFaint
             font.family: root.fontFamily
             font.pixelSize: Typo.caption
-            font.weight: root.alarm ? Font.DemiBold : Font.Normal
+            font.weight: root.needsYou ? Font.DemiBold : Font.Normal
           }
         }
       }
