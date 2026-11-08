@@ -330,3 +330,30 @@ Reported on the installed v2.5.5: with the Blue Clouds theme (background `#01041
 **Not verified:**
 - A live theme switch. Dark-to-light token changes were exercised only in the test runner.
 - Qt 6.11. Qualified imports predate it, but the plugin wasn't run there for this release.
+
+## UI overhaul — v2.5.7 (2026-11-08)
+
+A review-driven redesign. The review files stay outside the repository, under `ui-review/` in the working copy.
+
+**How it was reviewed:**
+- **Baseline review of 2.5.6:** four design reviewer agents scored 18 screenshots on eight categories (theme fit, hierarchy, glanceability, layout and type, colour and contrast, interaction, states, craft), 1 to 10. Each lens (visual, interaction, accessibility, first-time user) was run twice, on Opus 5.5 high and on Sol 6.1 high, each judge in its own T3 thread. Overall mean 5.81.
+- **Ten rounds of fixes:** one fix agent worked in ten rounds. After each, the commit ran in the live shell, 15 fixed screenshots were captured from the demo feed in Blue Clouds and Catppuccin Latte, and four fresh Opus judges scored them blind against a brief frozen before round 1.
+- **Two full reviews (Opus and Sol):** the one after round 7 caught a scrollbar at 1.1:1 that no Opus judge had flagged. The one after round 9 scored a 7.59 mean, with seven of eight categories at 7 or above and layout at 6.62.
+- **Round 10:** fixed the two clipping bugs that review found, checked in screenshots.
+
+**Bugs found along the way:**
+- A row measured its text once, before the shell applied its final font size, and cut the status word ('Questi…'). Rows no longer measure text.
+- Detail-header key hints stacked a letter per line through a layout feedback loop.
+- The usage footer assumed two windows per provider. Sean's Claude account reports three ('Weekly · Fable'), and the cells spilled across providers. It now groups windows per provider, and the demo carries the third window.
+- A visible scrollbar covered the detail pane's right edge. Both panes now keep a scrollbar gutter.
+
+**Verified:**
+- `npm test`: 93 pass. Real-component `qmltestrunner` suites cover the theme, rows, legend, footer, action row and scrollbars at every text size and at the real panel and dropdown widths. Palette tests hold text at 4.5:1 and graphics at 3:1 across every installed theme.
+- Live, Omarchy 4.0.2-2, Quickshell 0.3.2, Qt 6.12.0: the final commit's 15 demo shots and a live-data check on the Mac, Blue Clouds and Catppuccin Latte. Sean's real usage limits (Codex with two windows, Claude with three) lay out per provider.
+- No new network, process, file, clipboard or text-input access.
+- `omarchy plugin validate .` passes. `git diff --check` is clean.
+
+**Not verified:**
+- Motion and reduced motion: reviewers saw still images.
+- Remote machines live: kamrui's pairing is expired. The demo's second machine stands in.
+- Themes other than Blue Clouds and Catppuccin Latte live: covered by the palette tests only.
