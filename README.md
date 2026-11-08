@@ -236,6 +236,7 @@ Omarchy shell (Quickshell)                         T3 server(s)
 | "Pairing required" / "Pairing expired" | Re-pair that machine. |
 | "Port owned by another user" | Something run by a different user account is listening on that machine's T3 port, so T3 Loupe won't send it your token. Check what's listening with `ss -ltnp`; start T3 (or your SSH forward) as your own user. |
 | "Collector stopped" | Node is missing or too old on the shell's `PATH`. Set `"node"` in `settings.json`. `omarchy-shell ambitiousrealism.t3-loupe status` shows the last error. On v2.5.4 and earlier, a thread with a linked PR or on a branch with an open PR also stopped it; [update](#update) to 2.5.5. |
+| The panel is white or ignores the theme | On v2.5.5 and earlier with Qt 6.12, Qt Quick's own `Color` type hid the shell's palette; [update](#update) to 2.5.6. |
 | Changes to the plugin don't show | Some nested QML components don't hot-reload; run `omarchy-restart-shell`. |
 
 ## Limitations

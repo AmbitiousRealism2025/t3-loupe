@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Wayland
 import qs.Commons
+import qs.Commons as Omarchy
 
 // Experimental presentation: the panel as a centered floating card over a dimmed
 // backdrop, sized for many threads. Click outside or press Esc to close.
@@ -56,10 +57,10 @@ PanelWindow {
     width: Math.min(win.cardWidth, win.width - Style.gapsOut * 4)
     height: Math.min(win.height * (win.maxHeightRatio + Math.max(0, Typo.bump) * 0.02), slot.implicitContentHeight + win.padding * 2)
     radius: Style.cornerRadius
-    color: win.colors.background || Color.popups.background
+    color: win.colors.background || Omarchy.Color.popups.background
     // A quiet hairline; the dimmed backdrop already separates the card.
     border.width: 1
-    border.color: win.colors.line || Color.popups.border
+    border.color: win.colors.line || Omarchy.Color.popups.border
     opacity: win.open ? 1 : 0
     scale: win.open ? 1 : 0.965
     Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }

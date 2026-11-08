@@ -1,11 +1,12 @@
 import QtQuick
 import qs.Commons
+import qs.Commons as Omarchy
 
 // Square icon button with the shell's hover fill.
 Rectangle {
   id: root
   property string icon: "circle-dot"
-  property color foreground: Color.foreground
+  property color foreground: Omarchy.Color.foreground
   property color hoverForeground: foreground
   property real iconSize: Math.round(Typo.body * 1.15)
   // false: dimmed and inert (e.g. "smaller" at the smallest size).

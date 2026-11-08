@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import qs.Commons as Omarchy
 import qs.Ui
 import "components"
 import "lib/Store.js" as Store
@@ -149,7 +150,7 @@ Panel {
         // Monochrome like its bar neighbours; only "needs you" is coloured.
         segments: root.service ? Store.ringSegments(root.service.rows) : []
         colors: ({
-          attention: root.theme ? root.theme.bar.attention : Color.urgent,
+          attention: root.theme ? root.theme.bar.attention : Omarchy.Color.urgent,
           ink: root.ink,
           inkFaint: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.35),
           track: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.16)
@@ -190,13 +191,13 @@ Panel {
         radius: height / 2
         color: "transparent"
         border.width: Math.max(1, Math.round(ring.thickness * 0.6))
-        border.color: root.theme ? root.theme.bar.attention : Color.urgent
+        border.color: root.theme ? root.theme.bar.attention : Omarchy.Color.urgent
         Text {
           id: badgeText
           anchors.centerIn: parent
           text: String(root.counts.attention)
           textFormat: Text.PlainText
-          color: root.theme ? root.theme.bar.attentionInk : Color.urgent
+          color: root.theme ? root.theme.bar.attentionInk : Omarchy.Color.urgent
           font.family: button.fontFamily
           font.pixelSize: Math.max(8, Math.round(ring.diameter * 0.5))
           font.bold: true
@@ -225,7 +226,7 @@ Panel {
         anchors.fill: parent
         anchors.margins: -panel.padding
         radius: Math.max(0, Style.cornerRadius - Border.top(panel.borderSpec))
-        color: root.theme ? root.theme.popup.background : Color.popups.background
+        color: root.theme ? root.theme.popup.background : Omarchy.Color.popups.background
       }
 
       ThreadsPanel {
