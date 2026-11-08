@@ -288,39 +288,6 @@ TestCase {
     }
   }
 
-  function test_dropdownLegendKeepsEveryKey() {
-    var svc = createTemporaryObject(serviceC, tc)
-    svc.environments = [liveEnv("e", "laptop")]
-    svc.rows = [row({ key: "e:a", id: "a", state: "working", rawStatus: "running", activeSince: now - 60000 })]
-    var p = createTemporaryObject(dropdownC, tc, { service: svc })
-    p.opened = true
-    tryVerify(function() { return p.cursor >= 0 && !p.visible_[p.cursor].kind })
-    var all = texts(p).join(" | ")
-    var keys = ["j/k select", "↵ details", "g next needing you", "1–4 view", "/ filter", "o open T3", "f layout", "r refresh", "esc close"]
-    for (var i = 0; i < keys.length; i++) verify(all.indexOf(keys[i]) >= 0, keys[i] + " in " + all)
-  }
-
-  function test_legendShowsOnlyWorkingKeys() {
-    var svc = createTemporaryObject(serviceC, tc)
-    svc.environments = [liveEnv("e", "laptop")]
-    svc.rows = [row({ key: "e:a", id: "a", state: "input", pendingKind: "command", rawStatus: "running" })]
-    var p = createTemporaryObject(panelC, tc, { service: svc })
-    p.opened = true
-    verify(has(p, /g next needing you/), texts(p).join(" | "))
-    verify(has(p, /j\/k select/))
-    svc.known = false
-    svc.rows = []
-    svc.environments = [{ id: "a", label: "laptop", sshHost: "", state: "expired", stale: false, url: "http://127.0.0.1:3773", sessionExpiresAt: now - 1000, providers: [] }]
-    tryVerify(function() { return p.disconnected })
-    verify(!has(p, /j\/k select/), "no selection keys when there is nothing to select")
-    verify(!has(p, /next needing you/))
-    verify(has(p, /r refresh/))
-  }
-
-  // The reason is what tells failed rows apart: it is never the part that gets cut. The shell
-  // creates rows before it settles its type scale (shell.toml, then the panel's text-size bump), so
-  // the font grows after the row exists; round 4 measured once, at the small size, and cut the
-  // reason in the shell while this test, at a fixed size, passed. This one changes size afterwards.
   function test_rowReasonSurvivesAFontChangeAfterCreation() {
     var r = row({ state: "failed", rawStatus: "failed", errorClass: "provider_error", completedAt: now - 60000, project: "a-long-project-name",
       error: '401: {"code":"1000","message":"Authentication Failed"}' })
@@ -395,20 +362,101 @@ TestCase {
     }
   }
 
-  function test_legendHoldsItsHeightAsTheSelectionMoves() {
+  // The legend: two rows at most, the same size for every selection, never a key without its
+  // label, no separators, and it fits beside the size control. Checked at each text size, at the
+  // widths the shell gives the two-pane window (820 px + 56 per step) and the dropdown (540 + 36).
+  function test_legendGridHoldsAtEverySizeAndSelection() {
     var svc = createTemporaryObject(serviceC, tc)
     svc.environments = [liveEnv("e", "laptop")]
-    svc.rows = manyRows()
-    var layouts = [panelC, dropdownC]
-    for (var l = 0; l < layouts.length; l++) {
-      var p = createTemporaryObject(layouts[l], tc, { service: svc })
-      p.opened = true
-      p.setFilter("all")
-      tryVerify(function() { return p.cursor >= 0 })
-      var heights = {}
-      for (var i = 0; i < 8; i++) { p.moveCursor(1); wait(0); heights[p.legendHeight] = true }
-      compare(Object.keys(heights).length, 1, (l ? "dropdown" : "panel") + " legend heights: " + Object.keys(heights).join(", "))
+    var rows = manyRows()
+    rows.push(row({ key: "e:i1", id: "i1", title: "Idle one", project: "alpha", state: "idle", rawStatus: "completed", completedAt: now - 7200000 }))
+    svc.rows = rows
+    var layouts = [{ c: shortPanelC, base: 820, step: 56, name: "panel" }, { c: dropdownC, base: 540, step: 36, name: "dropdown" }]
+    var bumps = [0, 2, 4, 6]
+    try {
+      for (var l = 0; l < layouts.length; l++) {
+        for (var b = 0; b < bumps.length; b++) {
+          Typo.bump = bumps[b]
+          var p = createTemporaryObject(layouts[l].c, tc, { service: svc, width: layouts[l].base + layouts[l].step * bumps[b] })
+          p.opened = true
+          p.setFilter("all")
+          tryVerify(function() { return p.cursor >= 0 })
+          var where = layouts[l].name + " at bump " + bumps[b]
+          var heights = {}, widths = {}
+          var verbs = {}
+          for (var i = 0; i < 26; i++) {
+            wait(0)
+            heights[p.legendHeight] = true
+            widths[p.legendWidth] = true
+            var cells = p.legendCells
+            compare(cells.length, 10, where)
+            for (var c = 0; c < cells.length; c++) {
+              if (cells[c].slot) verbs[cells[c].shown ? cells[c].verb : "(blank)"] = true
+              verify(!cells[c].shown || cells[c].verb !== "", where + ": " + cells[c].key + " without its label")
+              verify(cells[c].verb.indexOf("·") < 0 && cells[c].key.indexOf("·") < 0, where + ": a separator in the legend")
+            }
+            verify(p.legendWidth <= p.legendRoom + 0.5, where + ": legend " + p.legendWidth + " wider than its room " + p.legendRoom)
+            p.moveCursor(1)
+          }
+          compare(Object.keys(heights).length, 1, where + ": heights " + Object.keys(heights).join(", "))
+          compare(Object.keys(widths).length, 1, where + ": widths " + Object.keys(widths).join(", "))
+          verify(Object.keys(verbs).length >= 2, where + ": the cursor met different Enter actions: " + Object.keys(verbs).join(", "))
+          var line = Typo.caption * 1.6
+          verify(p.legendHeight <= 2 * line + Style.space(4), where + ": more than two lines (" + p.legendHeight + ")")
+        }
+      }
+    } finally {
+      Typo.bump = 0
     }
+  }
+
+  function test_offlineLegendShowsOnlyWindowKeys() {
+    var svc = createTemporaryObject(serviceC, tc)
+    svc.known = false
+    svc.environments = [{ id: "a", label: "laptop", sshHost: "", state: "expired", stale: false, url: "http://127.0.0.1:3773", sessionExpiresAt: now - 1000, providers: [] }]
+    var p = createTemporaryObject(panelC, tc, { service: svc })
+    p.opened = true
+    tryVerify(function() { return p.disconnected })
+    var shown = p.legendCells.filter(function(c) { return c.shown }).map(function(c) { return c.key })
+    compare(shown, ["o", "f", "r", "+/−", "esc"])
+  }
+
+  Component { id: stripC; ProviderStrip { colors: tc.colors; now: tc.now; compact: true } }
+
+  // The dropdown's usage strip: Claude and Codex (the demo's two metered providers, one spent)
+  // on one row at the dropdown's width.
+  function test_compactUsageStripIsOneRow() {
+    var providers = [
+      { name: "Claude", driver: "claudeAgent", status: "ready", auth: "authenticated", checkedAt: now,
+        windows: [{ label: "Session", usedPercent: 38, resetsAt: now + 140 * 60000, durationMins: 300 }, { label: "Weekly", usedPercent: 61, resetsAt: now + 3 * 86400000, durationMins: 10080 }] },
+      { name: "Codex", driver: "codex", status: "ready", auth: "authenticated", checkedAt: now,
+        windows: [{ label: "Session", usedPercent: 100, resetsAt: now + 47 * 60000, durationMins: 300 }, { label: "Weekly", usedPercent: 82, resetsAt: now + 5 * 86400000, durationMins: 10080 }] },
+      { name: "Pi", driver: "pi", status: "ready", auth: "authenticated", checkedAt: now, windows: [] }
+    ]
+    var bumps = [0, 2]
+    try {
+      for (var b = 0; b < bumps.length; b++) {
+        Typo.bump = bumps[b]
+        var strip = createTemporaryObject(stripC, tc, { width: 540 + 36 * bumps[b] - 24, environments: [liveEnv("e", "laptop")] })
+        strip.environments = [{ id: "e", label: "laptop", state: "live", providers: providers }]
+        wait(0)
+        verify(has(strip, /^5h:$/) && has(strip, /^full, resets 47m$/), texts(strip).join(" | "))
+        verify(strip.height < Typo.caption * 2.2, "bump " + bumps[b] + ": strip wraps to " + strip.height + " px")
+        verify(!has(strip, /^Pi$/), "providers without data stay out")
+      }
+    } finally {
+      Typo.bump = 0
+    }
+  }
+
+  function test_selectedRowIsTheAccentRingOnTheLiftedFill() {
+    var r = row({ state: "plan", completedAt: now - 60000 })
+    var c = createTemporaryObject(rowC, tc, { row: r, width: 400, selected: true })
+    var fill = c.children[0]
+    compare(String(fill.color), String(Qt.color(tc.colors.surfaceSelected)))
+    compare(fill.border.width, Style.space(2))
+    compare(String(fill.border.color), String(Qt.color(tc.colors.focus)))
+    verify(Palette.contrast(tc.colors.focus, tc.colors.surfaceSelected) >= 4.5)
   }
 
   function test_keyActionClicks() {

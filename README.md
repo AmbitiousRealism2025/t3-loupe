@@ -117,6 +117,7 @@ Sessions last 30 days, and T3 doesn't issue refresh tokens. T3 Loupe warns you t
 | `o` | bring the T3 window forward |
 | `p` | open the selected thread's pull request |
 | `c` | copy the selected thread's title |
+| `d` / `u` | page the two-pane detail down / up when it's longer than the window |
 | `r` | reconnect |
 | `Tab` | next bar panel |
 | `Esc` | close |

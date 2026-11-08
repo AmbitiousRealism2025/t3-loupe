@@ -21,6 +21,13 @@ Item {
 
   signal actionRequested(string action)
 
+  // d / u: a page down or up through a detail longer than the pane (the strip at the bottom says so).
+  function page(direction) {
+    var step = Math.max(Style.space(40), flick.height * 0.8)
+    var maxY = Math.max(0, flick.contentHeight - flick.height)
+    flick.contentY = Math.max(0, Math.min(maxY, flick.contentY + direction * step))
+  }
+
   // The thread's actions, labelled with their keys (o, p and c also work from anywhere in the panel).
   component ActionKeys: Row {
     spacing: Style.space(14)
@@ -281,7 +288,7 @@ Item {
     Text {
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
-      text: "more below ↓"
+      text: "d  more below ↓"
       textFormat: Text.PlainText
       color: root.colors.textDim
       font.family: root.fontFamily

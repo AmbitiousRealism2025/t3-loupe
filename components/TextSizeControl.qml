@@ -58,15 +58,4 @@ Row {
     available: root.step < root.sizes.length - 1
     onClicked: root.stepRequested(1)
   }
-
-  // Its keys, where they act (the legend leaves them out).
-  Text {
-    anchors.verticalCenter: parent.verticalCenter
-    leftPadding: Style.space(4)
-    text: "+/− size"
-    textFormat: Text.PlainText
-    color: root.colors.textDim
-    font.family: Style.font.family
-    font.pixelSize: Typo.caption
-  }
 }

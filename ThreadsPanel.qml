@@ -19,7 +19,10 @@ Item {
   readonly property Item listView: list
   readonly property var pinnedHeading: sticky.heading
   readonly property real pinnedHeight: sticky.stripHeight
-  readonly property real legendHeight: hints.height
+  readonly property real legendHeight: legendGrid.height
+  readonly property real legendWidth: legendGrid.width
+  readonly property real legendRoom: bottomRow.width - sizeControl.width - Style.space(20)
+  readonly property var legendCells: legendGrid.cells
 
   signal closeRequested()
   signal switchRequested(int direction)
@@ -217,23 +220,12 @@ Item {
     ensureVisible(cursor)
   }
 
-  // The key legend: every key that works here, the same in both layouts; Enter named for what it
-  // does on the item under the cursor. On one line when it fits, else on even lines of whole hints
-  // (Store.legend / Store.legendLines).
+  // The key legend: a fixed two-row grid (Store.LEGEND). Cells that don't apply here stay blank
+  // in place; Enter's cell names what Enter does on the item under the cursor, or is blank.
   readonly property string legendMode: disconnected ? "offline" : visible_.length === 0 ? "empty" : "list"
   readonly property var cursorItem: cursor >= 0 && cursor < visible_.length ? visible_[cursor] : null
-  readonly property var legendHints: Store.legend(legendMode,
+  readonly property var legendRows: Store.legendGrid(legendMode,
     Store.enterVerb(cursorItem, centered, cursorItem && !cursorItem.kind ? expanded[cursorItem.key] === true : false))
-  readonly property string legendSep: "&nbsp;&nbsp;·&nbsp;&nbsp;"
-  function legendPlain(hints) { return hints.map(function(h) { return Store.hintText(h) }).join("  ·  ") }
-  function legendStyled(hints) {
-    return hints.map(function(h) {
-      // A slotted hint is padded to its slot, so its neighbours never move; an empty slot keeps
-      // its place with the key dimmed.
-      var verb = Store.hintText(h).slice(h.key.length + 1).replace(/[ \u00a0]/g, "&nbsp;")
-      return "<font color=\"" + (h.slot && !h.verb ? colors.textFaint : colors.text) + "\">" + h.key + "</font>&nbsp;" + verb
-    }).join(legendSep)
-  }
 
   // One machine: ink dot (hollow attention ring when unreachable), name, and any issue.
   component MachineTag: Row {
@@ -331,6 +323,7 @@ Item {
       else if ((t === "-" || t === "_") && root.service) root.service.stepTextSize(-1)
       else if (t === "r" && root.service) root.service.refresh()
       else if (t === "o") root.act(root.cursor >= 0 ? root.visible_[root.cursor] : null, "focus")
+      else if ((t === "d" || t === "u") && detailPane.item) detailPane.item.page(t === "d" ? 1 : -1)
       else if (t === "p" || t === "c") {
         var target = root.centered ? root.selectedRow : (root.cursor >= 0 && !root.visible_[root.cursor].kind ? root.visible_[root.cursor] : null)
         if (target) root.act(target, t === "p" ? "pr" : "copy")
@@ -814,6 +807,7 @@ Item {
       color: root.colors.line
     }
     Loader {
+      id: detailPane
       active: root.centered
       visible: active && !root.disconnected
       anchors.top: list.top
@@ -855,23 +849,23 @@ Item {
         fontFamily: root.fontFamily
       }
 
-      // Dropdown: usage, then hints that wrap between hints.
+      // Dropdown: the same, compact, so both providers fit one row.
       ProviderStrip {
         visible: !root.centered && root.hasMetered
+        compact: true
         width: parent.width
         environments: root.environments
         colors: root.colors
         now: root.now
         fontFamily: root.fontFamily
       }
-      // Bottom row: the text-size control on the left, the key legend right-aligned beside it, on
-      // as many even lines of whole hints as it needs at this width. The layout is worked out from
-      // the padded legend (Enter's slot at its widest), so it doesn't change as the selection moves.
-      FontMetrics { id: legendMetrics; font.family: root.fontFamily; font.pixelSize: Typo.caption }
+      // Bottom row: the text-size control on the left, the key legend beside it, right-aligned: a
+      // grid of key/label cells, two rows of five, whose columns size to their widest cell. Enter's
+      // label is as wide as the widest thing it can say, so nothing moves as the selection does.
       Item {
         id: bottomRow
         width: parent.width
-        height: Math.max(sizeControl.implicitHeight, hints.implicitHeight)
+        height: Math.max(sizeControl.implicitHeight, legendGrid.height)
         TextSizeControl {
           id: sizeControl
           anchors.left: parent.left
@@ -882,25 +876,46 @@ Item {
           onStepRequested: function(delta) { if (root.service) root.service.stepTextSize(delta) }
           onSizeRequested: function(size) { if (root.service) root.service.setTextSize(size) }
         }
+        // The widest thing Enter can say, measured as a real Text so it follows every font change.
         Text {
-          id: hints
-          anchors.right: parent.right
-          anchors.verticalCenter: parent.verticalCenter
-          width: parent.width - sizeControl.width - Style.space(20)
-          horizontalAlignment: Text.AlignRight
-          textFormat: Text.StyledText
-          // Measured with FontMetrics, a method call that QML doesn't re-run on its own: reading the
-          // font and the width here makes this binding re-run whenever either changes.
-          text: {
-            var font = legendMetrics.font, room = width
-            return Store.legendLines(root.legendHints, function(shown) {
-              return font && legendMetrics.advanceWidth(root.legendPlain(shown)) <= room
-            }).map(function(line) { return root.legendStyled(line) }).join("<br>")
-          }
-          lineHeight: 1.2
-          color: root.colors.textDim
+          id: enterProbe
+          visible: false
+          text: Store.ENTER_VERBS.reduce(function(a, b) { return b.length > a.length ? b : a }, "")
           font.family: root.fontFamily
           font.pixelSize: Typo.caption
+        }
+        Grid {
+          id: legendGrid
+          readonly property var cells: root.legendRows[0].concat(root.legendRows[1])
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          columns: 5
+          rowSpacing: Style.space(4)
+          columnSpacing: Style.space(18)
+          Repeater {
+            model: legendGrid.cells
+            Row {
+              required property var modelData
+              spacing: Style.space(6)
+              // Blank, not removed: the cell keeps its place, and no key shows without its label.
+              opacity: modelData.shown ? 1 : 0
+              Text {
+                text: modelData.key
+                textFormat: Text.PlainText
+                color: root.colors.text
+                font.family: root.fontFamily
+                font.pixelSize: Typo.caption
+              }
+              Text {
+                width: modelData.slot ? enterProbe.implicitWidth : implicitWidth
+                text: modelData.verb
+                textFormat: Text.PlainText
+                color: root.colors.textDim
+                font.family: root.fontFamily
+                font.pixelSize: Typo.caption
+              }
+            }
+          }
         }
       }
     }

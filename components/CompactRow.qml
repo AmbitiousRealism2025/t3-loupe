@@ -74,7 +74,7 @@ Item {
     anchors.leftMargin: root.child ? Style.space(18) : 0
     radius: Style.cornerRadius
     // Shaded rows (subagents sit unshaded under their parent); hover and selection step up from there.
-    color: root.selected ? Style.selectedFillFor(root.colors.text, root.colors.accent)
+    color: root.selected ? root.colors.surfaceSelected
       : hover.hovered ? Style.hoverFillFor(root.colors.text, root.colors.accent)
       : root.washed ? Qt.tint(root.colors.surface, Qt.rgba(root.glyphColor.r, root.glyphColor.g, root.glyphColor.b, 0.07))
       : root.child ? "transparent" : root.colors.surface

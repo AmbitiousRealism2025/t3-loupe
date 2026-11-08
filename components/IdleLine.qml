@@ -18,7 +18,7 @@ Item {
   Rectangle {
     anchors.fill: parent
     radius: Style.cornerRadius
-    color: root.selected ? Style.selectedFillFor(root.colors.text, root.colors.accent)
+    color: root.selected ? root.colors.surfaceSelected
       : hover.hovered ? Style.hoverFillFor(root.colors.text, root.colors.accent) : "transparent"
     border.width: root.selected ? Style.space(2) : 0
     border.color: root.colors.focus

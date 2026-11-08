@@ -14,7 +14,13 @@ Flow {
   property double now: Date.now()
   property string fontFamily: Style.font.family
 
-  spacing: Style.space(22)
+  // Compact (the dropdown): short window names and meters, so both providers fit one row.
+  property bool compact: false
+
+  // Flow's spacing is both ways: keep the gap between wrapped rows small and put the wide gap
+  // between items as padding on each item instead.
+  spacing: Style.space(4)
+  readonly property real itemGap: compact ? Style.space(12) : Style.space(22)
 
   // Providers repeat across machines when they share an account; show each once,
   // preferring the freshest usage reading.
@@ -47,7 +53,8 @@ Flow {
   // What the bars are: how much of each provider's usage limit is used, per window.
   Text {
     visible: root.metered.length > 0
-    text: "USAGE LIMITS"
+    rightPadding: root.itemGap
+    text: root.compact ? "LIMITS" : "USAGE LIMITS"
     textFormat: Text.PlainText
     color: root.colors.textDim
     font.family: root.fontFamily
@@ -60,7 +67,8 @@ Flow {
     model: root.metered
     Row {
       required property var modelData
-      spacing: Style.space(8)
+      rightPadding: root.itemGap
+      spacing: root.compact ? Style.space(6) : Style.space(8)
       Rectangle {
         visible: root.unhealthy(modelData)
         anchors.verticalCenter: parent.verticalCenter
@@ -83,10 +91,10 @@ Flow {
           readonly property bool high: modelData.usedPercent >= 90
           // A window that's used up says so in words instead of drawing a full bar.
           readonly property bool spent: modelData.usedPercent >= 100
-          spacing: Style.space(6)
+          spacing: root.compact ? Style.space(4) : Style.space(6)
           Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: Store.windowLabel(modelData) + (parent.spent ? ":" : "")
+            text: (root.compact ? Store.windowShort(modelData) : Store.windowLabel(modelData)) + (parent.spent ? ":" : "")
             textFormat: Text.PlainText
             color: root.colors.textFaint
             font.family: root.fontFamily
@@ -95,7 +103,7 @@ Flow {
           Meter {
             visible: !parent.spent
             anchors.verticalCenter: parent.verticalCenter
-            width: Style.space(44)
+            width: root.compact ? Style.space(26) : Style.space(44)
             thickness: Style.space(3)
             value: modelData.usedPercent / 100
             ink: root.colors.text
@@ -105,7 +113,8 @@ Flow {
           }
           Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: parent.spent ? "limit reached" + (modelData.resetsAt ? ", resets " + Format.until(modelData.resetsAt, root.now) : "")
+            text: parent.spent ? (root.compact ? "full" + (modelData.resetsAt ? ", resets " + Format.until(modelData.resetsAt, root.now).replace("in ", "") : "")
+              : "limit reached" + (modelData.resetsAt ? ", resets " + Format.until(modelData.resetsAt, root.now) : ""))
               : Math.round(modelData.usedPercent) + "%" + (parent.high && modelData.resetsAt ? " resets " + Format.until(modelData.resetsAt, root.now) : "")
             textFormat: Text.PlainText
             color: parent.high ? root.colors.text : root.colors.textFaint

@@ -54,7 +54,7 @@ Item {
     radius: Style.cornerRadius
     // Shell state fills: normal / hover / selected. Rows that need you get a rail in their colour,
     // and those waiting on your answer a faint wash too; the selected card an accent outline.
-    color: root.selected ? Style.selectedFillFor(root.colors.text, root.colors.accent)
+    color: root.selected ? root.colors.surfaceSelected
       : hover.hovered ? Style.hoverFillFor(root.colors.text, root.colors.accent)
       : root.row.state === "input" ? Qt.tint(root.colors.surface, Qt.rgba(root.tone.r, root.tone.g, root.tone.b, 0.07))
       : root.child ? "transparent" : root.colors.surface
