@@ -50,7 +50,7 @@ Item {
     anchors.fill: parent
     radius: root.radius
     color: "transparent"
-    border.width: 1
+    border.width: root.activeFocus ? 2 : 1
     border.color: root.activeFocus ? root.accent : root.border
   }
 

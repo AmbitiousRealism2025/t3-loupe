@@ -1,11 +1,17 @@
 import QtQuick
 import qs.Commons
 import "../lib/Format.js" as Format
+import "../lib/Store.js" as Store
 
-// Provider usage on one line each: "Claude ▬ 38% ▬ 61%   Codex ▬ 100% · 47m ▬ 82%".
-// Ink meters (agents-panel style); attention only near a limit. Providers without
-// usage windows collapse into a quiet trailing list.
-Flow {
+// Provider usage limits beside their heading, one provider per row, whatever its number of windows:
+//   USAGE LIMITS  Claude  5-hour ▬ 95% resets in 1h   weekly ▬ 55%   weekly · Fable ▬ 0%
+//                 Codex   5-hour limit reached, resets in 47m   weekly ▬ 30%
+// Names share a column; each provider's windows sit side by side at their own widths (label,
+// meter, value, then the next), so one long value never widens another provider's row. A row
+// that's too long wraps inside its provider, never into another's. Ink meters (agents-panel
+// style); a spent window says so in words in place of its meter and value. Providers that report
+// no usage are left out.
+Row {
   id: root
 
   property var environments: []
@@ -13,7 +19,10 @@ Flow {
   property double now: Date.now()
   property string fontFamily: Style.font.family
 
-  spacing: Style.space(22)
+  // Compact (the dropdown): short window names ("5h", "week") and meters.
+  property bool compact: false
+
+  readonly property real itemGap: compact ? Style.space(12) : Style.space(22)
 
   // Providers repeat across machines when they share an account; show each once,
   // preferring the freshest usage reading.
@@ -43,58 +52,121 @@ Flow {
 
   function unhealthy(p) { return p.status === "error" || p.auth === "unauthenticated" }
 
-  Repeater {
-    model: root.metered
-    Row {
-      required property var modelData
-      spacing: Style.space(8)
-      Rectangle {
-        visible: root.unhealthy(modelData)
-        anchors.verticalCenter: parent.verticalCenter
-        width: Style.space(6); height: width; radius: width / 2
-        color: root.colors.attention
+  spacing: itemGap
+
+  // What the bars are: how much of each provider's usage limit is used, per window.
+  Text {
+    id: heading
+    visible: root.metered.length > 0
+    text: root.compact ? "LIMITS" : "USAGE LIMITS"
+    textFormat: Text.PlainText
+    color: root.colors.textDim
+    font.family: root.fontFamily
+    font.pixelSize: Typo.caption
+    font.bold: true
+    font.letterSpacing: 1.2
+  }
+
+  Column {
+    spacing: Style.space(4)
+
+    Item {
+      id: body
+      readonly property real gap: root.compact ? Style.space(6) : Style.space(8)
+      readonly property real meterWidth: root.compact ? Style.space(26) : Style.space(44)
+      width: Math.max(0, root.width - (heading.visible ? heading.width + root.spacing : 0))
+      height: blocks.implicitHeight
+
+      // The names' column width, measured from the names themselves (transparent, not hidden, so
+      // it's laid out and has a width).
+      Column {
+        id: names
+        opacity: 0
+        Repeater {
+          model: root.metered
+          Text { required property var modelData; text: modelData.name; font.family: root.fontFamily; font.pixelSize: Typo.caption; font.weight: Font.Medium }
+        }
       }
-      Text {
-        anchors.verticalCenter: parent.verticalCenter
-        text: modelData.name
-        textFormat: Text.PlainText
-        color: root.colors.textDim
-        font.family: root.fontFamily
-        font.pixelSize: Typo.caption
-      }
-      Repeater {
-        model: modelData.windows.slice(0, 3)
-        Row {
-          required property var modelData
-          readonly property bool high: modelData.usedPercent >= 90
-          spacing: Style.space(6)
-          Meter {
-            anchors.verticalCenter: parent.verticalCenter
-            width: Style.space(54)
-            thickness: Style.space(3)
-            value: modelData.usedPercent / 100
-            ink: root.colors.text
-            danger: root.colors.attention
-          }
-          Text {
-            anchors.verticalCenter: parent.verticalCenter
-            text: Math.round(modelData.usedPercent) + "%" + (parent.high && modelData.resetsAt ? " · " + Format.until(modelData.resetsAt, root.now).replace("in ", "") : "")
-            textFormat: Text.PlainText
-            color: parent.high ? root.colors.attentionInk : root.colors.textFaint
-            font.family: root.fontFamily
-            font.pixelSize: Typo.caption
+
+      Column {
+        id: blocks
+        width: body.width
+        spacing: Style.space(4)
+        Repeater {
+          model: root.metered
+          Item {
+            id: block
+            required property var modelData
+            readonly property var labels: Store.windowLabels(modelData.windows, root.compact)
+            width: blocks.width
+            height: Math.max(nameText.implicitHeight, windows.implicitHeight)
+            Text {
+              id: nameText
+              objectName: "block:" + block.modelData.name + ":name"
+              text: block.modelData.name
+              textFormat: Text.PlainText
+              color: root.colors.text
+              font.family: root.fontFamily
+              font.pixelSize: Typo.caption
+              font.weight: Font.Medium
+            }
+            Flow {
+              id: windows
+              x: names.implicitWidth + body.gap
+              width: block.width - x
+              spacing: Style.space(4)
+              Repeater {
+                model: block.modelData.windows
+                Row {
+                  required property var modelData
+                  required property int index
+                  readonly property bool spent: modelData.usedPercent >= 100
+                  objectName: "block:" + block.modelData.name + ":" + index
+                  spacing: body.gap
+                  rightPadding: root.itemGap
+                  Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: block.labels[parent.index]
+                    textFormat: Text.PlainText
+                    color: root.colors.textFaint
+                    font.family: root.fontFamily
+                    font.pixelSize: Typo.caption
+                  }
+                  Meter {
+                    visible: !parent.spent
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: body.meterWidth
+                    thickness: Style.space(3)
+                    value: modelData.usedPercent / 100
+                    ink: root.colors.text
+                    danger: root.colors.text
+                    track: root.colors.edge
+                  }
+                  Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: Store.windowValue(modelData, root.now, root.compact)
+                    textFormat: Text.PlainText
+                    color: modelData.usedPercent >= 90 ? root.colors.text : root.colors.textFaint
+                    font.family: root.fontFamily
+                    font.pixelSize: Typo.caption
+                  }
+                }
+              }
+            }
           }
         }
       }
     }
-  }
 
-  Text {
-    visible: root.plain.length > 0
-    text: root.plain.map(function(p) { return (root.unhealthy(p) ? "! " : "") + p.name }).join("  ·  ")
-    textFormat: Text.PlainText
-    color: root.colors.textFaint
-    font.family: root.fontFamily
-    font.pixelSize: Typo.caption
+    // Providers with no usage data are only worth a word when something is wrong with them.
+    Text {
+      readonly property var broken: root.plain.filter(function(p) { return root.unhealthy(p) })
+      visible: broken.length > 0
+      text: broken.map(function(p) { return p.name + " needs attention" }).join("  ·  ")
+      textFormat: Text.PlainText
+      color: root.colors.attentionInk
+      font.family: root.fontFamily
+      font.pixelSize: Typo.caption
+    }
   }
 }

@@ -25,8 +25,8 @@ T3 Loupe shows what every T3 Code thread is doing across all your machines. It t
 ## Features
 
 - **Live, not polled.** T3 Loupe subscribes to T3's orchestration stream, so changes reach the bar in about a second. It resumes cleanly after a network drop or a suspend.
-- **A quiet, glanceable ring.** The ring in the bar is drawn in plain text colour, like its bar neighbours. Working threads are full ink and the rest are faint. Only the threads that need you are coloured, with an outlined badge showing how many. The ring turns slowly while agents work and breathes when something is waiting on you.
-- **Structure over colour.** Threads are grouped under **Needs you**, **Working** and **Done** headings in the shell's own section style, so urgency reads from position in every theme, monochrome ones included. Only three meanings get a colour: needs you, working, and done-and-unseen. Everything else uses its icon and plain text.
+- **A quiet, glanceable ring.** The ring in the bar is drawn in plain text colour, like its bar neighbours. Working threads are full ink and the rest are faint. Only the threads that need you are coloured, and a filled badge shows how many, in the colour of the most pressing kind waiting. Its tooltip spells out the counts. The ring turns slowly while agents work and breathes when something is waiting on you.
+- **Structure over colour.** Threads are grouped under **Needs you** and **Working** headings in the shell's own section style, so urgency reads from position in every theme, monochrome ones included. Colour is kept for what needs you, by kind (violet when a thread waits for your answer, red when it failed, amber for a plan to review, in every theme with any hue, even one whose own "red" isn't red), working, and done-and-unseen. Everything else uses its icon and plain text.
 - **What the agent is doing right now.** Each busy thread shows its current step, with **the same icons T3's timeline uses**: terminal for commands, pen for edits, eye for reads, magnifier for code search, globe for web, brain for reasoning, bot for subagents, and so on.
 - **The approval text itself.** When an agent is waiting for approval, you see the exact command, file change or question, and the choices the provider offered.
 - **Two-pane window.** By default the panel opens as a floating window in the middle of the screen. Threads are listed on the left. The selected thread's live detail is on the right, and it follows `j`/`k` without anything expanding or jumping. Press `f` for a compact dropdown under the bar instead.
@@ -41,7 +41,7 @@ T3 Loupe shows what every T3 Code thread is doing across all your machines. It t
 - **Notifications that matter.** You're notified when a thread needs input, a plan is ready, a run fails, a usage limit hits, checks fail, or a long run finishes while you were away. Startup and reconnects are silent, and clicking a notification opens the panel on that thread. Notifications name only the kind of event ("A T3 thread needs your input"); titles stay in the panel unless you turn on `"details"` (see [Configuration](#notifications-and-the-collector)).
 - **Many machines.** Pair your laptop and any remote T3 servers, including ones you reach through an SSH tunnel. All threads are ranked together, and each machine shows its connection health.
 - **Native to your theme.** Every color comes from the active Omarchy theme and is held to WCAG contrast floors. All 22 shipped themes are tested, light and monochrome ones included. Changing theme recolors the plugin live.
-- **Four views.** **Inbox** (what needs you), **Active**, **Done** (finished work, newest first) and **All** (grouped by machine and project).
+- **Four views.** **Inbox** (only what needs you), **Active** (what needs you plus what's in progress), **Done** (finished work, newest first) and **All** (grouped by machine and project). The header counts the same sets as the tabs.
 - **Idle stays out of the way.** In Active and All, idle and stopped threads fold behind a collapsible **› Idle (n)** line, so busy work stays on top.
 - **Keyboard-first.** `j`/`k`, `Enter`, filters on `1`–`4`, `/` to search, `g` to jump to whatever needs you.
 
@@ -115,6 +115,9 @@ Sessions last 30 days, and T3 doesn't issue refresh tokens. T3 Loupe warns you t
 | `/` | filter by text: type, `Backspace` deletes, `Enter` keeps the filter and returns to the list, `Esc` clears it |
 | `g` | jump to the first thread that needs you |
 | `o` | bring the T3 window forward |
+| `p` | open the selected thread's pull request |
+| `c` | copy the selected thread's title |
+| `d` / `u` | page the two-pane detail down / up when it's longer than the window |
 | `r` | reconnect |
 | `Tab` | next bar panel |
 | `Esc` | close |
@@ -136,8 +139,8 @@ Set these with `omarchy bar set ambitiousrealism.t3-loupe <key> <value>`.
 
 | Key | Values | Default |
 |---|---|---|
-| `display` | `label`: "T3 Loupe" + ring · `ring`: ring with the count inside · `ring-count`: count beside the ring | `label` |
-| `reduceMotion` | `true` stops the spin, pulse and halo | `false` |
+| `display` | `label`: "T3 Loupe" + ring · `ring`: the ring alone · `ring-count`: the active count beside the ring. The needs-you badge (filled, in the colour of the most pressing kind waiting) shows in all three | `label` |
+| `reduceMotion` | `true` stops the spin and pulse | `false` |
 | `presentation` | `centered`: two-pane floating window · `dropdown`: compact panel under the bar | `centered` |
 | `panelWidth` | `420` – `900` (dropdown width) | `540` |
 
@@ -174,7 +177,7 @@ These settings live in `~/.config/t3-loupe/settings.json`. The file is optional 
 - `"details": true` puts the thread title, project, machine, error messages and pull request titles into notifications. Off by default for privacy: Omarchy's notification service passes notification text to a shell command as an argument when it saves the notification, so other accounts on the machine can see it in process listings. Leave it off on shared machines.
 - `"textSize"` makes the panel's text larger without changing the shell-wide font size. There are four steps: `0` (the shell's own size, the smallest), `2`, `4` and `6`, measured in pixels on top of the shell's type scale. You can set it with the **A↓ ▁▂▃▅ A↑** control in the panel footer, by clicking a bar to jump to that size, or with `+` / `-`. Loupe saves the choice to this file. The window widens with the text, so bigger text means easier reading rather than more truncation. Other values from `-2` to `8` can be set by hand.
 - `"node"` pins a Node binary when the shell's `PATH` doesn't have a suitable one.
-- `"demo": true` replaces live data with a synthetic feed that exercises every state.
+- `"demo": true` replaces live data with a synthetic feed that exercises every state. `"demo": "offline"` shows the same two machines with expired pairings and no threads.
 
 ## Security and privacy
 
@@ -250,7 +253,7 @@ Omarchy shell (Quickshell)                         T3 server(s)
 
 ```sh
 npm test                                              # daemon, fake-T3 end-to-end, view logic, palette × every installed theme
-node daemon/main.ts demo                              # synthetic feed (or "demo": true in settings.json)
+node daemon/main.ts demo [offline]                    # synthetic feed (or "demo": true / "offline" in settings.json)
 node tools/extract-icons.mjs <path-to-lucide-react>   # regenerate lib/Icons.js
 node tools/probe.ts 20                                # record raw frames from your paired servers to ~/.cache (never the repo)
 ```

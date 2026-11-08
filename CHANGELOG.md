@@ -2,6 +2,38 @@
 
 What changed in each version. [`VALIDATION.md`](VALIDATION.md) records how each one was verified.
 
+## 2.5.7 — 2026-11-08
+
+A UI overhaul driven by design reviews. Four reviewer agents scored the panel on eight categories, and it was reworked over ten rounds against their findings. The overall review score went from 5.8 to 7.6 out of 10. No new network, process, file, clipboard or text-input access.
+
+- **States say what's actually wrong.**
+  - **Offline:** when every machine's pairing has expired, the panel says it isn't connected and gives each machine's re-pair command, instead of "No recent threads".
+  - **Failures:** they are named by cause ("sign-in rejected", "folder missing") in the list and the detail.
+  - **Detail callouts:** every detail opens with the state, the provider's message and the next step.
+  - **Loading:** a "Loading…" line never sits under an error.
+- **Urgency shows in every theme.**
+  - **Colour:** needs-you is red, plans and limits amber, and questions and approvals violet, even in themes whose own "red" is close to their text colour, such as Blue Clouds.
+  - **Without colour:** failed rows carry a dashed rail, so they don't rely on colour alone.
+  - **Bar:** the bar badge is filled while anything needs you, and its tooltip names the counts.
+- **The counts agree.**
+  - The header, the tabs and both rings count the same threads: "6 NEED YOU · 7 WORKING · 3 DONE · 1 STOPPED".
+  - The Inbox holds only threads that need you.
+- **Rows keep what matters.** A row's second line is its state and reason, never cut off. The machine sits under the time.
+- **Read-only, and it looks it.** A provider's choices show as plain text with the `o` key to answer in T3, not as buttons that do nothing.
+- **Contrast:**
+  - Secondary text is held to 4.5:1, including on the selected row.
+  - Plan bars, meters, tracks, scrollbars and the bar ring are held to 3:1, across all shipped themes.
+  - The selection ring is the theme accent, 2 px wide.
+- **Layout:**
+  - **Legend:** a fixed two-row key legend that doesn't move as you navigate.
+  - **Detail panes:** the action comes first, stats sit two to a row, and plan and runs come before the activity list.
+  - **Scrollbars:** they never cover text.
+  - **Pinned headings:** only one group heading stays pinned at a time.
+  - **Usage limits:** grouped per provider, with each window labelled ("5-hour", "weekly", "weekly · Fable"), so accounts with three or more windows lay out cleanly.
+- **Keys:** `d` and `u` page the detail pane. Tabs show their number keys.
+- **Demo feed:** gains a sign-in error, a missing folder and an offline mode (`"demo": "offline"`), so every state can be reproduced for screenshots.
+- **Tests:** they now run the real components in Qt's test runner at every text size and the real panel widths (93 tests).
+
 ## 2.5.6 — 2026-11-08
 
 Fixes the panel ignoring the Omarchy theme on Qt 6.12.

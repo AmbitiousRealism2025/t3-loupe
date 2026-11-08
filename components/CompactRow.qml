@@ -3,8 +3,9 @@ import qs.Commons
 import "../lib/Store.js" as Store
 import "../lib/Format.js" as Format
 
-// Two-pane list row. Flat on the surface; the shell's hover/selected fills mark state,
-// a 2px accent marker marks the selection, and only the glyph carries colour.
+// Two-pane list row. Flat on the surface; the shell's hover/selected fills mark state.
+// Rows that need you carry a rail and a faint wash in their colour (red: blocked or failed;
+// amber: plan to review); the selected row adds an accent outline and rail.
 Item {
   id: root
 
@@ -22,39 +23,45 @@ Item {
 
   readonly property bool child: row.parentId !== ""
   readonly property color glyphColor: colors[Store.stateRole(row.state)] || colors.textDim
+  readonly property bool needsYou: Store.ATTENTION[row.state] === true
+  readonly property color wordInk: Store.inkRole(row.state) ? colors[Store.inkRole(row.state)] : colors.textDim
   readonly property var activity: Store.currentActivity(row)
   readonly property bool working: Store.BUSY[row.state] === true
   readonly property bool showActivity: activity !== null && (working || row.state === "input")
-  readonly property string where: {
-    var parts = []
-    if (showMachine && machineLabel) parts.push(machineLabel)
-    if (!child) parts.push(row.project)
-    return parts.join(" · ")
-  }
 
-  // What the second line says: the state in words, then the most useful detail.
+  // What the second line says: the state in words and the most useful detail. Where the thread
+  // runs is not part of it (the group headings, the right column and the detail carry that).
   readonly property string subtitle: {
     var r = row
     switch (r.state) {
       case "input": return Store.stateLabel(r) + (activity ? " · " + activity.label : "")
-      case "failed": return "Failed" + (r.errorClass ? " · " + r.errorClass.replace("_", " ") : "") + (where ? " · " + where : "")
-      case "plan": return "Plan ready" + (where ? " · " + where : "")
-      case "limited": return "Usage limit" + (r.usageResetAt ? " · resets " + Format.until(r.usageResetAt, now) : "")
-      case "queued": return "Queued" + (where ? " · " + where : "")
+      case "failed": {
+        var cause = Store.failureCause(r).label
+        return "Failed" + (cause ? " · " + cause : "")
+      }
+      case "plan": return "Plan ready"
+      // The reset time is the row's time column ("resets in 47m"), which is never cut; repeating it
+      // here only put it where a narrow row could cut it ("resets in 4…").
+      case "limited": return "Usage limit"
+      case "queued": return "Queued"
       case "review":
         if (r.pr) return "#" + r.pr.number + (r.pr.checks === "passing" ? " ✓ checks" : r.pr.checks === "failing" ? " ✗ checks" : "") + (r.lastRunMs ? " · " + Format.duration(r.lastRunMs) + " run" : "")
-        return "Done" + (r.lastRunMs ? " · " + Format.duration(r.lastRunMs) + " run" : "") + (where ? " · " + where : "")
+        return "Done" + (r.lastRunMs ? " · " + Format.duration(r.lastRunMs) + " run" : "")
       case "background": {
         var subs = Math.max(r.background ? r.background.subagents : 0, r.activeChildren || 0)
         return (subs ? Format.plural(subs, "subagent") : "Background") + (activity ? " · " + activity.label : "")
       }
-      case "stopped": return Store.stateLabel(r) + (where ? " · " + where : "")
-      case "idle": return where
+      case "stopped": return Store.stateLabel(r)
+      case "idle": return r.rawStatus === "completed" ? "Done" + (r.lastRunMs ? " · " + Format.duration(r.lastRunMs) + " run" : "") : "Idle"
     }
-    return showActivity ? activity.label : where
+    return showActivity ? activity.label : Store.stateLabel(r)
   }
+  // Rows waiting on your answer are the ones to act on now: only they get a wash. Failures and plans
+  // carry their rail and words, so the two needs-you hues never sit side by side as two fills.
+  readonly property bool washed: row.state === "input"
   readonly property string subtitleIcon: {
     if (row.state === "input") return Store.pendingInfo(row.pendingKind).icon
+    if (row.state === "failed") return Store.failureCause(row).icon
     if (row.state === "review" && row.pr) return "git-pull-request"
     if (row.state === "background") return "bot"
     if (showActivity) return activity.icon
@@ -69,15 +76,20 @@ Item {
     anchors.leftMargin: root.child ? Style.space(18) : 0
     radius: Style.cornerRadius
     // Shaded rows (subagents sit unshaded under their parent); hover and selection step up from there.
-    color: root.selected ? Style.selectedFillFor(root.colors.text, root.colors.accent)
+    color: root.selected ? root.colors.surfaceSelected
       : hover.hovered ? Style.hoverFillFor(root.colors.text, root.colors.accent)
+      : root.washed ? Qt.tint(root.colors.surface, Qt.rgba(root.glyphColor.r, root.glyphColor.g, root.glyphColor.b, 0.07))
       : root.child ? "transparent" : root.colors.surface
+    border.width: root.selected ? Style.space(2) : 0
+    border.color: root.colors.focus
     Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
-    Rectangle {
-      visible: root.selected
-      y: Style.space(6); width: Style.space(2); height: parent.height - Style.space(12)
-      color: root.colors.accent
+    // Rail: the state's colour on rows that need you, the accent on the selected row.
+    Rail {
+      visible: root.needsYou || root.selected
+      height: parent.height
+      color: root.needsYou ? root.glyphColor : root.colors.focus
+      dashed: root.row.state === "failed"
     }
   }
 
@@ -105,21 +117,22 @@ Item {
       id: left
       anchors.left: glyph.right
       anchors.leftMargin: Style.space(10)
-      anchors.right: time.left
+      anchors.right: right.left
       anchors.rightMargin: Style.space(12)
       anchors.verticalCenter: parent.verticalCenter
       spacing: Style.space(2)
 
-      Text {
+      ElidedText {
         width: parent.width
-        text: root.row.title
-        textFormat: Text.PlainText
+        fullText: root.row.title
         color: root.child || root.row.state === "idle" || root.row.state === "stopped" ? root.colors.textDim : root.colors.text
         font.family: root.fontFamily
         font.pixelSize: root.child ? Typo.caption : Typo.bodySmall
-        elide: Text.ElideRight
       }
+      // Second line: the state and reason, and nothing else, so they have the whole width and are
+      // never the part that gets cut. Where the thread runs sits under the time instead.
       Row {
+        id: line
         visible: root.subtitle !== ""
         width: parent.width
         spacing: Style.space(6)
@@ -128,32 +141,48 @@ Item {
           visible: root.subtitleIcon !== ""
           anchors.verticalCenter: parent.verticalCenter
           name: root.subtitleIcon || "zap"
-          color: root.subtitleLive ? root.colors.accentInk : Store.isAlarm(root.row.state) ? root.colors.attentionInk : root.colors.textFaint
+          color: root.subtitleLive ? root.colors.accentInk : root.needsYou ? root.wordInk : root.colors.textFaint
           size: Math.round(Typo.caption * 1.1)
         }
-        Text {
+        ElidedText {
+          id: reason
           anchors.verticalCenter: parent.verticalCenter
           width: parent.width - (subIcon.visible ? subIcon.width + parent.spacing : 0)
-          text: root.subtitle
-          textFormat: Text.PlainText
-          // Alarm exception: needs-input and failed read in attention ink; everything else stays ink.
-          color: Store.isAlarm(root.row.state) ? root.colors.attentionInk : root.showActivity ? root.colors.textDim : root.colors.textFaint
+          fullText: root.subtitle
+          // Rows that need you say so in their colour; everything else stays ink.
+          color: root.needsYou ? root.wordInk : root.showActivity ? root.colors.textDim : root.colors.textFaint
           font.family: root.subtitleIcon === "terminal" ? root.monoFamily : root.fontFamily
           font.pixelSize: Typo.caption
-          elide: Text.ElideRight
         }
       }
     }
 
-    Text {
-      id: time
+    // Right column: the time, and under it the machine (when there are several). Sized by the
+    // texts' own implicit widths, which follow every font change; nothing here is measured once.
+    Column {
+      id: right
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
-      text: Format.elapsed(root.row, root.now, root.working)
-      textFormat: Text.PlainText
-      color: root.working || Store.isAlarm(root.row.state) ? root.colors.textDim : root.colors.textFaint
-      font.family: root.monoFamily
-      font.pixelSize: Typo.caption
+      spacing: Style.space(2)
+      Text {
+        id: time
+        anchors.right: parent.right
+        text: Format.elapsed(root.row, root.now, root.working)
+        textFormat: Text.PlainText
+        color: root.working || root.needsYou ? root.colors.textDim : root.colors.textFaint
+        font.family: root.monoFamily
+        font.pixelSize: Typo.caption
+      }
+      Text {
+        id: machine
+        visible: text !== ""
+        anchors.right: parent.right
+        text: root.showMachine && root.machineLabel && !root.child ? root.machineLabel : ""
+        textFormat: Text.PlainText
+        color: root.colors.textFaint
+        font.family: root.fontFamily
+        font.pixelSize: Typo.caption
+      }
     }
   }
 }

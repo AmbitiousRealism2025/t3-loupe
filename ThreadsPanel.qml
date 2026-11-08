@@ -5,6 +5,7 @@ import qs.Ui
 import "components"
 import "lib/Store.js" as Store
 import "lib/Format.js" as Format
+import "lib/Palette.js" as Palette
 
 // Panel content: header, state distribution, machines, filters, thread list, providers.
 Item {
@@ -14,6 +15,16 @@ Item {
   property bool reduceMotion: false
   property bool opened: false
   readonly property alias keyCatcher: keys
+  // For tests: the list, its pinned heading and the legend.
+  readonly property Item listView: list
+  readonly property var pinnedHeading: sticky.heading
+  readonly property real pinnedHeight: sticky.stripHeight
+  readonly property real legendHeight: legend.height
+  readonly property real legendWidth: legendFull.implicitWidth
+  readonly property real legendX: legend.x
+  readonly property real legendRoom: bottomRow.width - sizeControl.width - Style.space(20)
+  readonly property var legendShown: root.legendRows
+  readonly property Item legendItem: legend
 
   signal closeRequested()
   signal switchRequested(int direction)
@@ -39,16 +50,21 @@ Item {
   // Idle folds start collapsed and keep their state while the shell runs.
   property var idleOpen: ({})
   readonly property var visible_: Store.visibleRows(rows, filter, query, expanded, idleOpen)
-  // Ring: only "needs you" is coloured; working is ink, the rest faint ink.
+  // Ring: what needs you in the colour of its kind (as in the list), working in ink, the rest in the
+  // 3:1 edge tone. No number in it: the header beside it says what is counted.
   readonly property var ringSegs: Store.ringSegments(rows)
   readonly property var ringColors: ({
-    attention: colors.attention, ink: colors.text, track: colors.track,
-    inkFaint: colors.text ? Qt.rgba(colors.text.r, colors.text.g, colors.text.b, 0.3) : "transparent"
+    attention: colors.attention, ask: colors.ask, warning: colors.warning, ink: colors.text, rest: colors.edge, track: colors.edge
   })
-  readonly property int needCount: Store.filterCount(rows, "attention")
-  readonly property int activeCount: Store.filterCount(rows, "active")
-  readonly property int doneCount: Store.filterCount(rows, "done")
-  readonly property int allCount: Store.filterCount(rows, "all")
+  // One tally feeds the header, the tabs and the ring, so they always agree.
+  readonly property var tally: Store.tally(rows)
+  readonly property int needCount: tally.needs
+  readonly property int activeCount: tally.active
+  readonly property int doneCount: tally.done
+  readonly property int allCount: tally.all
+  readonly property var link: Store.connection(environments)
+  // Nothing reachable and nothing to show: the disconnected state replaces the list and detail.
+  readonly property bool disconnected: link.none && rows.length === 0
   readonly property bool multiMachine: environments.length > 1
   readonly property bool hasMetered: {
     for (var i = 0; i < environments.length; i++)
@@ -110,13 +126,13 @@ Item {
   }
   onOpenedChanged: if (opened) {
     filterChosen = false; pickDefaultFilter(); cursor = -1; list.positionViewAtBeginning()
-    if (centered) Qt.callLater(selectFirst)
+    Qt.callLater(selectFirst)
   }
   onNeedCountChanged: if (opened && !filterChosen && filter === "attention" && needCount === 0) pickDefaultFilter()
 
   function setFilter(f) {
     filter = f; filterChosen = true; cursor = -1; list.positionViewAtBeginning()
-    if (centered) Qt.callLater(selectFirst)
+    Qt.callLater(selectFirst)
   }
 
   function toggleIdle(key) {
@@ -163,10 +179,31 @@ Item {
     expanded = next
     if (service) service.requestDetail(row.envId, row.id)
     Qt.callLater(function() {
-      for (var i = 0; i < visible_.length; i++) if (visible_[i].key === key) { cursor = i; list.positionViewAtIndex(i, ListView.Contain) }
+      for (var i = 0; i < visible_.length; i++) if (visible_[i].key === key) { cursor = i; ensureVisible(i) }
     })
     // Again once the drawer has laid out at full height.
     settleScroll.restart()
+  }
+
+  // Scrolls the item at i fully into view, clear of the pinned heading at the top and the
+  // "more below" strip at the bottom, with a little room to spare.
+  function ensureVisible(i) {
+    if (i < 0 || i >= visible_.length) return
+    list.positionViewAtIndex(i, ListView.Contain)
+    clearOfEdges(i)
+    // Once more after the list has laid out the rows it just created (their heights and the
+    // list's origin can shift as they appear).
+    Qt.callLater(function() { if (root.cursor === i) root.clearOfEdges(i) })
+  }
+  function clearOfEdges(i) {
+    var it = list.itemAtIndex(i)
+    if (!it) return
+    var margin = Style.space(8)
+    var maxY = list.originY + Math.max(0, list.contentHeight - list.height)
+    var bottom = list.contentY + list.height - moreBelow.height - margin
+    if (it.y + it.height > bottom) list.contentY = Math.min(maxY, list.contentY + (it.y + it.height - bottom))
+    var top = list.contentY + (list.contentY > list.originY + 1 ? sticky.stripHeight : 0)
+    if (it.y < top && list.contentY > list.originY) list.contentY = Math.max(list.originY, it.y - sticky.stripHeight - margin)
   }
 
   // Section headings are not cursor stops.
@@ -182,16 +219,15 @@ Item {
     }
     if (i < 0 || i >= visible_.length) return
     cursor = i
-    list.positionViewAtIndex(cursor, ListView.Contain)
+    ensureVisible(cursor)
   }
 
-  function hintText(wrap) {
-    var hints = [["j/k", centered ? "select" : "move"], ["↵", centered ? "subagents" : "expand"], ["1–4", "view"], ["/", "filter"],
-      ["f", "toggle view"], ["o", "open T3"], ["esc", "close"]]
-    return hints.map(function(h) {
-      return "<font color=\"" + colors.textDim + "\">" + h[0] + "</font>&nbsp;" + h[1].replace(/ /g, "&nbsp;")
-    }).join(wrap ? "&nbsp;&nbsp;·&nbsp; " : "&nbsp;&nbsp;·&nbsp;&nbsp;")
-  }
+  // The key legend (Store.legendRows): two rows of the keys that work here; Enter's names what it
+  // does on the item under the cursor, or isn't there.
+  readonly property string legendMode: disconnected ? "offline" : visible_.length === 0 ? "empty" : "list"
+  readonly property var cursorItem: cursor >= 0 && cursor < visible_.length ? visible_[cursor] : null
+  readonly property var legendRows: Store.legendRows(legendMode,
+    Store.enterVerb(cursorItem, centered, cursorItem && !cursorItem.kind ? expanded[cursorItem.key] === true : false))
 
   // One machine: ink dot (hollow attention ring when unreachable), name, and any issue.
   component MachineTag: Row {
@@ -219,9 +255,11 @@ Item {
       visible: !parent.ok || parent.expiring
       anchors.verticalCenter: parent.verticalCenter
       text: !parent.ok ? Store.environmentLabel(modelData.state).toLowerCase() + (modelData.stale && modelData.lastLiveAt ? " · " + Format.ago(modelData.lastLiveAt, root.now) : "")
-        : "re-pair " + Format.until(modelData.sessionExpiresAt, root.now)
+        : "pairing expires " + Format.until(modelData.sessionExpiresAt, root.now)
       textFormat: Text.PlainText
-      color: root.colors.attentionInk
+      // Broken is red. An expiry is a note in dim ink; amber is kept for plans, so even the last
+      // day before it lapses is full ink, not a colour.
+      color: !parent.ok ? root.colors.attentionInk : modelData.sessionExpiresAt - root.now < 86400000 ? root.colors.text : root.colors.textDim
       font.family: root.fontFamily
       font.pixelSize: Typo.caption
     }
@@ -245,7 +283,7 @@ Item {
   Timer {
     id: settleScroll
     interval: 350
-    onTriggered: if (root.cursor >= 0) list.positionViewAtIndex(root.cursor, ListView.Contain)
+    onTriggered: if (root.cursor >= 0) root.ensureVisible(root.cursor)
   }
 
   // Refresh pinned detail while a drawer stays open.
@@ -287,8 +325,13 @@ Item {
       else if ((t === "-" || t === "_") && root.service) root.service.stepTextSize(-1)
       else if (t === "r" && root.service) root.service.refresh()
       else if (t === "o") root.act(root.cursor >= 0 ? root.visible_[root.cursor] : null, "focus")
+      else if ((t === "d" || t === "u") && detailPane.item) detailPane.item.page(t === "d" ? 1 : -1)
+      else if (t === "p" || t === "c") {
+        var target = root.centered ? root.selectedRow : (root.cursor >= 0 && !root.visible_[root.cursor].kind ? root.visible_[root.cursor] : null)
+        if (target) root.act(target, t === "p" ? "pr" : "copy")
+      }
       else if (t === "g") {
-        for (var i = 0; i < root.visible_.length; i++) if (!root.visible_[i].kind && Store.ATTENTION[root.visible_[i].state]) { root.cursor = i; list.positionViewAtIndex(i, ListView.Contain); break }
+        for (var i = 0; i < root.visible_.length; i++) if (!root.visible_[i].kind && Store.ATTENTION[root.visible_[i].state]) { root.cursor = i; root.ensureVisible(i); break }
       }
     }
 
@@ -310,10 +353,9 @@ Item {
           segments: root.ringSegs
           colors: root.ringColors
           spinning: root.service && root.service.counts.busy > 0
-          alert: root.service && root.service.counts.attention > 0
           reduceMotion: root.reduceMotion
           offline: root.service && !root.service.known
-          centerText: root.service && root.service.known ? String(root.service.counts.active) : "—"
+          centerText: root.service && root.service.known ? "" : "—"
           textColor: root.colors.text
           fontFamily: root.fontFamily
           fontSize: Typo.bodySmall
@@ -335,22 +377,33 @@ Item {
             font.pixelSize: Typo.heading
             font.bold: true
           }
+          // The tabs' numbers in the tabs' words, adding up to All.
           Text {
             width: parent.width
             text: {
+              function tint(color, words) { return "<font color=\"" + color + "\">" + words + "</font>" }
+              var alarm = root.colors.attentionInk
               if (!root.service) return "SERVICE NOT LOADED"
-              if (root.service.health === "down") return "COLLECTOR STOPPED · RESTARTING"
-              if (root.service.configError) return "SETTINGS UNREADABLE · " + root.service.configError.toUpperCase()
+              if (root.service.health === "down") return tint(alarm, "COLLECTOR STOPPED · RESTARTING")
+              if (root.service.configError) return tint(alarm, "SETTINGS UNREADABLE · " + root.service.configError.toUpperCase())
               if (!root.environments.length) return "NO T3 MACHINES PAIRED"
-              var c = root.service.counts
-              var parts = []
-              if (c.attention) parts.push(c.attention + " NEED" + (c.attention === 1 ? "S" : "") + " YOU")
-              parts.push(c.busy + " WORKING")
-              if (c.review) parts.push(c.review + " DONE")
-              parts.push(Format.plural(root.environments.length, "MACHINE", "MACHINES"))
-              return parts.join("  ·  ")
+              var sep = "&nbsp;&nbsp;·&nbsp;&nbsp;"
+              var strong = root.colors.text
+              var quiet = root.colors.textFaint
+              if (root.disconnected) return tint(alarm, "NOT CONNECTED") + sep + Format.plural(root.link.total, "MACHINE", "MACHINES")
+              // The tabs' own words and numbers, scannable: what needs you first, in the colour of the
+              // most pressing kind waiting; working in full ink; done, stopped and idle dimmed.
+              // The parts add up to All, and match the All view's folds.
+              var t = root.tally
+              var parts = [t.needs ? tint(root.colors[Store.needsRole(root.rows) + "Ink"], t.needs + " NEED" + (t.needs === 1 ? "S" : "") + " YOU") : tint(quiet, "NOTHING NEEDS YOU")]
+              parts.push(tint(strong, t.working + " WORKING"))
+              parts.push(tint(quiet, t.done + " DONE"))
+              if (t.stopped) parts.push(tint(quiet, t.stopped + " STOPPED"))
+              if (t.other) parts.push(tint(quiet, t.other + " IDLE"))
+              if (root.link.connected !== root.link.total) parts.push(tint(alarm, root.link.connected + " OF " + root.link.total + " MACHINES CONNECTED"))
+              return parts.join(sep)
             }
-            textFormat: Text.PlainText
+            textFormat: Text.StyledText
             color: root.colors.textDim
             font.family: root.fontFamily
             font.pixelSize: Typo.caption
@@ -392,17 +445,17 @@ Item {
       // Filters + search
       Item {
         width: parent.width
-        height: Math.max(filters.implicitHeight, search.implicitHeight)
-        visible: root.environments.length > 0
+        height: Math.max(filters.implicitHeight, search.implicitHeight) + Style.space(4)
+        visible: root.environments.length > 0 && !root.disconnected
         ButtonGroup {
           id: filters
           anchors.left: parent.left
-          anchors.verticalCenter: parent.verticalCenter
+          anchors.top: parent.top
           options: [
-            { value: "attention", label: "Inbox  " + root.needCount, tooltip: "1" },
-            { value: "active", label: "Active  " + root.activeCount, tooltip: "2" },
-            { value: "done", label: "Done  " + root.doneCount, tooltip: "3" },
-            { value: "all", label: "All  " + root.allCount, tooltip: "4" }
+            { value: "attention", label: "   Inbox  " + root.needCount, tooltip: "1" },
+            { value: "active", label: "   Active  " + root.activeCount, tooltip: "2" },
+            { value: "done", label: "   Done  " + root.doneCount, tooltip: "3" },
+            { value: "all", label: "   All  " + root.allCount, tooltip: "4" }
           ]
           value: root.filter
           foreground: root.colors.text
@@ -412,6 +465,72 @@ Item {
           fontSize: Typo.caption
           focusable: false
           onChanged: function(v) { root.setFilter(v) }
+        }
+        // Over each tab: a border in the 3:1 edge tone (the shell's own is lighter) and its number key.
+        Repeater {
+          model: 4
+          Item {
+            required property int index
+            readonly property Item tab: {
+              var n = -1
+              for (var i = 0; i < filters.children.length; i++) {
+                if (filters.children[i].selected === undefined) continue
+                if (++n === index) return filters.children[i]
+              }
+              return null
+            }
+            visible: tab !== null
+            x: filters.x + (tab ? tab.x : 0)
+            y: filters.y + (tab ? tab.y : 0)
+            width: tab ? tab.width : 0
+            height: tab ? tab.height : 0
+            Rectangle {
+              anchors.fill: parent
+              color: "transparent"
+              radius: Style.cornerRadius
+              border.width: 1
+              border.color: parent.tab && parent.tab.selected === true ? root.colors.focus : root.colors.edge
+            }
+            // The tab's key, drawn as a small keycap in the label's first two (blank) character cells,
+            // so it reads as a key, not a second count: "[1] Inbox 6". The shell centres the label.
+            Rectangle {
+              id: digitCap
+              readonly property string label: parent.tab ? String(parent.tab.text) : ""
+              // Reading tabMetrics.font makes these re-run when the font changes (advanceWidth is a call).
+              readonly property real cell: tabMetrics.font ? tabMetrics.advanceWidth("  ") : 0
+              x: Math.round((parent.width - (tabMetrics.font ? tabMetrics.advanceWidth(label) : 0)) / 2) - Style.space(2)
+              anchors.verticalCenter: parent.verticalCenter
+              width: Math.max(digit.implicitWidth + Style.space(6), cell - Style.space(1))
+              height: digit.implicitHeight + Style.space(2)
+              radius: Math.min(Style.cornerRadius, Style.space(2))
+              color: "transparent"
+              border.width: 1
+              border.color: root.colors.edge
+              Text {
+                id: digit
+                anchors.centerIn: parent
+                text: String(digitCap.parent.index + 1)
+                textFormat: Text.PlainText
+                color: root.colors.textDim
+                font.family: root.fontFamily
+                font.pixelSize: Math.max(7, Typo.caption - 1)
+              }
+              FontMetrics { id: tabMetrics; font.family: root.fontFamily; font.pixelSize: Typo.caption; font.bold: digitCap.parent.tab ? digitCap.parent.tab.selected === true : false }
+            }
+          }
+        }
+        // The current view, marked under its tab in the accent: the shell's selected fill alone is faint.
+        Rectangle {
+          readonly property Item tab: {
+            for (var i = 0; i < filters.children.length; i++) if (filters.children[i].selected === true) return filters.children[i]
+            return null
+          }
+          visible: tab !== null
+          x: filters.x + (tab ? tab.x : 0)
+          y: filters.y + filters.height + Style.space(1)
+          width: tab ? tab.width : 0
+          height: Style.space(3)
+          color: root.colors.focus
         }
         FilterField {
           id: search
@@ -434,9 +553,22 @@ Item {
         }
       }
 
+      // No machine reachable: what is wrong with each, and the step that fixes it.
+      DisconnectedState {
+        visible: root.disconnected
+        width: Math.min(parent.width, Style.space(640))
+        anchors.horizontalCenter: parent.horizontalCenter
+        topPadding: Style.space(24)
+        environments: root.environments
+        colors: root.colors
+        now: root.now
+        fontFamily: root.fontFamily
+        monoFamily: root.monoFamily
+      }
+
       // Setup / empty states
       Column {
-        visible: root.visible_.length === 0
+        visible: root.visible_.length === 0 && !root.disconnected
         width: parent.width
         spacing: Style.space(6)
         topPadding: Style.space(10)
@@ -452,7 +584,7 @@ Item {
           horizontalAlignment: Text.AlignHCenter
           text: !root.environments.length ? "Pair a T3 environment to start"
             : root.query ? "No threads match “" + root.query + "”"
-            : root.filter === "attention" ? "Inbox zero — nothing needs you" : root.filter === "active" ? "No active threads"
+            : root.filter === "attention" ? "Nothing needs you right now" : root.filter === "active" ? "Nothing in progress"
             : root.filter === "done" ? "Nothing finished recently" : "No recent threads"
           textFormat: Text.PlainText
           color: root.colors.textDim
@@ -465,7 +597,7 @@ Item {
           wrapMode: Text.Wrap
           visible: text !== ""
           text: !root.environments.length ? "Run:  t3-loupe pair-local   (see README for remote machines)"
-            : root.filter === "attention" && root.activeCount > 0 ? root.activeCount + " active — press 2 to see them" : ""
+            : root.filter === "attention" && root.tally.working > 0 ? Format.plural(root.tally.working, "thread") + " working — press 2 to see them" : ""
           textFormat: Text.PlainText
           color: root.colors.textFaint
           font.family: root.monoFamily
@@ -476,6 +608,7 @@ Item {
 
     ListView {
       id: list
+      visible: !root.disconnected
       anchors.top: chrome.bottom
       anchors.topMargin: Style.space(10)
       anchors.bottom: footer.top
@@ -486,13 +619,15 @@ Item {
       boundsBehavior: Flickable.StopAtBounds
       model: root.visible_
       reuseItems: false
-      ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+      // Shown whenever the list is longer than its pane, in the palette's 3:1 scroll tones.
+      ScrollBar.vertical: LoupeScrollBar { id: listBar; colors: root.colors; policy: ScrollBar.AlwaysOn }
 
       delegate: Column {
         id: cell
         required property var modelData
         required property int index
-        width: list.width - (list.contentHeight > list.height ? Style.space(8) : 0)
+        // A fixed inset for the scrollbar, whether or not it shows: rows never run under it.
+        width: list.width - listBar.inset
         spacing: Style.space(4)
         // Grouped view: a heading whenever machine/project changes between roots.
         readonly property string group: root.filter === "all" && !modelData.parentId && !modelData.kind ? Store.groupKey(modelData, root.environments)
@@ -534,6 +669,7 @@ Item {
           id: lineComponent
           IdleLine {
             count: cell.modelData.count
+            label: cell.modelData.label || "Idle"
             open: cell.modelData.open
             selected: cell.index === root.cursor
             colors: root.colors
@@ -588,9 +724,86 @@ Item {
       displaced: Transition { NumberAnimation { properties: "y"; duration: 160; easing.type: Easing.OutCubic } }
     }
 
+    // Scrolled lists keep their place. One heading stays pinned at the top: the group (All) or
+    // section (Active) of the row just under it. When the next group's own heading reaches the top,
+    // the pinned one gives way to it, so two headings never stack. At the bottom, a solid strip says
+    // when more is below (no fade over rows), and the selection is kept clear of both.
+    Item {
+      x: list.x
+      y: list.y
+      width: list.width - listBar.inset
+      height: sticky.stripHeight
+      clip: true
+      visible: sticky.heading !== null
+      Rectangle {
+        id: sticky
+        readonly property real stripHeight: stickyCaption.implicitHeight + Style.space(10)
+        // The row just under the strip, and the group or section it belongs to.
+        readonly property int under: list.visible && list.contentY - list.originY >= 2 ? list.indexAt(Style.space(20), list.contentY + stripHeight) : -1
+        readonly property var heading: {
+          if (under < 0) return null
+          var cell = list.itemAtIndex(under)
+          // That row starts its own group and its heading is on screen: pin nothing over it.
+          if (cell && (cell.newGroup || cell.isSection) && cell.y >= list.contentY - 1) return null
+          for (var k = under; k >= 0 && k < root.visible_.length; k--) {
+            var it = root.visible_[k]
+            if (it.kind === "section") return { label: it.label, count: it.count }
+            if (root.filter === "all" && !it.parentId) return { label: Store.groupKey(it, root.environments), count: -1 }
+          }
+          return null
+        }
+        // The next group's heading pushes this one up and out as it arrives, so two never stack.
+        readonly property real push: {
+          if (under < 0) return 0
+          for (var n = under + 1; n < Math.min(root.visible_.length, under + 6); n++) {
+            var next = list.itemAtIndex(n)
+            if (!next || !(next.newGroup || next.isSection)) continue
+            var gap = next.y - (list.contentY + stripHeight)
+            return gap < stripHeight ? Math.max(0, stripHeight - Math.max(0, gap)) : 0
+          }
+          return 0
+        }
+        y: -push
+        width: parent.width
+        height: stripHeight
+        color: root.colors.background
+        SectionCaption {
+          id: stickyCaption
+          x: Style.space(4)
+          anchors.verticalCenter: parent.verticalCenter
+          label: sticky.heading ? sticky.heading.label : " "
+          count: sticky.heading ? sticky.heading.count : -1
+          foreground: root.colors.text
+          countColor: root.colors.textFaint
+          fontFamily: root.fontFamily
+        }
+        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: root.colors.line }
+      }
+    }
+    Rectangle {
+      id: moreBelow
+      visible: list.visible && list.contentY + list.height < list.contentHeight + list.originY - 2
+      x: list.x
+      y: list.y + list.height - height
+      width: list.width - listBar.inset
+      height: Style.space(22)
+      color: root.colors.background
+      Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: root.colors.line }
+      Text {
+        anchors.right: parent.right
+        anchors.rightMargin: Style.space(4)
+        anchors.verticalCenter: parent.verticalCenter
+        text: "more below ↓"
+        textFormat: Text.PlainText
+        color: root.colors.textDim
+        font.family: root.fontFamily
+        font.pixelSize: Typo.caption
+      }
+    }
+
     // Two-pane: divider and the selected thread's detail.
     Rectangle {
-      visible: root.centered
+      visible: root.centered && !root.disconnected
       anchors.top: list.top
       anchors.bottom: list.bottom
       x: list.width + Style.space(8)
@@ -598,8 +811,9 @@ Item {
       color: root.colors.line
     }
     Loader {
+      id: detailPane
       active: root.centered
-      visible: active
+      visible: active && !root.disconnected
       anchors.top: list.top
       anchors.bottom: list.bottom
       anchors.left: list.right
@@ -639,19 +853,25 @@ Item {
         fontFamily: root.fontFamily
       }
 
-      // Dropdown: usage, then hints that wrap between hints.
+      // Dropdown: the same, compact, so both providers fit one row.
       ProviderStrip {
         visible: !root.centered && root.hasMetered
+        compact: true
         width: parent.width
         environments: root.environments
         colors: root.colors
         now: root.now
         fontFamily: root.fontFamily
       }
-      // Bottom row: text size control left, key hints right (hints wrap between hints if narrow).
+      // Bottom row: the text-size control on the left, the key legend beside it: two rows of the
+      // keys that work, each flowing left with equal gaps, a fixed two lines tall. The legend starts
+      // where the widest legend (every key, Enter at its longest) would, so it never shifts as the
+      // selection moves; a key that isn't there leaves no hole.
       Item {
+        id: bottomRow
         width: parent.width
-        height: Math.max(sizeControl.implicitHeight, hints.implicitHeight)
+        height: Math.max(sizeControl.implicitHeight, legend.height)
+        readonly property real gap: Style.space(18)
         TextSizeControl {
           id: sizeControl
           anchors.left: parent.left
@@ -662,20 +882,58 @@ Item {
           onStepRequested: function(delta) { if (root.service) root.service.stepTextSize(delta) }
           onSizeRequested: function(size) { if (root.service) root.service.setTextSize(size) }
         }
-        Text {
-          id: hints
-          anchors.right: parent.right
-          anchors.verticalCenter: parent.verticalCenter
-          width: parent.width - sizeControl.width - Style.space(20)
-          horizontalAlignment: Text.AlignRight
-          wrapMode: Text.WordWrap
-          textFormat: Text.StyledText
-          text: root.hintText(true)
-          color: root.colors.textFaint
-          font.family: root.fontFamily
-          font.pixelSize: Typo.caption
-          lineHeight: 1.15
+        component LegendCell: Row {
+          property var cell: ({})
+          spacing: Style.space(6)
+          Text {
+            text: parent.cell.key || ""
+            textFormat: Text.PlainText
+            color: root.colors.text
+            font.family: root.fontFamily
+            font.pixelSize: Typo.caption
+          }
+          Text {
+            text: parent.cell.verb || ""
+            textFormat: Text.PlainText
+            color: root.colors.textDim
+            font.family: root.fontFamily
+            font.pixelSize: Typo.caption
+          }
         }
+        // Every key, Enter at its longest: measured, not shown, to fix where the legend starts.
+        Column {
+          id: legendFull
+          visible: false
+          Repeater {
+            model: Store.legendGrid("list", Store.ENTER_VERBS.reduce(function(a, b) { return b.length > a.length ? b : a }, ""))
+            Row {
+              required property var modelData
+              spacing: bottomRow.gap
+              Repeater { model: modelData; LegendCell { required property var modelData; cell: modelData } }
+            }
+          }
+        }
+        Column {
+          id: legend
+          x: Math.max(sizeControl.width + Style.space(20), parent.width - legendFull.implicitWidth)
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(4)
+          Repeater {
+            model: root.legendRows
+            // Each line is one text line tall even when empty, so the legend is always two lines.
+            Item {
+              required property var modelData
+              width: line.implicitWidth
+              height: lineProbe.implicitHeight
+              Row {
+                id: line
+                spacing: bottomRow.gap
+                Repeater { model: modelData; LegendCell { required property var modelData; cell: modelData } }
+              }
+            }
+          }
+        }
+        Text { id: lineProbe; visible: false; text: "Ag"; font.family: root.fontFamily; font.pixelSize: Typo.caption }
       }
     }
   }

@@ -5,6 +5,7 @@ import qs.Commons
 Item {
   id: root
   property int count: 0
+  property string label: "Idle"
   property bool open: false
   property bool selected: false
   property var colors: ({})
@@ -17,14 +18,16 @@ Item {
   Rectangle {
     anchors.fill: parent
     radius: Style.cornerRadius
-    color: root.selected ? Style.selectedFillFor(root.colors.text, root.colors.accent)
+    color: root.selected ? root.colors.surfaceSelected
       : hover.hovered ? Style.hoverFillFor(root.colors.text, root.colors.accent) : "transparent"
+    border.width: root.selected ? Style.space(2) : 0
+    border.color: root.colors.focus
     Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
   }
   Rectangle {
     visible: root.selected
-    x: 0; y: Style.space(5); width: Style.space(2); height: parent.height - Style.space(10)
-    color: root.colors.accent
+    width: Style.space(3); height: parent.height
+    color: root.colors.focus
   }
 
   HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
@@ -44,7 +47,7 @@ Item {
     }
     SectionCaption {
       anchors.verticalCenter: parent.verticalCenter
-      label: "Idle"
+      label: root.label
       count: root.count
       foreground: root.colors.text
       countColor: root.colors.textFaint

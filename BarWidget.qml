@@ -19,6 +19,8 @@ Panel {
   readonly property var counts: service ? service.counts : ({ active: 0, busy: 0, attention: 0, input: 0, review: 0 })
   readonly property bool known: service ? service.known : false
   readonly property bool paired: service ? service.environments.length > 0 : false
+  // The panel's own tally, so the ring shows the same number as the Active tab.
+  readonly property var tally: service ? Store.tally(service.rows) : ({ needs: 0, working: 0, active: 0 })
 
   // Widget settings (omarchy bar set ambitiousrealism.t3-loupe <key> <value>)
   readonly property string display: String(setting("display", "label"))  // label | ring | ring-count
@@ -75,8 +77,20 @@ Panel {
   implicitHeight: button.implicitHeight
 
   readonly property color ink: button.foreground
-  readonly property string centerText: !service ? "" : !paired ? "+" : !known ? "—" : String(counts.active)
+  // The ring shows activity, not a number: the one number in the bar is the needs-you badge, so a
+  // glance never has to tell two counts apart. "ring-count" puts the active count beside the ring.
+  readonly property string ringText: !service ? "" : !paired ? "+" : !known ? "—" : ""
+  readonly property string countValue: !service || !paired || !known ? "" : String(tally.active)
   readonly property bool showRingCount: display !== "ring-count"
+  // What the widget says, in words: its tooltip and its accessible name.
+  readonly property string summary: !service ? "T3 Loupe: service not running"
+    : !paired ? "T3 Loupe: no paired environments"
+    : !known ? "T3 Loupe: not connected to T3"
+    : (tally.needs ? tally.needs + (tally.needs === 1 ? " thread needs" : " threads need") + " you" : "Nothing needs you")
+      + " · " + tally.working + " working · " + tally.done + " done"
+  // The badge takes the colour of the most pressing kind waiting (failed, then an answer, then a
+  // plan), as the panel's header count does.
+  readonly property string needsRole: service ? Store.needsRole(service.rows) : "attention"
 
   WidgetButton {
     id: button
@@ -87,10 +101,10 @@ Panel {
     hasVisualContent: true
     fixedWidth: root.vertical ? -1 : glyphRow.implicitWidth + scaledHorizontalMargin * 2
     fixedHeight: root.vertical ? glyphRow.implicitHeight + scaledVerticalPadding * 2 : -1
-    active: root.counts.attention > 0
-    tooltipText: !root.service ? "T3 Loupe: service not running"
-      : !root.paired ? "T3 Loupe: no paired environments"
-      : root.counts.active + " active · " + root.counts.busy + " working · " + root.counts.attention + " need you"
+    active: root.tally.needs > 0
+    tooltipText: root.summary
+    Accessible.role: Accessible.Button
+    Accessible.name: root.summary
     onPressed: function(mouseButton) {
       if (mouseButton === Qt.MiddleButton && root.service) root.service.refresh()
       else root.toggle()
@@ -146,20 +160,18 @@ Panel {
         y: root.vertical ? glyphRow.offset(ring) : (glyphRow.height - height) / 2
         readonly property real barSize: Number(root.barSize) || Style.bar.sizeHorizontal
         diameter: Math.max(12, Math.min(barSize - Style.space(8), Style.space(19)))
-        thickness: Math.max(2, Math.round(diameter / 7.5))
-        // Monochrome like its bar neighbours; only "needs you" is coloured.
+        thickness: Math.max(3, Math.round(diameter / 5))
+        // Ink like its bar neighbours; what needs you in the colour of its kind, as in the panel.
+        // Every arc, and the track when shown, is a 3:1 mark against the bar.
         segments: root.service ? Store.ringSegments(root.service.rows) : []
-        colors: ({
-          attention: root.theme ? root.theme.bar.attention : Omarchy.Color.urgent,
-          ink: root.ink,
-          inkFaint: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.35),
-          track: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.16)
-        })
+        colors: root.theme ? ({
+          attention: root.theme.bar.attention, ask: root.theme.bar.ask, warning: root.theme.bar.warning,
+          ink: root.ink, rest: root.theme.bar.edge, track: root.theme.bar.edge
+        }) : ({ ink: root.ink, rest: root.ink, track: root.ink })
         spinning: root.counts.busy > 0
-        alert: root.counts.attention > 0
         reduceMotion: root.reduceMotion
         offline: root.service !== null && root.paired && !root.known
-        centerText: root.showRingCount ? root.centerText : ""
+        centerText: root.ringText
         textColor: root.ink
         fontFamily: button.fontFamily
         fontSize: Math.max(8, Math.round(diameter * 0.5))
@@ -167,10 +179,10 @@ Panel {
 
       Text {
         id: countText
-        visible: !root.showRingCount && !root.vertical
+        visible: !root.showRingCount && !root.vertical && root.countValue !== ""
         x: glyphRow.offset(countText)
         anchors.verticalCenter: parent.verticalCenter
-        text: root.centerText
+        text: root.countValue
         textFormat: Text.PlainText
         color: root.ink
         font.family: button.fontFamily
@@ -182,22 +194,21 @@ Panel {
       // Attention badge: how many threads are waiting on you.
       Rectangle {
         id: badge
-        visible: root.counts.attention > 0
+        visible: root.tally.needs > 0
         x: root.vertical ? (glyphRow.width - width) / 2 : glyphRow.offset(badge)
         y: root.vertical ? glyphRow.offset(badge) : (glyphRow.height - height) / 2
         height: Math.round(ring.diameter * 0.78)
         width: Math.max(height, badgeText.implicitWidth + Style.space(9))
-        // Outlined pill: present without shouting.
+        // Filled pill while anything needs you: the one number in the bar that asks for a look, in the
+        // needs-you colour (ink-strength, 4.5:1 on the bar), the numeral in the bar's own background.
         radius: height / 2
-        color: "transparent"
-        border.width: Math.max(1, Math.round(ring.thickness * 0.6))
-        border.color: root.theme ? root.theme.bar.attention : Omarchy.Color.urgent
+        color: root.theme ? root.theme.bar[root.needsRole + "Ink"] : root.ink
         Text {
           id: badgeText
           anchors.centerIn: parent
-          text: String(root.counts.attention)
+          text: String(root.tally.needs)
           textFormat: Text.PlainText
-          color: root.theme ? root.theme.bar.attentionInk : Omarchy.Color.urgent
+          color: root.theme ? root.theme.bar.background : "black"
           font.family: button.fontFamily
           font.pixelSize: Math.max(8, Math.round(ring.diameter * 0.5))
           font.bold: true

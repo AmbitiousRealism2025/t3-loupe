@@ -27,6 +27,8 @@ Item {
   // Colour budget: the glyph carries the state hue; words stay ink except the alarm states.
   readonly property color tone: colors[Store.stateRole(row.state)] || colors.textDim
   readonly property bool alarm: Store.isAlarm(row.state)
+  readonly property bool needsYou: Store.ATTENTION[row.state] === true
+  readonly property color wordInk: Store.inkRole(row.state) ? colors[Store.inkRole(row.state)] : colors.textDim
   readonly property bool loud: Store.isLoud(row.state)
   readonly property var activity: Store.currentActivity(row)
   readonly property real indent: child ? Style.space(22) : 0
@@ -50,17 +52,21 @@ Item {
     width: root.width - root.indent
     height: content.implicitHeight + Style.space(root.child ? 12 : 18)
     radius: Style.cornerRadius
-    // Shell state fills: normal / hover / selected. No borders, no coloured edges.
-    color: root.selected ? Style.selectedFillFor(root.colors.text, root.colors.accent)
+    // Shell state fills: normal / hover / selected. Rows that need you get a rail in their colour,
+    // and those waiting on your answer a faint wash too; the selected card an accent outline.
+    color: root.selected ? root.colors.surfaceSelected
       : hover.hovered ? Style.hoverFillFor(root.colors.text, root.colors.accent)
+      : root.row.state === "input" ? Qt.tint(root.colors.surface, Qt.rgba(root.tone.r, root.tone.g, root.tone.b, 0.07))
       : root.child ? "transparent" : root.colors.surface
+    border.width: root.selected ? Style.space(2) : 0
+    border.color: root.colors.focus
     Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
-    // Selection marker.
-    Rectangle {
-      visible: root.selected
-      y: Style.space(6); width: Style.space(2); height: parent.height - Style.space(12)
-      color: root.colors.accent
+    Rail {
+      visible: root.needsYou || root.selected
+      height: parent.height
+      color: root.needsYou ? root.tone : root.colors.focus
+      dashed: root.row.state === "failed"
     }
 
     HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
@@ -125,25 +131,23 @@ Item {
             visible: !root.child || root.loud
             text: Store.stateLabel(root.row)
             textFormat: Text.PlainText
-            color: root.alarm ? root.colors.attentionInk : root.loud ? root.colors.textDim : root.colors.textFaint
+            color: root.needsYou ? root.wordInk : root.loud ? root.colors.textDim : root.colors.textFaint
             font.family: root.fontFamily
             font.pixelSize: Typo.caption
-            font.weight: root.alarm ? Font.DemiBold : Font.Normal
+            font.weight: root.needsYou ? Font.DemiBold : Font.Normal
           }
         }
       }
 
       // project · branch · model
-      Text {
-        visible: text !== "" && !root.child
+      ElidedText {
+        visible: fullText !== "" && !root.child
         x: glyph.width + Style.space(8)
         width: parent.width - x
-        text: root.metaText
-        textFormat: Text.PlainText
+        fullText: root.metaText
         color: root.colors.textFaint
         font.family: root.fontFamily
         font.pixelSize: Typo.caption
-        elide: Text.ElideRight
       }
 
       // What it's doing right now (T3 timeline icon + label).
@@ -159,15 +163,13 @@ Item {
           color: root.activity && root.activity.status === "running" ? root.colors.accentInk : root.colors.textDim
           size: Math.round(Typo.caption * 1.25)
         }
-        Text {
+        ElidedText {
           anchors.verticalCenter: parent.verticalCenter
           width: parent.width - actIcon.width - Style.space(6)
-          text: root.activity ? root.activity.label : ""
-          textFormat: Text.PlainText
+          fullText: root.activity ? root.activity.label : ""
           color: root.colors.textDim
           font.family: root.activity && root.activity.icon === "terminal" ? root.monoFamily : root.fontFamily
           font.pixelSize: Typo.caption
-          elide: Text.ElideRight
         }
       }
 

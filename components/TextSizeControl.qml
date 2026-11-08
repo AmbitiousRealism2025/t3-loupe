@@ -39,9 +39,9 @@ Row {
           width: Style.space(4)
           height: Style.space(5 + index * 3)
           radius: Style.cornerRadius > 0 ? 1 : 0
-          color: root.colors.text
-          opacity: parent.on ? (index === root.step ? 0.85 : 0.45) : (barHover.hovered ? 0.3 : 0.14)
-          Behavior on opacity { NumberAnimation { duration: 120 } }
+          // Graduated steps, all solid: sizes up to the current one in ink, larger ones in the 3:1 edge
+          // tone (an outline at this size reads as a missing-glyph box).
+          color: parent.on || barHover.hovered ? root.colors.text : root.colors.edge
         }
         HoverHandler { id: barHover; cursorShape: Qt.PointingHandCursor }
         TapHandler { onTapped: root.sizeRequested(root.sizes[index]) }
