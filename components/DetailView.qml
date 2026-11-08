@@ -211,8 +211,7 @@ Column {
   }
 
   // Activity trail, newest last — T3's timeline icons. Live steps get a dot and "now".
-  Column {
-    visible: root.rest && root.detail !== null && root.detail.activity.length > 0
+  component ActivityTrail: Column {
     width: root.width
     spacing: Style.space(5)
     Caption { label: "Activity" }
@@ -268,6 +267,10 @@ Column {
       }
     }
   }
+
+  // In the dropdown the activity comes first; in the two-pane detail, plan and runs come first, so
+  // the runs chart sits high in the pane rather than under its "more below" strip.
+  ActivityTrail { visible: !root.paneMode && root.rest && root.detail !== null && root.detail.activity.length > 0 }
 
   // Plan steps and runs: side by side when there is room for both captions in full, else stacked.
   Flow {
@@ -395,6 +398,8 @@ Column {
       }
     }
   }
+
+  ActivityTrail { visible: root.paneMode && root.rest && root.detail !== null && root.detail.activity.length > 0 }
 
   // Subagents
   Column {

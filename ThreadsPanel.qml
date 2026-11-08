@@ -19,10 +19,12 @@ Item {
   readonly property Item listView: list
   readonly property var pinnedHeading: sticky.heading
   readonly property real pinnedHeight: sticky.stripHeight
-  readonly property real legendHeight: legendGrid.height
-  readonly property real legendWidth: legendGrid.width
+  readonly property real legendHeight: legend.height
+  readonly property real legendWidth: legendFull.implicitWidth
+  readonly property real legendX: legend.x
   readonly property real legendRoom: bottomRow.width - sizeControl.width - Style.space(20)
-  readonly property var legendCells: legendGrid.cells
+  readonly property var legendShown: root.legendRows
+  readonly property Item legendItem: legend
 
   signal closeRequested()
   signal switchRequested(int direction)
@@ -220,11 +222,11 @@ Item {
     ensureVisible(cursor)
   }
 
-  // The key legend: a fixed two-row grid (Store.LEGEND). Cells that don't apply here stay blank
-  // in place; Enter's cell names what Enter does on the item under the cursor, or is blank.
+  // The key legend (Store.legendRows): two rows of the keys that work here; Enter's names what it
+  // does on the item under the cursor, or isn't there.
   readonly property string legendMode: disconnected ? "offline" : visible_.length === 0 ? "empty" : "list"
   readonly property var cursorItem: cursor >= 0 && cursor < visible_.length ? visible_[cursor] : null
-  readonly property var legendRows: Store.legendGrid(legendMode,
+  readonly property var legendRows: Store.legendRows(legendMode,
     Store.enterVerb(cursorItem, centered, cursorItem && !cursorItem.kind ? expanded[cursorItem.key] === true : false))
 
   // One machine: ink dot (hollow attention ring when unreachable), name, and any issue.
@@ -859,13 +861,15 @@ Item {
         now: root.now
         fontFamily: root.fontFamily
       }
-      // Bottom row: the text-size control on the left, the key legend beside it, right-aligned: a
-      // grid of key/label cells, two rows of five, whose columns size to their widest cell. Enter's
-      // label is as wide as the widest thing it can say, so nothing moves as the selection does.
+      // Bottom row: the text-size control on the left, the key legend beside it: two rows of the
+      // keys that work, each flowing left with equal gaps, a fixed two lines tall. The legend starts
+      // where the widest legend (every key, Enter at its longest) would, so it never shifts as the
+      // selection moves; a key that isn't there leaves no hole.
       Item {
         id: bottomRow
         width: parent.width
-        height: Math.max(sizeControl.implicitHeight, legendGrid.height)
+        height: Math.max(sizeControl.implicitHeight, legend.height)
+        readonly property real gap: Style.space(18)
         TextSizeControl {
           id: sizeControl
           anchors.left: parent.left
@@ -876,47 +880,58 @@ Item {
           onStepRequested: function(delta) { if (root.service) root.service.stepTextSize(delta) }
           onSizeRequested: function(size) { if (root.service) root.service.setTextSize(size) }
         }
-        // The widest thing Enter can say, measured as a real Text so it follows every font change.
-        Text {
-          id: enterProbe
-          visible: false
-          text: Store.ENTER_VERBS.reduce(function(a, b) { return b.length > a.length ? b : a }, "")
-          font.family: root.fontFamily
-          font.pixelSize: Typo.caption
+        component LegendCell: Row {
+          property var cell: ({})
+          spacing: Style.space(6)
+          Text {
+            text: parent.cell.key || ""
+            textFormat: Text.PlainText
+            color: root.colors.text
+            font.family: root.fontFamily
+            font.pixelSize: Typo.caption
+          }
+          Text {
+            text: parent.cell.verb || ""
+            textFormat: Text.PlainText
+            color: root.colors.textDim
+            font.family: root.fontFamily
+            font.pixelSize: Typo.caption
+          }
         }
-        Grid {
-          id: legendGrid
-          readonly property var cells: root.legendRows[0].concat(root.legendRows[1])
-          anchors.right: parent.right
-          anchors.verticalCenter: parent.verticalCenter
-          columns: 5
-          rowSpacing: Style.space(4)
-          columnSpacing: Style.space(18)
+        // Every key, Enter at its longest: measured, not shown, to fix where the legend starts.
+        Column {
+          id: legendFull
+          visible: false
           Repeater {
-            model: legendGrid.cells
+            model: Store.legendGrid("list", Store.ENTER_VERBS.reduce(function(a, b) { return b.length > a.length ? b : a }, ""))
             Row {
               required property var modelData
-              spacing: Style.space(6)
-              // Blank, not removed: the cell keeps its place, and no key shows without its label.
-              opacity: modelData.shown ? 1 : 0
-              Text {
-                text: modelData.key
-                textFormat: Text.PlainText
-                color: root.colors.text
-                font.family: root.fontFamily
-                font.pixelSize: Typo.caption
-              }
-              Text {
-                width: modelData.slot ? enterProbe.implicitWidth : implicitWidth
-                text: modelData.verb
-                textFormat: Text.PlainText
-                color: root.colors.textDim
-                font.family: root.fontFamily
-                font.pixelSize: Typo.caption
+              spacing: bottomRow.gap
+              Repeater { model: modelData; LegendCell { required property var modelData; cell: modelData } }
+            }
+          }
+        }
+        Column {
+          id: legend
+          x: Math.max(sizeControl.width + Style.space(20), parent.width - legendFull.implicitWidth)
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(4)
+          Repeater {
+            model: root.legendRows
+            // Each line is one text line tall even when empty, so the legend is always two lines.
+            Item {
+              required property var modelData
+              width: line.implicitWidth
+              height: lineProbe.implicitHeight
+              Row {
+                id: line
+                spacing: bottomRow.gap
+                Repeater { model: modelData; LegendCell { required property var modelData; cell: modelData } }
               }
             }
           }
         }
+        Text { id: lineProbe; visible: false; text: "Ag"; font.family: root.fontFamily; font.pixelSize: Typo.caption }
       }
     }
   }

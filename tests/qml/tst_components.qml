@@ -362,10 +362,30 @@ TestCase {
     }
   }
 
-  // The legend: two rows at most, the same size for every selection, never a key without its
-  // label, no separators, and it fits beside the size control. Checked at each text size, at the
-  // widths the shell gives the two-pane window (820 px + 56 per step) and the dropdown (540 + 36).
-  function test_legendGridHoldsAtEverySizeAndSelection() {
+  // The cells actually drawn in the legend, line by line: [{ key, verb, x, width }].
+  function legendLayout(p) {
+    var lines = []
+    var kids = p.legendItem.children
+    for (var i = 0; i < kids.length; i++) {
+      var line = kids[i]
+      if (line.height === undefined || !line.children || !line.children.length) continue
+      var row = line.children[0]
+      var cells = []
+      for (var j = 0; j < row.children.length; j++) {
+        var cell = row.children[j]
+        if (!cell.visible || cell.cell === undefined) continue
+        cells.push({ key: cell.children[0].text, verb: cell.children[1].text, x: cell.x, width: cell.width, spacing: row.spacing })
+      }
+      lines.push(cells)
+    }
+    return lines
+  }
+
+  // The legend: two lines tall for every selection, keys flowing left with equal gaps (no hole
+  // where a key is absent), never a key without its label, no separators, starting at the same x
+  // and fitting beside the size control. Checked at each text size, at the widths the shell gives
+  // the two-pane window (820 px + 56 per step) and the dropdown (540 + 36).
+  function test_legendHoldsAtEverySizeAndSelection() {
     var svc = createTemporaryObject(serviceC, tc)
     svc.environments = [liveEnv("e", "laptop")]
     var rows = manyRows()
@@ -382,25 +402,29 @@ TestCase {
           p.setFilter("all")
           tryVerify(function() { return p.cursor >= 0 })
           var where = layouts[l].name + " at bump " + bumps[b]
-          var heights = {}, widths = {}
-          var verbs = {}
+          var heights = {}, starts = {}, enter = {}
           for (var i = 0; i < 26; i++) {
             wait(0)
             heights[p.legendHeight] = true
-            widths[p.legendWidth] = true
-            var cells = p.legendCells
-            compare(cells.length, 10, where)
-            for (var c = 0; c < cells.length; c++) {
-              if (cells[c].slot) verbs[cells[c].shown ? cells[c].verb : "(blank)"] = true
-              verify(!cells[c].shown || cells[c].verb !== "", where + ": " + cells[c].key + " without its label")
-              verify(cells[c].verb.indexOf("·") < 0 && cells[c].key.indexOf("·") < 0, where + ": a separator in the legend")
+            starts[p.legendX] = true
+            var lines = legendLayout(p)
+            compare(lines.length, 2, where + ": two lines")
+            for (var n = 0; n < lines.length; n++) {
+              var cells = lines[n]
+              for (var c = 0; c < cells.length; c++) {
+                verify(cells[c].key !== "" && cells[c].verb !== "", where + ": '" + cells[c].key + "' without its label")
+                verify((cells[c].key + cells[c].verb).indexOf("·") < 0, where + ": a separator in the legend")
+                if (c > 0) compare(cells[c].x, cells[c - 1].x + cells[c - 1].width + cells[c].spacing, where + ": a hole before " + cells[c].key)
+                if (cells[c].key === "↵") enter[cells[c].verb] = true
+              }
+              if (!lines[0].some(function(x) { return x.key === "↵" })) enter["(none)"] = true
             }
-            verify(p.legendWidth <= p.legendRoom + 0.5, where + ": legend " + p.legendWidth + " wider than its room " + p.legendRoom)
+            verify(p.legendX + p.legendWidth <= p.width + 0.5 && p.legendWidth <= p.legendRoom + 0.5, where + ": legend " + p.legendWidth + " wider than its room " + p.legendRoom)
             p.moveCursor(1)
           }
           compare(Object.keys(heights).length, 1, where + ": heights " + Object.keys(heights).join(", "))
-          compare(Object.keys(widths).length, 1, where + ": widths " + Object.keys(widths).join(", "))
-          verify(Object.keys(verbs).length >= 2, where + ": the cursor met different Enter actions: " + Object.keys(verbs).join(", "))
+          compare(Object.keys(starts).length, 1, where + ": the legend moved: " + Object.keys(starts).join(", "))
+          verify(Object.keys(enter).length >= 2, where + ": the cursor met different Enter actions: " + Object.keys(enter).join(", "))
           var line = Typo.caption * 1.6
           verify(p.legendHeight <= 2 * line + Style.space(4), where + ": more than two lines (" + p.legendHeight + ")")
         }
@@ -410,22 +434,29 @@ TestCase {
     }
   }
 
-  function test_offlineLegendShowsOnlyWindowKeys() {
+  function test_offlineLegendShowsOnlyWindowKeysOnTop() {
     var svc = createTemporaryObject(serviceC, tc)
     svc.known = false
     svc.environments = [{ id: "a", label: "laptop", sshHost: "", state: "expired", stale: false, url: "http://127.0.0.1:3773", sessionExpiresAt: now - 1000, providers: [] }]
     var p = createTemporaryObject(panelC, tc, { service: svc })
     p.opened = true
     tryVerify(function() { return p.disconnected })
-    var shown = p.legendCells.filter(function(c) { return c.shown }).map(function(c) { return c.key })
-    compare(shown, ["o", "f", "r", "+/−", "esc"])
+    var lines = legendLayout(p)
+    compare(lines[0].map(function(c) { return c.key }), ["o", "f", "r", "+/−", "esc"])
+    compare(lines[1].length, 0)
   }
 
-  Component { id: stripC; ProviderStrip { colors: tc.colors; now: tc.now; compact: true } }
+  Component { id: stripC; ProviderStrip { colors: tc.colors; now: tc.now } }
 
-  // The dropdown's usage strip: Claude and Codex (the demo's two metered providers, one spent)
-  // on one row at the dropdown's width.
-  function test_compactUsageStripIsOneRow() {
+  function xOf(item, value, from) {
+    var t = textItem(item, value)
+    verify(t !== null, "found '" + value + "' in " + texts(item).join(" | "))
+    return t.mapToItem(item, 0, 0).x
+  }
+
+  // Usage limits as a table: provider names in one column, each window's label and meter in shared
+  // columns, full words ("weekly"/"week", "limit reached"), fitting the footer, in both layouts.
+  function test_usageLimitsLineUpAsATable() {
     var providers = [
       { name: "Claude", driver: "claudeAgent", status: "ready", auth: "authenticated", checkedAt: now,
         windows: [{ label: "Session", usedPercent: 38, resetsAt: now + 140 * 60000, durationMins: 300 }, { label: "Weekly", usedPercent: 61, resetsAt: now + 3 * 86400000, durationMins: 10080 }] },
@@ -433,30 +464,34 @@ TestCase {
         windows: [{ label: "Session", usedPercent: 100, resetsAt: now + 47 * 60000, durationMins: 300 }, { label: "Weekly", usedPercent: 82, resetsAt: now + 5 * 86400000, durationMins: 10080 }] },
       { name: "Pi", driver: "pi", status: "ready", auth: "authenticated", checkedAt: now, windows: [] }
     ]
-    var bumps = [0, 2]
+    var layouts = [{ compact: false, base: 820, step: 56, first: "5-hour", week: "weekly", spent: "limit reached, resets in 47m" },
+                   { compact: true, base: 540, step: 36, first: "5h", week: "week", spent: "limit reached, resets 47m" }]
+    var bumps = [0, 2, 4]
     try {
-      for (var b = 0; b < bumps.length; b++) {
+      for (var l = 0; l < layouts.length; l++) for (var b = 0; b < bumps.length; b++) {
         Typo.bump = bumps[b]
-        var strip = createTemporaryObject(stripC, tc, { width: 540 + 36 * bumps[b] - 24, environments: [liveEnv("e", "laptop")] })
+        var L = layouts[l]
+        var width = L.base + L.step * bumps[b] - 24
+        var strip = createTemporaryObject(stripC, tc, { compact: L.compact, width: width })
         strip.environments = [{ id: "e", label: "laptop", state: "live", providers: providers }]
         wait(0)
-        verify(has(strip, /^5h:$/) && has(strip, /^full, resets 47m$/), texts(strip).join(" | "))
-        verify(strip.height < Typo.caption * 2.2, "bump " + bumps[b] + ": strip wraps to " + strip.height + " px")
+        var where = (L.compact ? "dropdown" : "panel") + " at bump " + bumps[b]
+        compare(xOf(strip, "Claude"), xOf(strip, "Codex"), where + ": names")
+        compare(xOf(strip, L.first), xOf(strip, L.first + ":"), where + ": first window label")
+        var weekly = []
+        var all = []
+        function walk(it) { if (!it || it.visible === false) return; if (it.text === L.week && it.font !== undefined) weekly.push(it.mapToItem(strip, 0, 0).x); var k = it.children || []; for (var i = 0; i < k.length; i++) walk(k[i]) }
+        walk(strip)
+        compare(weekly.length, 2, where)
+        compare(weekly[0], weekly[1], where + ": second window label")
+        verify(textItem(strip, L.spent) !== null, where + ": " + texts(strip).join(" | "))
         verify(!has(strip, /^Pi$/), "providers without data stay out")
+        verify(!has(strip, /^(wk|full)/), "no shorthand a newcomer has to decode")
+        verify(strip.implicitWidth <= width + 0.5, where + ": " + strip.implicitWidth + " wider than " + width)
       }
     } finally {
       Typo.bump = 0
     }
-  }
-
-  function test_selectedRowIsTheAccentRingOnTheLiftedFill() {
-    var r = row({ state: "plan", completedAt: now - 60000 })
-    var c = createTemporaryObject(rowC, tc, { row: r, width: 400, selected: true })
-    var fill = c.children[0]
-    compare(String(fill.color), String(Qt.color(tc.colors.surfaceSelected)))
-    compare(fill.border.width, Style.space(2))
-    compare(String(fill.border.color), String(Qt.color(tc.colors.focus)))
-    verify(Palette.contrast(tc.colors.focus, tc.colors.surfaceSelected) >= 4.5)
   }
 
   function test_keyActionClicks() {

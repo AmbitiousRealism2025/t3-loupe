@@ -3,10 +3,12 @@ import qs.Commons
 import "../lib/Format.js" as Format
 import "../lib/Store.js" as Store
 
-// Provider usage: "Claude 5h ▬ 38%  week ▬ 61%   Codex 5h ▬ 100% resets in 47m  week ▬ 82%".
-// Each bar is labelled with its window. Ink meters (agents-panel style); amber near a limit, since
-// a spent quota is a wait, not an error. Providers that report no usage are left out.
-Flow {
+// Provider usage limits as a small table beside its heading:
+//   USAGE LIMITS  Claude  5-hour  ▬  38%   weekly  ▬  61%
+//                 Codex   5-hour:    limit reached, resets in 47m   weekly  ▬  82%
+// Ink meters (agents-panel style); a spent window says so in words. Providers that report no
+// usage are left out.
+Row {
   id: root
 
   property var environments: []
@@ -17,9 +19,6 @@ Flow {
   // Compact (the dropdown): short window names and meters, so both providers fit one row.
   property bool compact: false
 
-  // Flow's spacing is both ways: keep the gap between wrapped rows small and put the wide gap
-  // between items as padding on each item instead.
-  spacing: Style.space(4)
   readonly property real itemGap: compact ? Style.space(12) : Style.space(22)
 
   // Providers repeat across machines when they share an account; show each once,
@@ -63,77 +62,73 @@ Flow {
     font.letterSpacing: 1.2
   }
 
-  Repeater {
-    model: root.metered
-    Row {
-      required property var modelData
-      rightPadding: root.itemGap
-      spacing: root.compact ? Style.space(6) : Style.space(8)
-      Rectangle {
-        visible: root.unhealthy(modelData)
-        anchors.verticalCenter: parent.verticalCenter
-        width: Style.space(6); height: width; radius: width / 2
-        color: root.colors.attention
-      }
-      Text {
-        anchors.verticalCenter: parent.verticalCenter
-        text: modelData.name
-        textFormat: Text.PlainText
-        color: root.colors.text
-        font.family: root.fontFamily
-        font.pixelSize: Typo.caption
-        font.weight: Font.Medium
-      }
+  // A small table: one row per provider, its name in the first column, then each window's label,
+  // meter and value in columns of their own, so names and meters line up down the rows.
+  Column {
+    spacing: Style.space(4)
+    Grid {
+      id: table
+      readonly property var model: Store.usageTable(root.metered, root.now, root.compact)
+      columns: model.columns
+      columnSpacing: root.compact ? Style.space(6) : Style.space(8)
+      rowSpacing: Style.space(4)
+      verticalItemAlignment: Grid.AlignVCenter
       Repeater {
-        model: modelData.windows.slice(0, 3)
-        Row {
+        model: table.model.cells
+        Item {
           required property var modelData
-          readonly property bool high: modelData.usedPercent >= 90
-          // A window that's used up says so in words instead of drawing a full bar.
-          readonly property bool spent: modelData.usedPercent >= 100
-          spacing: root.compact ? Style.space(4) : Style.space(6)
-          Text {
+          readonly property var cell: modelData
+          implicitWidth: cell.kind === "meter" ? meter.width : cellText.implicitWidth + (dot.visible ? dot.width + Style.space(6) : 0)
+          implicitHeight: Math.max(cellText.implicitHeight, meter.height)
+          width: implicitWidth
+          height: implicitHeight
+          Rectangle {
+            id: dot
+            visible: cell.kind === "name" && cell.unhealthy === true
             anchors.verticalCenter: parent.verticalCenter
-            text: (root.compact ? Store.windowShort(modelData) : Store.windowLabel(modelData)) + (parent.spent ? ":" : "")
+            width: Style.space(6); height: width; radius: width / 2
+            color: root.colors.attention
+          }
+          Text {
+            id: cellText
+            visible: cell.kind !== "meter"
+            x: dot.visible ? dot.width + Style.space(6) : 0
+            anchors.verticalCenter: parent.verticalCenter
+            // Values sit a little away from the next window's label.
+            rightPadding: cell.kind === "value" ? Style.space(root.compact ? 6 : 10) : 0
+            text: cell.text || ""
             textFormat: Text.PlainText
-            color: root.colors.textFaint
+            color: cell.kind === "name" ? root.colors.text : cell.kind === "label" ? root.colors.textFaint
+              : cell.high ? root.colors.text : root.colors.textFaint
             font.family: root.fontFamily
             font.pixelSize: Typo.caption
+            font.weight: cell.kind === "name" ? Font.Medium : Font.Normal
           }
           Meter {
-            visible: !parent.spent
+            id: meter
+            // A window that's used up says so in words instead of drawing a full bar.
+            visible: cell.kind === "meter" && !cell.spent
             anchors.verticalCenter: parent.verticalCenter
-            width: root.compact ? Style.space(26) : Style.space(44)
+            width: cell.kind === "meter" ? (root.compact ? Style.space(26) : Style.space(44)) : 0
             thickness: Style.space(3)
-            value: modelData.usedPercent / 100
+            value: cell.value || 0
             ink: root.colors.text
             // A spent quota is a wait, not a warning: the bar stays ink and the words say when it resets.
             danger: root.colors.text
             track: root.colors.edge
           }
-          Text {
-            anchors.verticalCenter: parent.verticalCenter
-            text: parent.spent ? (root.compact ? "full" + (modelData.resetsAt ? ", resets " + Format.until(modelData.resetsAt, root.now).replace("in ", "") : "")
-              : "limit reached" + (modelData.resetsAt ? ", resets " + Format.until(modelData.resetsAt, root.now) : ""))
-              : Math.round(modelData.usedPercent) + "%" + (parent.high && modelData.resetsAt ? " resets " + Format.until(modelData.resetsAt, root.now) : "")
-            textFormat: Text.PlainText
-            color: parent.high ? root.colors.text : root.colors.textFaint
-            font.family: root.fontFamily
-            font.pixelSize: Typo.caption
-          }
         }
       }
     }
-  }
-
-  // Providers with no usage data are only worth a word when something is wrong with them.
-  Text {
-    readonly property var broken: root.plain.filter(function(p) { return root.unhealthy(p) })
-    visible: broken.length > 0
-    text: broken.map(function(p) { return p.name + " needs attention" }).join("  ·  ")
-    textFormat: Text.PlainText
-    color: root.colors.attentionInk
-    font.family: root.fontFamily
-    font.pixelSize: Typo.caption
+    // Providers with no usage data are only worth a word when something is wrong with them.
+    Text {
+      readonly property var broken: root.plain.filter(function(p) { return root.unhealthy(p) })
+      visible: broken.length > 0
+      text: broken.map(function(p) { return p.name + " needs attention" }).join("  ·  ")
+      textFormat: Text.PlainText
+      color: root.colors.attentionInk
+      font.family: root.fontFamily
+      font.pixelSize: Typo.caption
+    }
   }
 }

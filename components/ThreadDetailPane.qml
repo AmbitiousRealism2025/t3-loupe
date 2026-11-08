@@ -21,7 +21,7 @@ Item {
 
   signal actionRequested(string action)
 
-  // d / u: a page down or up through a detail longer than the pane (the strip at the bottom says so).
+  // d / u: a page down or up through a detail longer than the pane.
   function page(direction) {
     var step = Math.max(Style.space(40), flick.height * 0.8)
     var maxY = Math.max(0, flick.contentHeight - flick.height)
@@ -94,6 +94,8 @@ Item {
       id: column
       width: flick.width - (flick.contentHeight > flick.height ? Style.space(10) : 0)
       spacing: Style.space(14)
+      // Room for the "more below" strip at the end, so the last block scrolls fully above it.
+      bottomPadding: Style.space(24)
 
       // Header: the title across the full width; the state and the thread's actions, each with its
       // key, on one line; then where it runs.
@@ -288,7 +290,7 @@ Item {
     Text {
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
-      text: "d  more below ↓"
+      text: "more below ↓"
       textFormat: Text.PlainText
       color: root.colors.textDim
       font.family: root.fontFamily

@@ -211,23 +211,24 @@ test("one needs-you colour where only one fits: the most severe kind present", (
   assert.equal(Store.needsRole([r("k", "failed", { parentId: "w" }), r("a", "input")]), "ask", "subagents don't count");
 });
 
-test("legend: a fixed grid, two rows of five, the same on every screen", () => {
-  const grid = (mode, enter) => Array.from(Store.legendGrid(mode, enter), (row) => Array.from(row, (c) => (c.shown ? c.key + " " + c.verb : "·")));
-  assert.deepEqual(grid("list", "subagents"), [
-    ["j/k select", "↵ subagents", "g needs you", "1–4 view", "/ filter"],
+test("legend: two rows of the keys that work, closed up, Enter last on its row", () => {
+  const rows = (mode, enter) => Array.from(Store.legendRows(mode, enter), (row) => Array.from(row, (c) => c.key + " " + c.verb));
+  assert.deepEqual(rows("list", "subagents"), [
+    ["j/k select", "g needs you", "1–4 view", "/ filter", "↵ subagents"],
     ["o open T3", "f layout", "r refresh", "+/− size", "esc close"],
   ]);
-  // Enter with nothing to do leaves its cell blank: never a bare "↵".
-  assert.deepEqual(grid("list", "")[0], ["j/k select", "·", "g needs you", "1–4 view", "/ filter"]);
-  assert.deepEqual(grid("empty", "")[0], ["·", "·", "·", "1–4 view", "/ filter"]);
-  assert.deepEqual(grid("offline", "")[0], ["·", "·", "·", "·", "·"]);
-  assert.deepEqual(grid("offline", "")[1], ["o open T3", "f layout", "r refresh", "+/− size", "esc close"]);
+  // Enter with nothing to do isn't there, and nothing else moves: it was last on its row.
+  assert.deepEqual(rows("list", ""), [["j/k select", "g needs you", "1–4 view", "/ filter"], rows("list", "x")[1]]);
+  assert.deepEqual(rows("list", "")[0], rows("list", "details")[0].slice(0, 4));
+  assert.deepEqual(rows("empty", "")[0], ["1–4 view", "/ filter"]);
+  // Offline has no list keys: the window keys take the top row, the second is empty.
+  assert.deepEqual(rows("offline", ""), [["o open T3", "f layout", "r refresh", "+/− size", "esc close"], []]);
   for (const mode of ["list", "empty", "offline"]) for (const enter of ["", ...Store.ENTER_VERBS]) {
-    const rows = Store.legendGrid(mode, enter);
-    assert.equal(rows.length, 2);
-    for (const row of rows) {
-      assert.equal(row.length, 5, "same cells in every state");
-      for (const c of row) if (c.shown) assert.ok(c.verb.length > 0, `${c.key} shown without a label`);
+    const shown = Store.legendRows(mode, enter);
+    assert.equal(shown.length, 2, "always two rows");
+    for (const row of shown) for (const c of row) {
+      assert.ok(c.verb.length > 0, `${c.key} without its label`);
+      assert.ok(!/·/.test(c.key + c.verb), "no separators");
     }
   }
   assert.equal(Store.enterVerb({ kind: "idle-line", open: false }, true, false), "unfold");
@@ -289,4 +290,19 @@ test("two runs are a sentence too; the chart starts at three", () => {
   const two = [{ ordinal: 1, status: "completed", durationMs: 8 * 60_000 }, { ordinal: 2, status: "running", startedAt: now - 14 * 60_000, durationMs: null }];
   assert.deepEqual({ ...Store.runsSummary(two, now) }, { chart: false, text: "2 runs  ·  current 14m 00s  ·  longest 14m 00s" });
   assert.equal(Store.runsSummary(two.concat([{ ordinal: 3, status: "completed", durationMs: 60_000 }]), now).chart, true);
+});
+
+test("usage limits: one row per provider, padded to the same columns, spent windows in words", () => {
+  const now = 10_000_000;
+  const p = (name, windows) => ({ name, status: "ready", auth: "authenticated", windows });
+  const table = Store.usageTable([
+    p("Claude", [{ usedPercent: 38, durationMins: 300 }, { usedPercent: 61, durationMins: 10080 }]),
+    p("Codex", [{ usedPercent: 100, durationMins: 300, resetsAt: now + 47 * 60_000 }]),
+  ], now, false);
+  assert.equal(table.columns, 7);
+  assert.equal(table.cells.length, 14, "both rows have every column");
+  assert.deepEqual(Array.from(table.cells.slice(7), (c) => c.kind + ":" + (c.text || "")),
+    ["name:Codex", "label:5-hour:", "meter:", "value:limit reached, resets in 47m", "blank:", "blank:", "blank:"]);
+  const compact = Store.usageTable([p("Codex", [{ usedPercent: 100, durationMins: 300, resetsAt: now + 47 * 60_000 }, { usedPercent: 82, durationMins: 10080 }])], now, true);
+  assert.deepEqual(Array.from(compact.cells, (c) => c.text || ""), ["Codex", "5h:", "", "limit reached, resets 47m", "week", "", "82%"]);
 });
