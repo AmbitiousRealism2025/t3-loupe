@@ -58,7 +58,7 @@ Item {
       : hover.hovered ? Style.hoverFillFor(root.colors.text, root.colors.accent)
       : root.needsYou ? Qt.tint(root.colors.surface, Qt.rgba(root.tone.r, root.tone.g, root.tone.b, 0.08))
       : root.child ? "transparent" : root.colors.surface
-    border.width: root.selected ? 1 : 0
+    border.width: root.selected ? Style.space(2) : 0
     border.color: root.colors.focus
     Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
@@ -139,16 +139,14 @@ Item {
       }
 
       // project · branch · model
-      Text {
-        visible: text !== "" && !root.child
+      ElidedText {
+        visible: fullText !== "" && !root.child
         x: glyph.width + Style.space(8)
         width: parent.width - x
-        text: root.metaText
-        textFormat: Text.PlainText
+        fullText: root.metaText
         color: root.colors.textFaint
         font.family: root.fontFamily
         font.pixelSize: Typo.caption
-        elide: Text.ElideRight
       }
 
       // What it's doing right now (T3 timeline icon + label).
@@ -164,15 +162,13 @@ Item {
           color: root.activity && root.activity.status === "running" ? root.colors.accentInk : root.colors.textDim
           size: Math.round(Typo.caption * 1.25)
         }
-        Text {
+        ElidedText {
           anchors.verticalCenter: parent.verticalCenter
           width: parent.width - actIcon.width - Style.space(6)
-          text: root.activity ? root.activity.label : ""
-          textFormat: Text.PlainText
+          fullText: root.activity ? root.activity.label : ""
           color: root.colors.textDim
           font.family: root.activity && root.activity.icon === "terminal" ? root.monoFamily : root.fontFamily
           font.pixelSize: Typo.caption
-          elide: Text.ElideRight
         }
       }
 

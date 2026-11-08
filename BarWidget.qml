@@ -77,8 +77,14 @@ Panel {
   implicitHeight: button.implicitHeight
 
   readonly property color ink: button.foreground
-  readonly property string centerText: !service ? "" : !paired ? "+" : !known ? "—" : String(tally.active)
+  // The ring shows activity, not a number: the one number in the bar is the needs-you badge, so a
+  // glance never has to tell two counts apart. "ring-count" puts the active count beside the ring.
+  readonly property string ringText: !service ? "" : !paired ? "+" : !known ? "—" : ""
+  readonly property string countValue: !service || !paired || !known ? "" : String(tally.active)
   readonly property bool showRingCount: display !== "ring-count"
+  readonly property string needsRole: service ? Store.needsRole(service.rows) : "attention"
+  readonly property color needsColor: theme ? theme.bar[needsRole] : Omarchy.Color.urgent
+  readonly property color needsInk: theme ? theme.bar[needsRole + "Ink"] : Omarchy.Color.urgent
 
   WidgetButton {
     id: button
@@ -93,7 +99,8 @@ Panel {
     tooltipText: !root.service ? "T3 Loupe: service not running"
       : !root.paired ? "T3 Loupe: no paired environments"
       : !root.known ? "T3 Loupe: not connected to T3"
-      : root.tally.needs + " need you · " + root.tally.working + " working"
+      : (root.tally.needs ? root.tally.needs + (root.tally.needs === 1 ? " thread needs" : " threads need") + " you" : "Nothing needs you")
+        + " · " + root.tally.working + " working"
     onPressed: function(mouseButton) {
       if (mouseButton === Qt.MiddleButton && root.service) root.service.refresh()
       else root.toggle()
@@ -153,7 +160,7 @@ Panel {
         // Monochrome like its bar neighbours; only "needs you" is coloured.
         segments: root.service ? Store.ringSegments(root.service.rows) : []
         colors: ({
-          attention: root.theme ? root.theme.bar.attention : Omarchy.Color.urgent,
+          needs: root.needsColor,
           ink: root.ink,
           inkFaint: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.35),
           track: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.16)
@@ -162,7 +169,7 @@ Panel {
         alert: root.tally.needs > 0
         reduceMotion: root.reduceMotion
         offline: root.service !== null && root.paired && !root.known
-        centerText: root.showRingCount ? root.centerText : ""
+        centerText: root.ringText
         textColor: root.ink
         fontFamily: button.fontFamily
         fontSize: Math.max(8, Math.round(diameter * 0.5))
@@ -170,10 +177,10 @@ Panel {
 
       Text {
         id: countText
-        visible: !root.showRingCount && !root.vertical
+        visible: !root.showRingCount && !root.vertical && root.countValue !== ""
         x: glyphRow.offset(countText)
         anchors.verticalCenter: parent.verticalCenter
-        text: root.centerText
+        text: root.countValue
         textFormat: Text.PlainText
         color: root.ink
         font.family: button.fontFamily
@@ -194,13 +201,13 @@ Panel {
         radius: height / 2
         color: "transparent"
         border.width: Math.max(1, Math.round(ring.thickness * 0.6))
-        border.color: root.theme ? root.theme.bar.attention : Omarchy.Color.urgent
+        border.color: root.needsColor
         Text {
           id: badgeText
           anchors.centerIn: parent
           text: String(root.tally.needs)
           textFormat: Text.PlainText
-          color: root.theme ? root.theme.bar.attentionInk : Omarchy.Color.urgent
+          color: root.needsInk
           font.family: button.fontFamily
           font.pixelSize: Math.max(8, Math.round(ring.diameter * 0.5))
           font.bold: true

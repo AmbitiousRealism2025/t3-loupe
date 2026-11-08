@@ -32,11 +32,13 @@ Item {
     var f = []
     if (subs > 0 || subTotal > 0) f.push({ label: "Subagents", value: subs > 0 ? subs + " running" : String(subTotal), note: subs > 0 && subTotal > subs ? subTotal + " total" : "" })
     if (row.pr) {
-      var c = row.pr.checks === "passing" ? "✓ passing" : row.pr.checks === "failing" ? "✗ failing" : row.pr.checks === "pending" ? "pending" : row.pr.state
-      f.push({ label: "PR", value: "#" + row.pr.number + " · " + c, note: (row.pr.additions || row.pr.deletions) ? "+" + row.pr.additions + " −" + row.pr.deletions : "", alarm: row.pr.checks === "failing" })
+      // The number is the value; checks and size go underneath, so a narrow cell never wraps it.
+      var c = row.pr.checks === "passing" ? "✓ checks pass" : row.pr.checks === "failing" ? "✗ checks fail" : row.pr.checks === "pending" ? "checks pending" : row.pr.state
+      var size = (row.pr.additions || row.pr.deletions) ? "+" + row.pr.additions + " −" + row.pr.deletions : ""
+      f.push({ label: "PR", value: "#" + row.pr.number, note: c + (size ? "\n" + size : ""), alarm: row.pr.checks === "failing" })
     }
-    if (ctx) f.push({ label: "Context", value: Format.tokens(ctx.used) + " / " + Format.tokens(ctx.max), meter: ctx.used / ctx.max })
-    if (ctx && ctx.cost !== null) f.push({ label: "Cost", value: Format.money(ctx.cost, ctx.currency), note: "API estimate" })
+    if (ctx) f.push({ label: "Context", value: Format.tokens(ctx.used) + " / " + Format.tokens(ctx.max), meter: ctx.used / ctx.max, note: "tokens in use" })
+    if (ctx && ctx.cost !== null) f.push({ label: "Cost", value: Format.money(ctx.cost, ctx.currency), note: "at API prices" })
     if (!f.length && row.lastRunMs) f.push({ label: "Last run", value: Format.duration(row.lastRunMs) })
     return f
   }
@@ -72,86 +74,86 @@ Item {
       width: flick.width - (flick.contentHeight > flick.height ? Style.space(10) : 0)
       spacing: Style.space(14)
 
-      // Header: title + state-led meta on the left, icon actions on the right.
-      Item {
+      // Header: the title across the full width; the state and the thread's actions, each with its
+      // key, on one line; then where it runs.
+      Column {
         width: parent.width
-        height: Math.max(headText.implicitHeight, actions.implicitHeight)
+        spacing: Style.space(7)
 
-        Column {
-          id: headText
-          anchors.left: parent.left
-          anchors.right: actions.left
-          anchors.rightMargin: Style.space(12)
-          spacing: Style.space(6)
+        Text {
+          width: parent.width
+          text: root.hasRow ? root.row.title : ""
+          textFormat: Text.PlainText
+          color: root.colors.text
+          font.family: root.fontFamily
+          font.pixelSize: Typo.title
+          font.bold: true
+          wrapMode: Text.Wrap
+          maximumLineCount: 4
+          elide: Text.ElideRight
+        }
 
-          Text {
-            width: parent.width
-            text: root.hasRow ? root.row.title : ""
-            textFormat: Text.PlainText
-            color: root.colors.text
-            font.family: root.fontFamily
-            font.pixelSize: Typo.title
-            font.bold: true
-            wrapMode: Text.Wrap
-            maximumLineCount: 4
-            elide: Text.ElideRight
-          }
-          // State first, then where it runs; wraps rather than cutting the branch or model short.
-          Flow {
-            width: parent.width
+        Item {
+          width: parent.width
+          height: Math.max(stateRow.implicitHeight, actions.implicitHeight)
+          Row {
+            id: stateRow
+            anchors.verticalCenter: parent.verticalCenter
             spacing: Style.space(7)
             StateGlyph {
               id: glyph
+              anchors.verticalCenter: parent.verticalCenter
               icon: root.hasRow ? Store.stateIcon(root.row) : "circle-dot"
               threadState: root.hasRow ? root.row.state : "idle"
               color: root.hasRow ? (root.colors[Store.stateRole(root.row.state)] || root.colors.textDim) : root.colors.textDim
               size: Math.round(Typo.body * 1.05)
-              y: Math.max(0, (stateText.implicitHeight - height) / 2)
               reduceMotion: root.reduceMotion
             }
             Text {
               id: stateText
+              anchors.verticalCenter: parent.verticalCenter
               text: root.hasRow ? Store.stateLabel(root.row) + " " + Format.elapsed(root.row, root.now, root.working) : ""
               textFormat: Text.PlainText
               color: root.hasRow && Store.inkRole(root.row.state) ? root.colors[Store.inkRole(root.row.state)] : root.colors.text
               font.family: root.fontFamily
               font.pixelSize: Typo.caption
-              font.weight: Font.Medium
+              font.weight: Font.DemiBold
             }
-            Repeater {
-              model: {
-                if (!root.hasRow) return []
-                var parts = []
-                if (root.machineLabel) parts.push(root.machineLabel)
-                parts.push(root.row.project)
-                if (root.row.branch) parts.push(root.row.branch + (root.row.worktree ? " (worktree)" : ""))
-                if (root.row.model) parts.push(Format.model(root.row.model))
-                return parts
-              }
-              Text {
-                required property var modelData
-                text: "·  " + modelData
-                textFormat: Text.PlainText
-                color: root.colors.textFaint
-                font.family: root.fontFamily
-                font.pixelSize: Typo.caption
-              }
+          }
+          // The thread's actions, labelled and keyed (o, p, c also work from anywhere in the panel).
+          Row {
+            id: actions
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.space(14)
+            KeyAction { key: "o"; text: "open T3"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily; onClicked: root.actionRequested("focus") }
+            KeyAction {
+              visible: root.hasRow && !!root.row.pr && root.row.pr.url !== ""
+              key: "p"; text: "PR"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily
+              onClicked: root.actionRequested("pr")
             }
+            KeyAction { key: "c"; text: "copy title"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily; onClicked: root.actionRequested("copy") }
           }
         }
 
-        Row {
-          id: actions
-          anchors.right: parent.right
-          anchors.top: parent.top
-          spacing: Style.space(2)
-          IconButton { icon: "app-window"; foreground: root.colors.textDim; hoverForeground: root.colors.text; onClicked: root.actionRequested("focus") }
-          IconButton {
-            visible: root.hasRow && !!root.row.pr && root.row.pr.url !== ""
-            icon: "git-pull-request"; foreground: root.colors.textDim; hoverForeground: root.colors.text
-            onClicked: root.actionRequested("pr")
+        // Machine · project · branch · model. Wraps by whole items; the separator stays at the end of
+        // the item before it, so no line starts with one.
+        Flow {
+          width: parent.width
+          spacing: Style.space(6)
+          Repeater {
+            model: root.hasRow ? Store.metaParts(root.row, root.machineLabel) : []
+            Text {
+              required property var modelData
+              required property int index
+              text: modelData + (index < parent.count - 1 ? "  ·" : "")
+              textFormat: Text.PlainText
+              color: root.colors.textFaint
+              font.family: root.fontFamily
+              font.pixelSize: Typo.caption
+            }
           }
-          IconButton { icon: "copy"; foreground: root.colors.textDim; hoverForeground: root.colors.text; onClicked: root.actionRequested("copy") }
+          readonly property int count: root.hasRow ? Store.metaParts(root.row, root.machineLabel).length : 0
         }
       }
 
@@ -197,7 +199,8 @@ Item {
                   width: parent.width
                   value: modelData.meter || 0
                   ink: root.colors.text
-                  danger: root.colors.attention
+                  danger: root.colors.warning
+                  track: root.colors.edge
                 }
                 Text {
                   visible: !!modelData.note
@@ -207,7 +210,7 @@ Item {
                   color: root.colors.textFaint
                   font.family: root.fontFamily
                   font.pixelSize: Typo.caption
-                  elide: Text.ElideRight
+                  wrapMode: Text.Wrap
                 }
               }
             }

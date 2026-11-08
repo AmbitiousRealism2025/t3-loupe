@@ -61,6 +61,14 @@ for (const name of themes) {
     assert.ok(Palette.contrast(p.textFaint, sel) >= 4.5, `faint text on the selected row: ${Palette.contrast(p.textFaint, sel).toFixed(2)}`);
     for (const role of ["attention", "warning", "accent", "success"]) assert.ok(Palette.contrast(p[role + "Ink"], sel) >= 4.5, `${role} ink on the selected row`);
     assert.ok(Palette.contrast(p.focus, sel) >= 3, "selection outline on the selected fill");
+    // Graphics that carry meaning (tracks, pending steps, past runs, borders) hold 3:1 wherever they sit.
+    for (const surface of [bg, p.surface, sel]) assert.ok(Palette.contrast(p.edge, surface) >= 3, `edge on ${surface}: ${Palette.contrast(p.edge, surface).toFixed(2)}`);
+    assert.ok(Palette.contrast(p.askInk, sel) >= 4.5, "ask ink on the selected row");
+    assert.ok(Palette.contrast(p.ask, bg) >= 3, "ask mark");
+    if (Palette.hsl(p.attention).s > 0.2) {
+      // With hue to spare, an answer waiting is never the failure red, the working accent or the text.
+      for (const other of ["attention", "accent", "text"]) assert.ok(Palette.distance(p.ask, p[other]) > 0.25, `ask vs ${other}: ${p.ask} ${p[other]}`);
+    }
     // Needs-you red must not pass for routine text.
     assert.ok(Palette.distance(p.attention, p.text) > 0.16, `attention vs text: ${p.attention} ${p.text}`);
   });

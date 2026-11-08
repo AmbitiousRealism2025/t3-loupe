@@ -99,8 +99,8 @@ test("sections follow urgency and count only what is shown", () => {
   assert.equal(Store.isStop({ kind: "idle-line" }), true);
 });
 
-test("colour budget: red for blocked or failed, amber for your turn, accent for working; ring is ink except needs-you", () => {
-  assert.equal(Store.stateRole("input"), "attention");
+test("colour budget: violet for an answer, red for failed, amber for a plan or limit, accent for working; ring is ink except needs-you", () => {
+  assert.equal(Store.stateRole("input"), "ask");
   assert.equal(Store.stateRole("failed"), "attention");
   assert.equal(Store.stateRole("plan"), "warning");
   assert.equal(Store.stateRole("limited"), "warning");
@@ -109,10 +109,11 @@ test("colour budget: red for blocked or failed, amber for your turn, accent for 
   for (const s of ["queued", "background", "idle", "stopped"]) assert.equal(Store.stateRole(s), "textDim", s);
   // Words are tinted only on rows that need you.
   assert.equal(Store.inkRole("failed"), "attentionInk");
+  assert.equal(Store.inkRole("input"), "askInk");
   assert.equal(Store.inkRole("plan"), "warningInk");
   assert.equal(Store.inkRole("working"), "");
   const segs = Array.from(Store.ringSegments([r("a", "input"), r("b", "plan"), r("c", "working"), r("d", "limited"), r("e", "review"), r("f", "idle")]), (x) => `${x.role}:${x.count}`);
-  assert.deepEqual(segs, ["attention:2", "ink:2", "inkFaint:2"]);
+  assert.deepEqual(segs, ["needs:2", "ink:2", "inkFaint:2"]);
 });
 
 test("filter editing: typing, deleting, word and line clears, and the keys that finish it", () => {
@@ -200,4 +201,55 @@ test("sub-second durations read as <1s, not 0s", () => {
   assert.equal(Format.duration(400), "<1s");
   assert.equal(Format.duration(0), "<1s");
   assert.equal(Format.duration(1500), "1s");
+});
+
+test("one needs-you colour where only one fits: the most severe kind present", () => {
+  assert.equal(Store.needsRole([r("a", "input"), r("b", "failed"), r("c", "plan")]), "attention");
+  assert.equal(Store.needsRole([r("a", "input"), r("c", "plan")]), "ask");
+  assert.equal(Store.needsRole([r("c", "plan"), r("w", "working")]), "warning");
+  assert.equal(Store.needsRole([r("k", "failed", { parentId: "w" }), r("a", "input")]), "ask", "subagents don't count");
+});
+
+test("legend: same verbs in both layouts, only keys that work, cut by priority", () => {
+  const keys = (mode, pr) => Array.from(Store.legend(mode, pr), (h) => h.key + " " + h.verb);
+  assert.deepEqual(keys("list", true), ["j/k select", "↵ expand", "g next needing you", "1–4 view", "/ filter", "o open T3", "p PR", "c copy title", "f layout", "+/− text size", "esc close"]);
+  assert.ok(!keys("list", false).includes("p PR"), "no PR key without a PR");
+  assert.deepEqual(keys("offline", false), ["o open T3", "r refresh", "f layout", "+/− text size", "esc close"]);
+  for (const k of ["j/k select", "↵ expand", "g next needing you", "/ filter"]) assert.ok(!keys("offline", false).includes(k), k);
+  // Fitting drops the least important first and keeps the display order.
+  const fit = (n) => Array.from(Store.fitLegend(Store.legend("list", true), (shown) => shown.length <= n), (h) => h.key);
+  assert.deepEqual(fit(4), ["j/k", "g", "o", "esc"]);
+  assert.deepEqual(fit(6), ["j/k", "↵", "g", "1–4", "o", "esc"]);
+  assert.equal(fit(99).length, 11);
+});
+
+test("runs caption names failed runs; sub-second runs get words, not a chart", () => {
+  const now = 10_000_000;
+  const runs = [5, 12, 3, 22].map((m, i) => ({ ordinal: i + 1, status: i === 3 ? "failed" : "completed", startedAt: 0, completedAt: 0, durationMs: m * 60_000 }))
+    .concat([{ ordinal: 5, status: "running", startedAt: now - 23 * 60_000, completedAt: null, durationMs: null }]);
+  assert.deepEqual({ ...Store.runsSummary(runs, now) }, { chart: true, text: "current 23m 00s  ·  longest 23m 00s  ·  run 4 failed" });
+  assert.deepEqual({ ...Store.runsSummary([{ ordinal: 1, status: "failed", startedAt: now, completedAt: now, durationMs: 0 }], now) },
+    { chart: false, text: "1 run, failed after <1s" });
+  assert.equal(Store.runsSummary([], now).text, "");
+  assert.match(Store.runsSummary([{ ordinal: 1, status: "failed", durationMs: 60_000 }, { ordinal: 2, status: "failed", durationMs: 1000 }], now).text, /runs 1, 2 failed/);
+});
+
+test("an activity line that repeats the error card is recognised", () => {
+  const row = { error: "This thread's workspace folder no longer exists or is not a directory: /x. Restore the folder at this path before retrying." };
+  assert.equal(Store.repeatsError({ status: "failed", label: row.error }, row), true);
+  assert.equal(Store.repeatsError({ status: "failed", label: row.error.slice(0, 60) + "…" }, row), true, "a cut-short copy too");
+  assert.equal(Store.repeatsError({ status: "completed", label: row.error }, row), false);
+  assert.equal(Store.repeatsError({ status: "failed", label: "Preparing workspace" }, row), false);
+});
+
+test("usage windows are named by their length", () => {
+  assert.equal(Store.windowLabel({ label: "Session", durationMins: 300 }), "5h");
+  assert.equal(Store.windowLabel({ label: "Weekly", durationMins: 10080 }), "week");
+  assert.equal(Store.windowLabel({ label: "Monthly", durationMins: 43200 }), "30d");
+  assert.equal(Store.windowLabel({ label: "Session" }), "session");
+});
+
+test("detail metadata lists whole items", () => {
+  assert.deepEqual(Array.from(Store.metaParts(r("a", "working", { project: "web-app", branch: "feat/x", worktree: true, model: "zai/glm-5.3" }), "laptop")),
+    ["laptop", "web-app", "feat/x (worktree)", "glm-5.3"]);
 });

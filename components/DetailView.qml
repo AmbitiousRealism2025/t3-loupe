@@ -79,7 +79,7 @@ Column {
     text: root.waited ? "No activity from T3 for this thread yet." : "Loading activity…"
   }
 
-  // Pending approval / question, with the actual text. The alarm exception: attention tint.
+  // Pending approval / question, with the actual text, in the "waiting for your answer" colour.
   Repeater {
     model: root.detail ? root.detail.pending : []
     Rectangle {
@@ -87,9 +87,9 @@ Column {
       width: root.width
       height: pend.implicitHeight + Style.space(18)
       radius: Style.cornerRadius
-      color: Qt.rgba(root.colors.attention.r, root.colors.attention.g, root.colors.attention.b, 0.07)
+      color: Qt.rgba(root.colors.ask.r, root.colors.ask.g, root.colors.ask.b, 0.09)
 
-      Rectangle { width: Style.space(2); height: parent.height; color: root.colors.attention }
+      Rectangle { width: Style.space(3); height: parent.height; color: root.colors.ask }
 
       Column {
         id: pend
@@ -103,14 +103,14 @@ Column {
           LucideIcon {
             anchors.verticalCenter: parent.verticalCenter
             name: Store.pendingInfo(modelData.kind).icon
-            color: root.colors.attentionInk
+            color: root.colors.askInk
             size: Math.round(Typo.body * 1.1)
           }
           Text {
             anchors.verticalCenter: parent.verticalCenter
             text: Store.pendingInfo(modelData.kind).label + (modelData.appName ? "  ·  " + modelData.appName : "")
             textFormat: Text.PlainText
-            color: root.colors.attentionInk
+            color: root.colors.askInk
             font.family: root.fontFamily
             font.pixelSize: Typo.bodySmall
             font.weight: Font.DemiBold
@@ -228,7 +228,8 @@ Column {
           anchors.leftMargin: Style.space(9)
           anchors.right: aWhen.left
           anchors.rightMargin: Style.space(10)
-          text: modelData.label
+          // The callout above already shows a failure's full text; don't print it twice.
+          text: Store.repeatsError(modelData, root.row) ? "Failed with the error shown above" : modelData.label
           textFormat: Text.PlainText
           color: parent.live ? root.colors.text : modelData.status === "failed" ? root.colors.attentionInk : root.colors.textDim
           font.family: modelData.icon === "terminal" ? root.monoFamily : root.fontFamily
@@ -276,20 +277,25 @@ Column {
       Row {
         id: steps
         width: parent.width
-        height: Style.space(6)
+        height: Style.space(8)
         spacing: Style.space(3)
         readonly property int total: root.todo ? Math.min(root.todo.total, 24) : 0
         Repeater {
           model: steps.total
           Rectangle {
+            objectName: "planStep"
             required property int index
             readonly property bool done: root.todo && index < root.todo.done
             readonly property bool current: root.todo && index === root.todo.done
             width: (steps.width - steps.spacing * (steps.total - 1)) / Math.max(1, steps.total)
-            height: steps.height
             radius: Style.cornerRadius > 0 ? 1 : 0
-            color: current ? root.colors.accent : done ? root.colors.text : Qt.rgba(root.colors.text.r, root.colors.text.g, root.colors.text.b, 0.12)
-            opacity: done ? 0.55 : 1
+            // Done: solid dim ink. Current: the accent, taller. To do: an outline in the 3:1 edge tone,
+            // so every step is drawn and the bar's length is the plan's length.
+            height: current ? steps.height : steps.height - Style.space(2)
+            anchors.verticalCenter: parent.verticalCenter
+            color: current ? root.colors.accent : done ? root.colors.textDim : "transparent"
+            border.width: current || done ? 0 : 1
+            border.color: root.colors.edge
           }
         }
       }
@@ -300,24 +306,27 @@ Column {
       }
     }
 
-    // Runs: linear heights, emphasis on the current run, failures in attention.
+    // Runs: linear heights, emphasis on the current run; a failed run is red and marked with an ×.
     Column {
       visible: root.runs.length > 0
       width: parent.colWidth
       spacing: Style.space(6)
+      readonly property var summary: Store.runsSummary(root.runs, root.now)
       Caption {
         label: "Runs"
         count: root.runs.length
       }
       Item {
+        visible: parent.summary.chart
         width: parent.width
-        height: Style.space(40)
+        height: Style.space(52)
         Row {
           anchors.bottom: baseline.top
           spacing: Style.space(3)
           Repeater {
             model: root.runs
             Rectangle {
+              objectName: "runBar"
               required property var modelData
               required property int index
               readonly property bool current: index === root.runs.length - 1 && (modelData.status === "running" || modelData.status === "starting")
@@ -326,8 +335,18 @@ Column {
               width: Style.space(9)
               height: Math.max(Style.space(2), Style.space(38) * root.runDuration(modelData) / root.longestRun)
               radius: Style.cornerRadius > 0 ? 1 : 0
-              color: current ? root.colors.accent : failed ? root.colors.attention : root.colors.text
-              opacity: current || failed ? 1 : 0.32
+              color: current ? root.colors.accent : failed ? root.colors.attention : root.colors.edge
+              Text {
+                visible: parent.failed
+                anchors.bottom: parent.top
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "×"
+                textFormat: Text.PlainText
+                color: root.colors.attentionInk
+                font.family: root.fontFamily
+                font.pixelSize: Typo.caption
+                font.bold: true
+              }
             }
           }
         }
@@ -335,9 +354,7 @@ Column {
       }
       Note {
         width: parent.width
-        readonly property var last: root.runs.length ? root.runs[root.runs.length - 1] : null
-        text: last ? (last.durationMs === null ? "current " + Format.duration(root.now - (last.startedAt || root.now)) : "last " + Format.duration(last.durationMs))
-          + "  ·  longest " + Format.duration(root.longestRun) + (root.failedRuns ? "  ·  " + Format.plural(root.failedRuns, "failed", "failed") : "") : ""
+        text: parent.summary.text
         wrapMode: Text.Wrap
       }
     }
@@ -353,7 +370,8 @@ Column {
         width: parent.width
         value: root.ctx ? root.ctx.used / root.ctx.max : 0
         ink: root.colors.text
-        danger: root.colors.attention
+        danger: root.colors.warning
+        track: root.colors.edge
       }
       Note {
         width: parent.width

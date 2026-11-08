@@ -105,8 +105,8 @@ Item {
     height: width
     radius: width / 2
     color: "transparent"
-    border.width: root.thickness * 0.8
-    border.color: root.colors.attention || "red"
+    border.width: Math.max(1, root.thickness * 0.5)
+    border.color: root.colors.needs || root.colors.attention || "red"
     visible: root.alert
     opacity: 0
     SequentialAnimation on opacity {

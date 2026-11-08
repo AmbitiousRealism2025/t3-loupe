@@ -19,7 +19,7 @@ Item {
     radius: Style.cornerRadius
     color: root.selected ? Style.selectedFillFor(root.colors.text, root.colors.accent)
       : hover.hovered ? Style.hoverFillFor(root.colors.text, root.colors.accent) : "transparent"
-    border.width: root.selected ? 1 : 0
+    border.width: root.selected ? Style.space(2) : 0
     border.color: root.colors.focus
     Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
   }

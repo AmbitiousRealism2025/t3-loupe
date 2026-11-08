@@ -1,10 +1,11 @@
 import QtQuick
 import qs.Commons
 import "../lib/Format.js" as Format
+import "../lib/Store.js" as Store
 
-// Provider usage on one line each: "Claude ▬ 38% ▬ 61%   Codex ▬ 100% · 47m ▬ 82%".
-// Ink meters (agents-panel style); attention only near a limit. Providers without
-// usage windows collapse into a quiet trailing list.
+// Provider usage: "Claude 5h ▬ 38%  week ▬ 61%   Codex 5h ▬ 100% resets in 47m  week ▬ 82%".
+// Each bar is labelled with its window. Ink meters (agents-panel style); amber near a limit, since
+// a spent quota is a wait, not an error. Providers that report no usage are left out.
 Flow {
   id: root
 
@@ -58,9 +59,10 @@ Flow {
         anchors.verticalCenter: parent.verticalCenter
         text: modelData.name
         textFormat: Text.PlainText
-        color: root.colors.textDim
+        color: root.colors.text
         font.family: root.fontFamily
         font.pixelSize: Typo.caption
+        font.weight: Font.Medium
       }
       Repeater {
         model: modelData.windows.slice(0, 3)
@@ -68,19 +70,28 @@ Flow {
           required property var modelData
           readonly property bool high: modelData.usedPercent >= 90
           spacing: Style.space(6)
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: Store.windowLabel(modelData)
+            textFormat: Text.PlainText
+            color: root.colors.textFaint
+            font.family: root.fontFamily
+            font.pixelSize: Typo.caption
+          }
           Meter {
             anchors.verticalCenter: parent.verticalCenter
-            width: Style.space(54)
+            width: Style.space(44)
             thickness: Style.space(3)
             value: modelData.usedPercent / 100
             ink: root.colors.text
-            danger: root.colors.attention
+            danger: root.colors.warning
+            track: root.colors.edge
           }
           Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: Math.round(modelData.usedPercent) + "%" + (parent.high && modelData.resetsAt ? " · " + Format.until(modelData.resetsAt, root.now).replace("in ", "") : "")
+            text: Math.round(modelData.usedPercent) + "%" + (parent.high && modelData.resetsAt ? " resets " + Format.until(modelData.resetsAt, root.now) : "")
             textFormat: Text.PlainText
-            color: parent.high ? root.colors.attentionInk : root.colors.textFaint
+            color: parent.high ? root.colors.warningInk : root.colors.textFaint
             font.family: root.fontFamily
             font.pixelSize: Typo.caption
           }
@@ -89,11 +100,13 @@ Flow {
     }
   }
 
+  // Providers with no usage data are only worth a word when something is wrong with them.
   Text {
-    visible: root.plain.length > 0
-    text: root.plain.map(function(p) { return (root.unhealthy(p) ? "! " : "") + p.name }).join("  ·  ")
+    readonly property var broken: root.plain.filter(function(p) { return root.unhealthy(p) })
+    visible: broken.length > 0
+    text: broken.map(function(p) { return p.name + " needs attention" }).join("  ·  ")
     textFormat: Text.PlainText
-    color: root.colors.textFaint
+    color: root.colors.attentionInk
     font.family: root.fontFamily
     font.pixelSize: Typo.caption
   }

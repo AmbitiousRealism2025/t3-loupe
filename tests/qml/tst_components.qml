@@ -39,6 +39,17 @@ TestCase {
     walk(item)
     return out
   }
+  function named(item, name) {
+    var out = []
+    function walk(it) {
+      if (!it) return
+      if (it.objectName === name) out.push(it)
+      var kids = it.children || []
+      for (var i = 0; i < kids.length; i++) walk(kids[i])
+    }
+    walk(item)
+    return out
+  }
   function has(item, pattern) {
     var all = texts(item)
     for (var i = 0; i < all.length; i++) if (pattern.test(all[i])) return true
@@ -201,6 +212,67 @@ TestCase {
     p.activate(p.visible_[0])
     tryVerify(function() { return has(p, /^The thread's working folder is gone$/) })
     verify(has(p, /Restore the folder at that path/))
+  }
+
+  function test_planBarDrawsEveryStep() {
+    var r = row({ state: "working", rawStatus: "running", activeSince: now - 60000 })
+    var runs = [{ ordinal: 1, status: "completed", startedAt: now - 3600000, completedAt: now - 3000000, durationMs: 600000 },
+                { ordinal: 2, status: "failed", startedAt: now - 2000000, completedAt: now - 1900000, durationMs: 100000 },
+                { ordinal: 3, status: "running", startedAt: now - 60000, completedAt: null, durationMs: null }]
+    var d = createTemporaryObject(detailC, tc, { row: r, detail: { activity: [], pending: [], runs: runs, context: null, subagents: [], todo: { total: 9, done: 6, current: "Polish" } } })
+    var steps = named(d, "planStep")
+    compare(steps.length, 9)
+    var pending = steps.filter(function(s) { return s.border.width > 0 })
+    compare(pending.length, 2, "steps 8 and 9 are outlined")
+    verify(Palette.contrast(pending[0].border.color, colors.background) >= 3)
+    verify(steps[6].color !== steps[5].color, "current differs from done")
+    var bars = named(d, "runBar")
+    compare(bars.length, 3)
+    verify(Palette.contrast(bars[0].color, colors.background) >= 3, "a past run is a 3:1 mark")
+    verify(has(d, /run 2 failed/), texts(d).join(" | "))
+    verify(has(d, /^×$/), "the failed bar carries a mark, not just a colour")
+  }
+
+  function test_subSecondRunAndRepeatedErrorAreNotDrawnTwice() {
+    var err = "This thread's workspace folder no longer exists or is not a directory: /home/dev/code/web-app. Restore the folder at this path before retrying."
+    var r = row({ state: "failed", rawStatus: "failed", errorClass: "provider_error", error: err, completedAt: now - 51 * 60000 })
+    var d = createTemporaryObject(detailC, tc, { row: r, detail: { pending: [], context: null, subagents: [], todo: null,
+      activity: [{ icon: "terminal", label: "Preparing workspace", status: "completed", at: now - 51 * 60000 }, { icon: "circle-alert", label: err, status: "failed", at: now - 51 * 60000 }],
+      runs: [{ ordinal: 1, status: "failed", startedAt: now - 51 * 60000, completedAt: now - 51 * 60000, durationMs: 0 }] } })
+    verify(has(d, /^Failed with the error shown above$/), texts(d).join(" | "))
+    compare(texts(d).filter(function(t) { return t === err }).length, 1, "the error is printed once, in the card")
+    compare(named(d, "runBar").filter(function(b) { return b.visible }).length, 0, "no chart for a sub-second run")
+    verify(has(d, /^1 run, failed after <1s$/))
+  }
+
+  Component { id: paneC; ThreadDetailPane { width: 520; height: 700; colors: tc.colors; now: tc.now; monoFamily: "monospace" } }
+
+  function test_detailHeaderWrapsWholeItemsAndLabelsItsActions() {
+    var r = row({ state: "input", rawStatus: "running", pendingKind: "command", pendingSince: now - 120000, project: "web-app", branch: "feat/sessions-v2", model: "claude-opus-5-5",
+      pr: { number: 412, title: "x", url: "https://example.invalid/pr/412", state: "open", checks: "pending", draft: false, additions: 2140, deletions: 388, review: "" } })
+    var p = createTemporaryObject(paneC, tc, { row: r, machineLabel: "laptop" })
+    var all = texts(p)
+    verify(all.indexOf("laptop  ·") >= 0 && all.indexOf("claude-opus-5-5") >= 0, all.join(" | "))
+    verify(!all.some(function(t) { return /^·/.test(t) }), "no item starts with a separator")
+    verify(has(p, /^open T3$/) && has(p, /^PR$/) && has(p, /^copy title$/), "each action is labelled")
+    verify(has(p, /^#412$/), "the PR number stands alone")
+    verify(has(p, /^checks pending\n\+2140 −388$/))
+  }
+
+  function test_legendShowsOnlyWorkingKeys() {
+    var svc = createTemporaryObject(serviceC, tc)
+    svc.environments = [liveEnv("e", "laptop")]
+    svc.rows = [row({ key: "e:a", id: "a", state: "input", pendingKind: "command", rawStatus: "running" })]
+    var p = createTemporaryObject(panelC, tc, { service: svc })
+    p.opened = true
+    verify(has(p, /g next needing you/), texts(p).join(" | "))
+    verify(has(p, /j\/k select/))
+    svc.known = false
+    svc.rows = []
+    svc.environments = [{ id: "a", label: "laptop", sshHost: "", state: "expired", stale: false, url: "http://127.0.0.1:3773", sessionExpiresAt: now - 1000, providers: [] }]
+    tryVerify(function() { return p.disconnected })
+    verify(!has(p, /j\/k select/), "no selection keys when there is nothing to select")
+    verify(has(p, /r refresh/))
   }
 
   function test_keyActionClicks() {

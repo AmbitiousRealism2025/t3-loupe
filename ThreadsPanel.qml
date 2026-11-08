@@ -41,8 +41,10 @@ Item {
   readonly property var visible_: Store.visibleRows(rows, filter, query, expanded, idleOpen)
   // Ring: only "needs you" is coloured; working is ink, the rest faint ink.
   readonly property var ringSegs: Store.ringSegments(rows)
+  // "Needs you" in one colour where only one fits: the most severe kind present.
+  readonly property string needsRole: Store.needsRole(rows)
   readonly property var ringColors: ({
-    attention: colors.attention, ink: colors.text, track: colors.track,
+    needs: colors[needsRole], ink: colors.text, track: colors.track,
     inkFaint: colors.text ? Qt.rgba(colors.text.r, colors.text.g, colors.text.b, 0.3) : "transparent"
   })
   // One tally feeds the header, the tabs and the ring, so they always agree.
@@ -190,12 +192,16 @@ Item {
     list.positionViewAtIndex(cursor, ListView.Contain)
   }
 
-  function hintText(wrap) {
-    var hints = [["j/k", centered ? "select" : "move"], ["↵", centered ? "subagents" : "expand"], ["1–4", "view"], ["/", "filter"],
-      ["f", "toggle view"], ["o", "open T3"], ["esc", "close"]]
+  // The key legend: only keys that work here, the same verbs in both layouts, cut by priority to
+  // fit one line (Store.legend / Store.fitLegend).
+  readonly property string legendMode: disconnected ? "offline" : visible_.length === 0 ? "empty" : "list"
+  readonly property var legendHints: Store.legend(legendMode, !!(selectedRow && selectedRow.pr && selectedRow.pr.url))
+  readonly property string legendSep: "&nbsp;&nbsp;·&nbsp;&nbsp;"
+  function legendPlain(hints) { return hints.map(function(h) { return h.key + " " + h.verb }).join("  ·  ") }
+  function legendStyled(hints) {
     return hints.map(function(h) {
-      return "<font color=\"" + colors.textDim + "\">" + h[0] + "</font>&nbsp;" + h[1].replace(/ /g, "&nbsp;")
-    }).join(wrap ? "&nbsp;&nbsp;·&nbsp; " : "&nbsp;&nbsp;·&nbsp;&nbsp;")
+      return "<font color=\"" + colors.text + "\">" + h.key + "</font>&nbsp;" + h.verb.replace(/ /g, "&nbsp;")
+    }).join(legendSep)
   }
 
   // One machine: ink dot (hollow attention ring when unreachable), name, and any issue.
@@ -293,6 +299,10 @@ Item {
       else if ((t === "-" || t === "_") && root.service) root.service.stepTextSize(-1)
       else if (t === "r" && root.service) root.service.refresh()
       else if (t === "o") root.act(root.cursor >= 0 ? root.visible_[root.cursor] : null, "focus")
+      else if (t === "p" || t === "c") {
+        var target = root.centered ? root.selectedRow : (root.cursor >= 0 && !root.visible_[root.cursor].kind ? root.visible_[root.cursor] : null)
+        if (target) root.act(target, t === "p" ? "pr" : "copy")
+      }
       else if (t === "g") {
         for (var i = 0; i < root.visible_.length; i++) if (!root.visible_[i].kind && Store.ATTENTION[root.visible_[i].state]) { root.cursor = i; list.positionViewAtIndex(i, ListView.Contain); break }
       }
@@ -356,7 +366,7 @@ Item {
                 : tint(alarm, root.link.connected + " OF " + root.link.total + " MACHINES CONNECTED")
               if (root.disconnected) return tint(alarm, "NOT CONNECTED") + sep + Format.plural(root.link.total, "MACHINE", "MACHINES")
               var parts = []
-              parts.push(root.needCount ? tint(alarm, root.needCount + " NEED" + (root.needCount === 1 ? "S" : "") + " YOU") : "NOTHING NEEDS YOU")
+              parts.push(root.needCount ? tint(root.colors[root.needsRole + "Ink"], root.needCount + " NEED" + (root.needCount === 1 ? "S" : "") + " YOU") : "NOTHING NEEDS YOU")
               parts.push(root.tally.working + " WORKING")
               parts.push(root.doneCount + " DONE")
               parts.push(machines)
@@ -424,6 +434,42 @@ Item {
           fontSize: Typo.caption
           focusable: false
           onChanged: function(v) { root.setFilter(v) }
+        }
+        // Over each tab: a border in the 3:1 edge tone (the shell's own is lighter) and its number key.
+        Repeater {
+          model: 4
+          Item {
+            required property int index
+            readonly property Item tab: {
+              var n = -1
+              for (var i = 0; i < filters.children.length; i++) {
+                if (filters.children[i].selected === undefined) continue
+                if (++n === index) return filters.children[i]
+              }
+              return null
+            }
+            visible: tab !== null
+            x: filters.x + (tab ? tab.x : 0)
+            y: filters.y + (tab ? tab.y : 0)
+            width: tab ? tab.width : 0
+            height: tab ? tab.height : 0
+            Rectangle {
+              anchors.fill: parent
+              color: "transparent"
+              radius: Style.cornerRadius
+              border.width: 1
+              border.color: parent.tab && parent.tab.selected === true ? root.colors.focus : root.colors.edge
+            }
+            Text {
+              x: Style.space(3)
+              y: Style.space(1)
+              text: String(parent.index + 1)
+              textFormat: Text.PlainText
+              color: root.colors.textFaint
+              font.family: root.monoFamily
+              font.pixelSize: Math.max(7, Math.round(Typo.caption * 0.8))
+            }
+          }
         }
         // The current view, marked under its tab in the accent: the shell's selected fill alone is faint.
         Rectangle {
@@ -558,7 +604,7 @@ Item {
             anchors.bottom: parent.bottom
             label: cell.isSection ? cell.modelData.label : cell.group
             count: cell.isSection ? cell.modelData.count : -1
-            foreground: cell.isSection && cell.modelData.key === "sec:needs" ? root.colors.attentionInk : root.colors.text
+            foreground: cell.isSection && cell.modelData.key === "sec:needs" ? root.colors[root.needsRole + "Ink"] : root.colors.text
             countColor: root.colors.textFaint
             fontFamily: root.fontFamily
           }
@@ -701,19 +747,21 @@ Item {
           onStepRequested: function(delta) { if (root.service) root.service.stepTextSize(delta) }
           onSizeRequested: function(size) { if (root.service) root.service.setTextSize(size) }
         }
+        FontMetrics { id: legendMetrics; font: hints.font }
         Text {
           id: hints
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
           width: parent.width - sizeControl.width - Style.space(20)
           horizontalAlignment: Text.AlignRight
-          wrapMode: Text.WordWrap
           textFormat: Text.StyledText
-          text: root.hintText(true)
-          color: root.colors.textFaint
+          // One line: the lowest-priority hints drop out until the rest fit.
+          text: root.legendStyled(Store.fitLegend(root.legendHints, function(shown) {
+            return legendMetrics.advanceWidth(root.legendPlain(shown)) <= hints.width
+          }))
+          color: root.colors.textDim
           font.family: root.fontFamily
           font.pixelSize: Typo.caption
-          lineHeight: 1.15
         }
       }
     }

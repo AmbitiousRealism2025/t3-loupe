@@ -80,7 +80,7 @@ Item {
       : hover.hovered ? Style.hoverFillFor(root.colors.text, root.colors.accent)
       : root.needsYou ? Qt.tint(root.colors.surface, Qt.rgba(root.glyphColor.r, root.glyphColor.g, root.glyphColor.b, 0.08))
       : root.child ? "transparent" : root.colors.surface
-    border.width: root.selected ? 1 : 0
+    border.width: root.selected ? Style.space(2) : 0
     border.color: root.colors.focus
     Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
@@ -121,14 +121,12 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       spacing: Style.space(2)
 
-      Text {
+      ElidedText {
         width: parent.width
-        text: root.row.title
-        textFormat: Text.PlainText
+        fullText: root.row.title
         color: root.child || root.row.state === "idle" || root.row.state === "stopped" ? root.colors.textDim : root.colors.text
         font.family: root.fontFamily
         font.pixelSize: root.child ? Typo.caption : Typo.bodySmall
-        elide: Text.ElideRight
       }
       Row {
         visible: root.subtitle !== ""
@@ -142,16 +140,14 @@ Item {
           color: root.subtitleLive ? root.colors.accentInk : root.needsYou ? root.wordInk : root.colors.textFaint
           size: Math.round(Typo.caption * 1.1)
         }
-        Text {
+        ElidedText {
           anchors.verticalCenter: parent.verticalCenter
           width: parent.width - (subIcon.visible ? subIcon.width + parent.spacing : 0)
-          text: root.subtitle
-          textFormat: Text.PlainText
+          fullText: root.subtitle
           // Rows that need you say so in their colour; everything else stays ink.
           color: root.needsYou ? root.wordInk : root.showActivity ? root.colors.textDim : root.colors.textFaint
           font.family: root.subtitleIcon === "terminal" ? root.monoFamily : root.fontFamily
           font.pixelSize: Typo.caption
-          elide: Text.ElideRight
         }
       }
     }

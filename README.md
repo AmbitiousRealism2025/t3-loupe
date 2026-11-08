@@ -26,7 +26,7 @@ T3 Loupe shows what every T3 Code thread is doing across all your machines. It t
 
 - **Live, not polled.** T3 Loupe subscribes to T3's orchestration stream, so changes reach the bar in about a second. It resumes cleanly after a network drop or a suspend.
 - **A quiet, glanceable ring.** The ring in the bar is drawn in plain text colour, like its bar neighbours. Working threads are full ink and the rest are faint. Only the threads that need you are coloured, with an outlined badge showing how many. The ring turns slowly while agents work and breathes when something is waiting on you.
-- **Structure over colour.** Threads are grouped under **Needs you** and **Working** headings in the shell's own section style, so urgency reads from position in every theme, monochrome ones included. Colour is kept for what needs you (red when blocked or failed, amber for a plan to review or a usage limit, in every theme with any hue, even one whose own "red" isn't red), working, and done-and-unseen. Everything else uses its icon and plain text.
+- **Structure over colour.** Threads are grouped under **Needs you** and **Working** headings in the shell's own section style, so urgency reads from position in every theme, monochrome ones included. Colour is kept for what needs you, by kind (violet when a thread waits for your answer, red when it failed, amber for a plan to review or a usage limit, in every theme with any hue, even one whose own "red" isn't red), working, and done-and-unseen. Everything else uses its icon and plain text.
 - **What the agent is doing right now.** Each busy thread shows its current step, with **the same icons T3's timeline uses**: terminal for commands, pen for edits, eye for reads, magnifier for code search, globe for web, brain for reasoning, bot for subagents, and so on.
 - **The approval text itself.** When an agent is waiting for approval, you see the exact command, file change or question, and the choices the provider offered.
 - **Two-pane window.** By default the panel opens as a floating window in the middle of the screen. Threads are listed on the left. The selected thread's live detail is on the right, and it follows `j`/`k` without anything expanding or jumping. Press `f` for a compact dropdown under the bar instead.
@@ -115,6 +115,8 @@ Sessions last 30 days, and T3 doesn't issue refresh tokens. T3 Loupe warns you t
 | `/` | filter by text: type, `Backspace` deletes, `Enter` keeps the filter and returns to the list, `Esc` clears it |
 | `g` | jump to the first thread that needs you |
 | `o` | bring the T3 window forward |
+| `p` | open the selected thread's pull request |
+| `c` | copy the selected thread's title |
 | `r` | reconnect |
 | `Tab` | next bar panel |
 | `Esc` | close |
@@ -136,7 +138,7 @@ Set these with `omarchy bar set ambitiousrealism.t3-loupe <key> <value>`.
 
 | Key | Values | Default |
 |---|---|---|
-| `display` | `label`: "T3 Loupe" + ring · `ring`: ring with the count inside · `ring-count`: count beside the ring | `label` |
+| `display` | `label`: "T3 Loupe" + ring · `ring`: the ring alone · `ring-count`: the active count beside the ring. The needs-you badge shows in all three | `label` |
 | `reduceMotion` | `true` stops the spin, pulse and halo | `false` |
 | `presentation` | `centered`: two-pane floating window · `dropdown`: compact panel under the bar | `centered` |
 | `panelWidth` | `420` – `900` (dropdown width) | `540` |
