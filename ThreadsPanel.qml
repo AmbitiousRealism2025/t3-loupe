@@ -15,6 +15,11 @@ Item {
   property bool reduceMotion: false
   property bool opened: false
   readonly property alias keyCatcher: keys
+  // For tests: the list, its pinned heading and the legend.
+  readonly property Item listView: list
+  readonly property var pinnedHeading: sticky.heading
+  readonly property real pinnedHeight: sticky.stripHeight
+  readonly property real legendHeight: hints.height
 
   signal closeRequested()
   signal switchRequested(int direction)
@@ -169,10 +174,31 @@ Item {
     expanded = next
     if (service) service.requestDetail(row.envId, row.id)
     Qt.callLater(function() {
-      for (var i = 0; i < visible_.length; i++) if (visible_[i].key === key) { cursor = i; list.positionViewAtIndex(i, ListView.Contain) }
+      for (var i = 0; i < visible_.length; i++) if (visible_[i].key === key) { cursor = i; ensureVisible(i) }
     })
     // Again once the drawer has laid out at full height.
     settleScroll.restart()
+  }
+
+  // Scrolls the item at i fully into view, clear of the pinned heading at the top and the
+  // "more below" strip at the bottom, with a little room to spare.
+  function ensureVisible(i) {
+    if (i < 0 || i >= visible_.length) return
+    list.positionViewAtIndex(i, ListView.Contain)
+    clearOfEdges(i)
+    // Once more after the list has laid out the rows it just created (their heights and the
+    // list's origin can shift as they appear).
+    Qt.callLater(function() { if (root.cursor === i) root.clearOfEdges(i) })
+  }
+  function clearOfEdges(i) {
+    var it = list.itemAtIndex(i)
+    if (!it) return
+    var margin = Style.space(8)
+    var maxY = list.originY + Math.max(0, list.contentHeight - list.height)
+    var bottom = list.contentY + list.height - moreBelow.height - margin
+    if (it.y + it.height > bottom) list.contentY = Math.min(maxY, list.contentY + (it.y + it.height - bottom))
+    var top = list.contentY + (list.contentY > list.originY + 1 ? sticky.stripHeight : 0)
+    if (it.y < top && list.contentY > list.originY) list.contentY = Math.max(list.originY, it.y - sticky.stripHeight - margin)
   }
 
   // Section headings are not cursor stops.
@@ -188,7 +214,7 @@ Item {
     }
     if (i < 0 || i >= visible_.length) return
     cursor = i
-    list.positionViewAtIndex(cursor, ListView.Contain)
+    ensureVisible(cursor)
   }
 
   // The key legend: every key that works here, the same in both layouts; Enter named for what it
@@ -199,10 +225,13 @@ Item {
   readonly property var legendHints: Store.legend(legendMode,
     Store.enterVerb(cursorItem, centered, cursorItem && !cursorItem.kind ? expanded[cursorItem.key] === true : false))
   readonly property string legendSep: "&nbsp;&nbsp;·&nbsp;&nbsp;"
-  function legendPlain(hints) { return hints.map(function(h) { return h.key + " " + h.verb }).join("  ·  ") }
+  function legendPlain(hints) { return hints.map(function(h) { return Store.hintText(h) }).join("  ·  ") }
   function legendStyled(hints) {
     return hints.map(function(h) {
-      return "<font color=\"" + colors.text + "\">" + h.key + "</font>&nbsp;" + h.verb.replace(/ /g, "&nbsp;")
+      // A slotted hint is padded to its slot, so its neighbours never move; an empty slot keeps
+      // its place with the key dimmed.
+      var verb = Store.hintText(h).slice(h.key.length + 1).replace(/[ \u00a0]/g, "&nbsp;")
+      return "<font color=\"" + (h.slot && !h.verb ? colors.textFaint : colors.text) + "\">" + h.key + "</font>&nbsp;" + verb
     }).join(legendSep)
   }
 
@@ -260,7 +289,7 @@ Item {
   Timer {
     id: settleScroll
     interval: 350
-    onTriggered: if (root.cursor >= 0) list.positionViewAtIndex(root.cursor, ListView.Contain)
+    onTriggered: if (root.cursor >= 0) root.ensureVisible(root.cursor)
   }
 
   // Refresh pinned detail while a drawer stays open.
@@ -307,7 +336,7 @@ Item {
         if (target) root.act(target, t === "p" ? "pr" : "copy")
       }
       else if (t === "g") {
-        for (var i = 0; i < root.visible_.length; i++) if (!root.visible_[i].kind && Store.ATTENTION[root.visible_[i].state]) { root.cursor = i; list.positionViewAtIndex(i, ListView.Contain); break }
+        for (var i = 0; i < root.visible_.length; i++) if (!root.visible_[i].kind && Store.ATTENTION[root.visible_[i].state]) { root.cursor = i; root.ensureVisible(i); break }
       }
     }
 
@@ -472,8 +501,9 @@ Item {
             Rectangle {
               id: digitCap
               readonly property string label: parent.tab ? String(parent.tab.text) : ""
-              readonly property real cell: tabMetrics.advanceWidth("  ")
-              x: Math.round((parent.width - tabMetrics.advanceWidth(label)) / 2) - Style.space(2)
+              // Reading tabMetrics.font makes these re-run when the font changes (advanceWidth is a call).
+              readonly property real cell: tabMetrics.font ? tabMetrics.advanceWidth("  ") : 0
+              x: Math.round((parent.width - (tabMetrics.font ? tabMetrics.advanceWidth(label) : 0)) / 2) - Style.space(2)
               anchors.verticalCenter: parent.verticalCenter
               width: Math.max(digit.implicitWidth + Style.space(6), cell - Style.space(1))
               height: digit.implicitHeight + Style.space(2)
@@ -697,58 +727,78 @@ Item {
       displaced: Transition { NumberAnimation { properties: "y"; duration: 160; easing.type: Easing.OutCubic } }
     }
 
-    // Scrolled lists keep their place: the heading of whatever is at the top stays pinned there
-    // (machine and project in All, the section in Active), and a cue says when more is below.
-    Rectangle {
-      id: sticky
-      readonly property var heading: {
-        if (!list.visible || list.contentY - list.originY < 2) return null
-        var top = list.indexAt(Style.space(20), list.contentY + 2)
-        for (var k = top; k >= 0 && k < root.visible_.length; k--) {
-          var it = root.visible_[k]
-          if (it.kind === "section") return { label: it.label, count: it.count }
-          if (root.filter === "all" && !it.parentId) return { label: Store.groupKey(it, root.environments), count: -1 }
-        }
-        return null
-      }
-      visible: heading !== null
+    // Scrolled lists keep their place. One heading stays pinned at the top: the group (All) or
+    // section (Active) of the row just under it. When the next group's own heading reaches the top,
+    // the pinned one gives way to it, so two headings never stack. At the bottom, a solid strip says
+    // when more is below (no fade over rows), and the selection is kept clear of both.
+    Item {
       x: list.x
       y: list.y
       width: list.width - Style.space(8)
-      height: stickyCaption.implicitHeight + Style.space(10)
-      color: root.colors.background
-      SectionCaption {
-        id: stickyCaption
-        x: Style.space(4)
-        anchors.verticalCenter: parent.verticalCenter
-        label: sticky.heading ? sticky.heading.label : ""
-        count: sticky.heading ? sticky.heading.count : -1
-        foreground: root.colors.text
-        countColor: root.colors.textFaint
-        fontFamily: root.fontFamily
+      height: sticky.stripHeight
+      clip: true
+      visible: sticky.heading !== null
+      Rectangle {
+        id: sticky
+        readonly property real stripHeight: stickyCaption.implicitHeight + Style.space(10)
+        // The row just under the strip, and the group or section it belongs to.
+        readonly property int under: list.visible && list.contentY - list.originY >= 2 ? list.indexAt(Style.space(20), list.contentY + stripHeight) : -1
+        readonly property var heading: {
+          if (under < 0) return null
+          var cell = list.itemAtIndex(under)
+          // That row starts its own group and its heading is on screen: pin nothing over it.
+          if (cell && (cell.newGroup || cell.isSection) && cell.y >= list.contentY - 1) return null
+          for (var k = under; k >= 0 && k < root.visible_.length; k--) {
+            var it = root.visible_[k]
+            if (it.kind === "section") return { label: it.label, count: it.count }
+            if (root.filter === "all" && !it.parentId) return { label: Store.groupKey(it, root.environments), count: -1 }
+          }
+          return null
+        }
+        // The next group's heading pushes this one up and out as it arrives, so two never stack.
+        readonly property real push: {
+          if (under < 0) return 0
+          for (var n = under + 1; n < Math.min(root.visible_.length, under + 6); n++) {
+            var next = list.itemAtIndex(n)
+            if (!next || !(next.newGroup || next.isSection)) continue
+            var gap = next.y - (list.contentY + stripHeight)
+            return gap < stripHeight ? Math.max(0, stripHeight - Math.max(0, gap)) : 0
+          }
+          return 0
+        }
+        y: -push
+        width: parent.width
+        height: stripHeight
+        color: root.colors.background
+        SectionCaption {
+          id: stickyCaption
+          x: Style.space(4)
+          anchors.verticalCenter: parent.verticalCenter
+          label: sticky.heading ? sticky.heading.label : " "
+          count: sticky.heading ? sticky.heading.count : -1
+          foreground: root.colors.text
+          countColor: root.colors.textFaint
+          fontFamily: root.fontFamily
+        }
+        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: root.colors.line }
       }
-      Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: root.colors.line }
     }
-    Item {
+    Rectangle {
+      id: moreBelow
       visible: list.visible && list.contentY + list.height < list.contentHeight + list.originY - 2
       x: list.x
       y: list.y + list.height - height
       width: list.width - Style.space(8)
-      height: Style.space(30)
-      Rectangle {
-        anchors.fill: parent
-        gradient: Gradient {
-          GradientStop { position: 0.0; color: Palette.alpha(root.colors.background, 0) }
-          GradientStop { position: 0.65; color: root.colors.background }
-        }
-      }
+      height: Style.space(22)
+      color: root.colors.background
+      Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: root.colors.line }
       Text {
         anchors.right: parent.right
         anchors.rightMargin: Style.space(4)
-        anchors.bottom: parent.bottom
+        anchors.verticalCenter: parent.verticalCenter
         text: "more below ↓"
         textFormat: Text.PlainText
-        color: root.colors.textFaint
+        color: root.colors.textDim
         font.family: root.fontFamily
         font.pixelSize: Typo.caption
       }
@@ -814,15 +864,14 @@ Item {
         now: root.now
         fontFamily: root.fontFamily
       }
-      // Bottom row: text size control left, key hints right on one line when they fit there;
-      // otherwise the hints get their own full-width line(s) under it, as even lines of whole hints.
+      // Bottom row: the text-size control on the left, the key legend right-aligned beside it, on
+      // as many even lines of whole hints as it needs at this width. The layout is worked out from
+      // the padded legend (Enter's slot at its widest), so it doesn't change as the selection moves.
       FontMetrics { id: legendMetrics; font.family: root.fontFamily; font.pixelSize: Typo.caption }
       Item {
         id: bottomRow
         width: parent.width
-        readonly property real besideWidth: width - sizeControl.width - Style.space(20)
-        readonly property bool fitsBeside: legendMetrics.advanceWidth(root.legendPlain(root.legendHints)) <= besideWidth
-        height: Math.max(sizeControl.implicitHeight, fitsBeside ? hints.implicitHeight : 0)
+        height: Math.max(sizeControl.implicitHeight, hints.implicitHeight)
         TextSizeControl {
           id: sizeControl
           anchors.left: parent.left
@@ -835,28 +884,24 @@ Item {
         }
         Text {
           id: hints
-          visible: bottomRow.fitsBeside
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
+          width: parent.width - sizeControl.width - Style.space(20)
           horizontalAlignment: Text.AlignRight
           textFormat: Text.StyledText
-          text: root.legendStyled(root.legendHints)
+          // Measured with FontMetrics, a method call that QML doesn't re-run on its own: reading the
+          // font and the width here makes this binding re-run whenever either changes.
+          text: {
+            var font = legendMetrics.font, room = width
+            return Store.legendLines(root.legendHints, function(shown) {
+              return font && legendMetrics.advanceWidth(root.legendPlain(shown)) <= room
+            }).map(function(line) { return root.legendStyled(line) }).join("<br>")
+          }
+          lineHeight: 1.2
           color: root.colors.textDim
           font.family: root.fontFamily
           font.pixelSize: Typo.caption
         }
-      }
-      Text {
-        visible: !bottomRow.fitsBeside
-        width: parent.width
-        textFormat: Text.StyledText
-        text: Store.legendLines(root.legendHints, function(shown) {
-          return legendMetrics.advanceWidth(root.legendPlain(shown)) <= width
-        }).map(function(line) { return root.legendStyled(line) }).join("<br>")
-        lineHeight: 1.2
-        color: root.colors.textDim
-        font.family: root.fontFamily
-        font.pixelSize: Typo.caption
       }
     }
   }

@@ -4,6 +4,7 @@ import "../../components"
 import "../.." as Plugin
 import "../../lib/Palette.js" as Palette
 import "../../lib/Store.js" as Store
+import qs.Commons
 
 TestCase {
   id: tc
@@ -117,7 +118,7 @@ TestCase {
       error: "This thread's workspace folder no longer exists or is not a directory: /home/dev/code/web-app. Restore the folder at this path before retrying." })
     var c = createTemporaryObject(rowC, tc, { row: r })
     verify(has(c, /^Failed · folder missing$/), texts(c).join(" | "))
-    verify(has(c, /^web-app$/), "the project is kept whole, apart from the reason")
+    verify(!has(c, /web-app/), "the project is left to the group heading and the detail pane")
     compare(c.needsYou, true)
     compare(c.wordInk, tc.colors.attentionInk)
   }
@@ -251,7 +252,7 @@ TestCase {
       pr: { number: 412, title: "x", url: "https://example.invalid/pr/412", state: "open", checks: "pending", draft: false, additions: 2140, deletions: 388, review: "" } })
     var p = createTemporaryObject(paneC, tc, { row: r, machineLabel: "laptop" })
     var all = texts(p)
-    verify(all.indexOf("laptop  ·") >= 0 && all.indexOf("claude-opus-5-5") >= 0, all.join(" | "))
+    verify(all.indexOf("laptop ·") >= 0 && all.indexOf("claude-opus-5-5") >= 0, all.join(" | "))
     verify(!all.some(function(t) { return /^·/.test(t) }), "no item starts with a separator")
     verify(has(p, /^open T3$/) && has(p, /^PR$/) && has(p, /^copy title$/), "each action is labelled")
     verify(has(p, /^#412$/), "the PR number stands alone")
@@ -316,18 +317,30 @@ TestCase {
     verify(has(p, /r refresh/))
   }
 
-  // The reason is what tells failed rows apart: it gets its full width before machine or project.
-  function test_rowReasonBeatsWhereItRuns() {
+  // The reason is what tells failed rows apart: it is never the part that gets cut. The shell
+  // creates rows before it settles its type scale (shell.toml, then the panel's text-size bump), so
+  // the font grows after the row exists; round 4 measured once, at the small size, and cut the
+  // reason in the shell while this test, at a fixed size, passed. This one changes size afterwards.
+  function test_rowReasonSurvivesAFontChangeAfterCreation() {
     var r = row({ state: "failed", rawStatus: "failed", errorClass: "provider_error", completedAt: now - 60000, project: "a-long-project-name",
       error: '401: {"code":"1000","message":"Authentication Failed"}' })
-    var widths = [260, 330, 420]
-    for (var i = 0; i < widths.length; i++) {
-      var c = createTemporaryObject(rowC, tc, { row: r, width: widths[i], showMachine: true, machineLabel: "build-box" })
-      wait(0)
-      verify(has(c, /^Failed · sign-in rejected$/), widths[i] + ": " + texts(c).join(" | "))
+    var q = row({ key: "e:q", id: "q", state: "input", rawStatus: "running", pendingKind: "user_input", project: "ingest" })
+    var bumps = [0, 2, 4, 6]
+    var made = []
+    for (var w = 0; w < 2; w++) made.push(createTemporaryObject(rowC, tc, { row: w ? q : r, width: 340, showMachine: true, machineLabel: "build-box" }))
+    try {
+      for (var i = 0; i < bumps.length; i++) {
+        Typo.bump = bumps[i]
+        // The two-pane list's width at this size: 44% of a card that widens 56 px per step of bump.
+        for (var m = 0; m < made.length; m++) made[m].width = Math.round((820 + bumps[i] * 56) * 0.44) - 20
+        wait(0)
+        verify(has(made[0], /^Failed · sign-in rejected$/), "bump " + bumps[i] + ": " + texts(made[0]).join(" | "))
+        verify(has(made[1], /^Question$/), "bump " + bumps[i] + ": " + texts(made[1]).join(" | "))
+        verify(has(made[0], /^build-box$/), "the machine still shows, under the time")
+      }
+    } finally {
+      Typo.bump = 0
     }
-    var wide = createTemporaryObject(rowC, tc, { row: r, width: 700, showMachine: true, machineLabel: "build-box" })
-    verify(has(wide, /^build-box · a-long-project-name$/), texts(wide).join(" | "))
   }
 
   Component { id: ringC; ActivityRing { diameter: 40; colors: ({ attention: "red", ask: "violet", warning: "orange", ink: "white", rest: "gray" }) } }
@@ -341,6 +354,61 @@ TestCase {
     var total = 0
     for (var i = 0; i < 5; i++) total += ring.sweepOf(i)
     verify(Math.abs(total + ring.present * ring.gap - 360) < 0.5, "the arcs still close the circle: " + total)
+  }
+
+  function manyRows() {
+    var out = []
+    var projects = ["alpha", "beta", "gamma", "delta"]
+    for (var i = 0; i < 20; i++)
+      out.push(row({ key: "e:r" + i, id: "r" + i, title: "Thread " + i, project: projects[i % 4], state: i % 5 === 0 ? "review" : "working",
+        rawStatus: i % 5 === 0 ? "completed" : "running", activeSince: now - 60000, completedAt: now - 60000, childCount: i === 3 ? 2 : 0 }))
+    return out
+  }
+  Component { id: shortPanelC; Plugin.ThreadsPanel { width: 860; height: 420; centered: true } }
+
+  function test_listKeepsOneHeadingAndTheSelectionInView() {
+    var svc = createTemporaryObject(serviceC, tc)
+    svc.environments = [liveEnv("e", "laptop")]
+    svc.rows = manyRows()
+    var p = createTemporaryObject(shortPanelC, tc, { service: svc })
+    p.opened = true
+    p.setFilter("all")
+    tryVerify(function() { return p.cursor >= 0 })
+    var list = p.listView
+    verify(list.contentHeight > list.height, "the list scrolls")
+    for (var step = 0; step < 30; step++) {
+      p.moveCursor(1)
+      wait(20)
+      var cell = list.itemAtIndex(p.cursor)
+      verify(cell !== null)
+      // Fully visible, clear of the pinned heading and of the "more below" strip.
+      var bottomLimit = list.contentY + list.height - (list.contentY + list.height < list.contentHeight + list.originY - 2 ? Style.space(22) : 0)
+      verify(cell.y + cell.height <= bottomLimit + 0.5, "step " + step + ": selected row under the bottom strip " + JSON.stringify({ y: cell.y, h: cell.height, cy: list.contentY, lh: list.height, ch: list.contentHeight, oy: list.originY, cur: p.cursor }))
+      // The pinned heading, when shown, is the group of the rows right under it.
+      var heading = p.pinnedHeading
+      if (heading) {
+        var under = list.indexAt(20, list.contentY + p.pinnedHeight)
+        var k = under
+        while (k > 0 && p.visible_[k].parentId) k--
+        compare(heading.label, Store.groupKey(p.visible_[k], svc.environments), "step " + step)
+      }
+    }
+  }
+
+  function test_legendHoldsItsHeightAsTheSelectionMoves() {
+    var svc = createTemporaryObject(serviceC, tc)
+    svc.environments = [liveEnv("e", "laptop")]
+    svc.rows = manyRows()
+    var layouts = [panelC, dropdownC]
+    for (var l = 0; l < layouts.length; l++) {
+      var p = createTemporaryObject(layouts[l], tc, { service: svc })
+      p.opened = true
+      p.setFilter("all")
+      tryVerify(function() { return p.cursor >= 0 })
+      var heights = {}
+      for (var i = 0; i < 8; i++) { p.moveCursor(1); wait(0); heights[p.legendHeight] = true }
+      compare(Object.keys(heights).length, 1, (l ? "dropdown" : "panel") + " legend heights: " + Object.keys(heights).join(", "))
+    }
   }
 
   function test_keyActionClicks() {

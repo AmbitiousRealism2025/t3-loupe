@@ -211,13 +211,15 @@ test("one needs-you colour where only one fits: the most severe kind present", (
   assert.equal(Store.needsRole([r("k", "failed", { parentId: "w" }), r("a", "input")]), "ask", "subagents don't count");
 });
 
-test("legend: same keys in both layouts, only keys that work, Enter named for what it does", () => {
+test("legend: same keys in both layouts, only keys that work, Enter in a fixed slot at the end", () => {
   const keys = (mode, enter) => Array.from(Store.legend(mode, enter), (h) => h.key + " " + h.verb);
-  assert.deepEqual(keys("list", "show subagents"), ["j/k select", "↵ show subagents", "g next needing you", "1–4 view", "/ filter", "o open T3", "f layout", "r refresh", "esc close"]);
-  assert.ok(!keys("list", "").some((k) => k.startsWith("↵")), "no Enter hint where Enter does nothing");
+  assert.deepEqual(keys("list", "show subagents"), ["j/k select", "g next needing you", "1–4 view", "/ filter", "o open T3", "f layout", "r refresh", "esc close", "↵ show subagents"]);
+  assert.deepEqual(keys("list", ""), keys("list", "x").slice(0, -1).concat(["↵ "]), "the slot stays when Enter does nothing");
   assert.deepEqual(keys("offline", ""), ["o open T3", "f layout", "r refresh", "esc close"]);
   assert.deepEqual(keys("empty", ""), ["1–4 view", "/ filter", "o open T3", "f layout", "r refresh", "esc close"]);
-  // Enter's verb follows the item under the cursor.
+  // Every verb Enter can show pads to the same width, so the legend never reflows.
+  const width = (verb) => Store.hintText(Array.from(Store.legend("list", verb)).pop()).length;
+  for (const verb of ["", "details", "hide details", "show subagents", "hide subagents", "show idle", "fold idle"]) assert.equal(width(verb), width("hide subagents"), verb);
   assert.equal(Store.enterVerb({ kind: "idle-line", open: false }, true, false), "show idle");
   assert.equal(Store.enterVerb({ kind: "idle-line", open: true }, false, false), "fold idle");
   assert.equal(Store.enterVerb(r("a", "working", { childCount: 2 }), true, false), "show subagents");
@@ -229,9 +231,9 @@ test("legend: same keys in both layouts, only keys that work, Enter named for wh
 test("legend lines hold whole hints, as evenly as they fit", () => {
   const hints = Store.legend("list", "details");
   const ids = (lines) => Array.from(lines, (l) => Array.from(l, (h) => h.key).join(" "));
-  assert.deepEqual(ids(Store.legendLines(hints, () => true)), ["j/k ↵ g 1–4 / o f r esc"]);
-  assert.deepEqual(ids(Store.legendLines(hints, (l) => l.length <= 5)), ["j/k ↵ g 1–4 /", "o f r esc"]);
-  assert.deepEqual(ids(Store.legendLines(hints, (l) => l.length <= 3)), ["j/k ↵ g", "1–4 / o", "f r esc"]);
+  assert.deepEqual(ids(Store.legendLines(hints, () => true)), ["j/k g 1–4 / o f r esc ↵"]);
+  assert.deepEqual(ids(Store.legendLines(hints, (l) => l.length <= 5)), ["j/k g 1–4 / o", "f r esc ↵"]);
+  assert.deepEqual(ids(Store.legendLines(hints, (l) => l.length <= 3)), ["j/k g 1–4", "/ o f", "r esc ↵"]);
   assert.equal(Store.legendLines([], () => false).length, 1);
 });
 
@@ -278,4 +280,11 @@ test("a single run is a sentence, not a one-bar chart", () => {
   assert.deepEqual({ ...Store.runsSummary([{ ordinal: 1, status: "running", startedAt: now - 9 * 60_000, completedAt: null, durationMs: null }], now) },
     { chart: false, text: "1 run, running for 9m 00s" });
   assert.equal(Store.runsSummary([{ ordinal: 1, status: "completed", durationMs: 6 * 60_000 }], now).text, "1 run, took 6m 00s");
+});
+
+test("two runs are a sentence too; the chart starts at three", () => {
+  const now = 10_000_000;
+  const two = [{ ordinal: 1, status: "completed", durationMs: 8 * 60_000 }, { ordinal: 2, status: "running", startedAt: now - 14 * 60_000, durationMs: null }];
+  assert.deepEqual({ ...Store.runsSummary(two, now) }, { chart: false, text: "2 runs  ·  current 14m 00s  ·  longest 14m 00s" });
+  assert.equal(Store.runsSummary(two.concat([{ ordinal: 3, status: "completed", durationMs: 60_000 }]), now).chart, true);
 });

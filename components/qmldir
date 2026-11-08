@@ -20,3 +20,4 @@ KeyAction 1.0 KeyAction.qml
 StatusCallout 1.0 StatusCallout.qml
 DisconnectedState 1.0 DisconnectedState.qml
 ElidedText 1.0 ElidedText.qml
+Rail 1.0 Rail.qml

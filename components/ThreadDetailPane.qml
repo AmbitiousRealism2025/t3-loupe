@@ -150,13 +150,15 @@ Item {
         // the item before it, so no line starts with one.
         Flow {
           width: parent.width
-          spacing: Style.space(6)
+          spacing: metaSpace.advanceWidth
+          TextMetrics { id: metaSpace; font.family: root.fontFamily; font.pixelSize: Typo.caption; text: " " }
           Repeater {
             model: root.hasRow ? Store.metaParts(root.row, root.machineLabel) : []
             Text {
               required property var modelData
               required property int index
-              text: modelData + (index < parent.count - 1 ? "  ·" : "")
+              // One space either side of the dot: the Flow's spacing is one character wide.
+              text: modelData + (index < parent.count - 1 ? " ·" : "")
               textFormat: Text.PlainText
               color: root.colors.textFaint
               font.family: root.fontFamily
@@ -265,27 +267,23 @@ Item {
     }
   }
 
-  // More below: the last line fades out over a "more" note instead of stopping mid-line.
-  Item {
+  // More below: a solid strip with a note, so nothing under it is half-faded (a fade dimmed the
+  // runs chart below 3:1). The scrollbar stays on while the detail is longer than the pane.
+  Rectangle {
     visible: root.hasRow && flick.contentY + flick.height < flick.contentHeight - 2
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.rightMargin: Style.space(12)
     anchors.bottom: parent.bottom
-    height: Style.space(34)
-    Rectangle {
-      anchors.fill: parent
-      gradient: Gradient {
-        GradientStop { position: 0.0; color: Palette.alpha(root.colors.background, 0) }
-        GradientStop { position: 0.6; color: root.colors.background }
-      }
-    }
+    height: Style.space(22)
+    color: root.colors.background
+    Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: root.colors.line }
     Text {
       anchors.right: parent.right
-      anchors.bottom: parent.bottom
+      anchors.verticalCenter: parent.verticalCenter
       text: "more below ↓"
       textFormat: Text.PlainText
-      color: root.colors.textFaint
+      color: root.colors.textDim
       font.family: root.fontFamily
       font.pixelSize: Typo.caption
     }

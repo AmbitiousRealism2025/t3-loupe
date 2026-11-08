@@ -28,15 +28,9 @@ Item {
   readonly property var activity: Store.currentActivity(row)
   readonly property bool working: Store.BUSY[row.state] === true
   readonly property bool showActivity: activity !== null && (working || row.state === "input")
-  readonly property string where: {
-    var parts = []
-    if (showMachine && machineLabel) parts.push(machineLabel)
-    if (!child) parts.push(row.project)
-    return parts.join(" · ")
-  }
 
-  // What the second line says: the state in words and the most useful detail, which is cut short
-  // if it must be; then, for states with no live detail, where it runs, which is kept whole.
+  // What the second line says: the state in words and the most useful detail. Where the thread
+  // runs is not part of it (the group headings, the right column and the detail carry that).
   readonly property string subtitle: {
     var r = row
     switch (r.state) {
@@ -56,25 +50,9 @@ Item {
         return (subs ? Format.plural(subs, "subagent") : "Background") + (activity ? " · " + activity.label : "")
       }
       case "stopped": return Store.stateLabel(r)
-      case "idle": return ""
+      case "idle": return r.rawStatus === "completed" ? "Done" + (r.lastRunMs ? " · " + Format.duration(r.lastRunMs) + " run" : "") : "Idle"
     }
-    return showActivity ? activity.label : ""
-  }
-  // Where it runs, longest first, for the row to fit what it can: "build-box · sdk", "build-box", "sdk".
-  readonly property var whereOptions: {
-    if (subtitleWhere === "") return []
-    var machine = showMachine && machineLabel ? machineLabel : ""
-    var project = child ? "" : row.project
-    var out = [subtitleWhere]
-    if (machine && project) out.push(machine, project)
-    return out
-  }
-  readonly property string subtitleWhere: {
-    switch (row.state) {
-      case "failed": case "plan": case "queued": case "stopped": case "idle": return where
-      case "review": return row.pr ? "" : where
-    }
-    return showActivity ? "" : where
+    return showActivity ? activity.label : Store.stateLabel(r)
   }
   // Rows waiting on your answer are the ones to act on now: only they get a wash. Failures and plans
   // carry their rail and words, so the two needs-you hues never sit side by side as two fills.
@@ -105,10 +83,11 @@ Item {
     Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
     // Rail: the state's colour on rows that need you, the accent on the selected row.
-    Rectangle {
+    Rail {
       visible: root.needsYou || root.selected
-      width: Style.space(3); height: parent.height
+      height: parent.height
       color: root.needsYou ? root.glyphColor : root.colors.focus
+      dashed: root.row.state === "failed"
     }
   }
 
@@ -136,7 +115,7 @@ Item {
       id: left
       anchors.left: glyph.right
       anchors.leftMargin: Style.space(10)
-      anchors.right: time.left
+      anchors.right: right.left
       anchors.rightMargin: Style.space(12)
       anchors.verticalCenter: parent.verticalCenter
       spacing: Style.space(2)
@@ -148,26 +127,13 @@ Item {
         font.family: root.fontFamily
         font.pixelSize: root.child ? Typo.caption : Typo.bodySmall
       }
-      // Second line: the reason first, in full when it fits; where it runs takes what room is left,
-      // right-aligned: machine and project, then just one of them, then nothing (the group heading
-      // and the detail pane carry them too).
-      Item {
+      // Second line: the state and reason, and nothing else, so they have the whole width and are
+      // never the part that gets cut. Where the thread runs sits under the time instead.
+      Row {
         id: line
-        visible: root.subtitle !== "" || root.subtitleWhere !== ""
+        visible: root.subtitle !== ""
         width: parent.width
-        height: Math.max(subIcon.visible ? subIcon.height : 0, reason.implicitHeight, whereText.implicitHeight)
-        readonly property real gap: Style.space(6)
-        readonly property real reasonX: subIcon.visible ? subIcon.width + gap : 0
-        readonly property real reasonFull: root.subtitle !== "" ? lineMetrics.advanceWidth(root.subtitle) + 1 : 0
-        readonly property real room: width - reasonX - (reasonFull > 0 ? Math.min(reasonFull, width - reasonX) + gap * 2 : 0)
-        readonly property string where: {
-          var options = root.whereOptions
-          for (var i = 0; i < options.length; i++) if (whereMetrics.advanceWidth(options[i]) + 1 <= room) return options[i]
-          return ""
-        }
-        FontMetrics { id: lineMetrics; font: reason.font }
-        FontMetrics { id: whereMetrics; font: whereText.font }
-
+        spacing: Style.space(6)
         LucideIcon {
           id: subIcon
           visible: root.subtitleIcon !== ""
@@ -178,39 +144,43 @@ Item {
         }
         ElidedText {
           id: reason
-          visible: root.subtitle !== ""
-          x: line.reasonX
           anchors.verticalCenter: parent.verticalCenter
-          width: Math.max(0, Math.min(line.reasonFull, line.width - line.reasonX))
+          width: parent.width - (subIcon.visible ? subIcon.width + parent.spacing : 0)
           fullText: root.subtitle
           // Rows that need you say so in their colour; everything else stays ink.
           color: root.needsYou ? root.wordInk : root.showActivity ? root.colors.textDim : root.colors.textFaint
           font.family: root.subtitleIcon === "terminal" ? root.monoFamily : root.fontFamily
           font.pixelSize: Typo.caption
         }
-        Text {
-          id: whereText
-          visible: text !== ""
-          anchors.right: parent.right
-          anchors.verticalCenter: parent.verticalCenter
-          text: line.where
-          textFormat: Text.PlainText
-          color: root.colors.textFaint
-          font.family: root.fontFamily
-          font.pixelSize: Typo.caption
-        }
       }
     }
 
-    Text {
-      id: time
+    // Right column: the time, and under it the machine (when there are several). Sized by the
+    // texts' own implicit widths, which follow every font change; nothing here is measured once.
+    Column {
+      id: right
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
-      text: Format.elapsed(root.row, root.now, root.working)
-      textFormat: Text.PlainText
-      color: root.working || root.needsYou ? root.colors.textDim : root.colors.textFaint
-      font.family: root.monoFamily
-      font.pixelSize: Typo.caption
+      spacing: Style.space(2)
+      Text {
+        id: time
+        anchors.right: parent.right
+        text: Format.elapsed(root.row, root.now, root.working)
+        textFormat: Text.PlainText
+        color: root.working || root.needsYou ? root.colors.textDim : root.colors.textFaint
+        font.family: root.monoFamily
+        font.pixelSize: Typo.caption
+      }
+      Text {
+        id: machine
+        visible: text !== ""
+        anchors.right: parent.right
+        text: root.showMachine && root.machineLabel && !root.child ? root.machineLabel : ""
+        textFormat: Text.PlainText
+        color: root.colors.textFaint
+        font.family: root.fontFamily
+        font.pixelSize: Typo.caption
+      }
     }
   }
 }

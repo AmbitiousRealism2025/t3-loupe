@@ -44,10 +44,10 @@ Flow {
 
   function unhealthy(p) { return p.status === "error" || p.auth === "unauthenticated" }
 
-  // What the bars are: each provider's share of its usage limits, per window.
+  // What the bars are: how much of each provider's usage limit is used, per window.
   Text {
     visible: root.metered.length > 0
-    text: "USAGE"
+    text: "USAGE LIMITS"
     textFormat: Text.PlainText
     color: root.colors.textDim
     font.family: root.fontFamily
@@ -81,16 +81,19 @@ Flow {
         Row {
           required property var modelData
           readonly property bool high: modelData.usedPercent >= 90
+          // A window that's used up says so in words instead of drawing a full bar.
+          readonly property bool spent: modelData.usedPercent >= 100
           spacing: Style.space(6)
           Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: Store.windowLabel(modelData)
+            text: Store.windowLabel(modelData) + (parent.spent ? ":" : "")
             textFormat: Text.PlainText
             color: root.colors.textFaint
             font.family: root.fontFamily
             font.pixelSize: Typo.caption
           }
           Meter {
+            visible: !parent.spent
             anchors.verticalCenter: parent.verticalCenter
             width: Style.space(44)
             thickness: Style.space(3)
@@ -102,7 +105,8 @@ Flow {
           }
           Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: Math.round(modelData.usedPercent) + "%" + (parent.high && modelData.resetsAt ? " resets " + Format.until(modelData.resetsAt, root.now) : "")
+            text: parent.spent ? "limit reached" + (modelData.resetsAt ? ", resets " + Format.until(modelData.resetsAt, root.now) : "")
+              : Math.round(modelData.usedPercent) + "%" + (parent.high && modelData.resetsAt ? " resets " + Format.until(modelData.resetsAt, root.now) : "")
             textFormat: Text.PlainText
             color: parent.high ? root.colors.text : root.colors.textFaint
             font.family: root.fontFamily

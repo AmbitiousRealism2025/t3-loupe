@@ -62,10 +62,11 @@ Item {
     border.color: root.colors.focus
     Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
-    Rectangle {
+    Rail {
       visible: root.needsYou || root.selected
-      width: Style.space(3); height: parent.height
+      height: parent.height
       color: root.needsYou ? root.tone : root.colors.focus
+      dashed: root.row.state === "failed"
     }
 
     HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
