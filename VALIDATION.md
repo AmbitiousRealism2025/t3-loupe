@@ -357,3 +357,18 @@ A review-driven redesign. The review files stay outside the repository, under `u
 - Motion and reduced motion: reviewers saw still images.
 - Remote machines live: kamrui's pairing is expired. The demo's second machine stands in.
 - Themes other than Blue Clouds and Catppuccin Latte live: covered by the palette tests only.
+
+## pair-ssh with `t3 serve` and HTTPS — v2.5.8 (2026-11-09)
+
+Found while re-pairing kamrui-remote, which runs T3 as `~/.t3/runtime/versions/0.1.5/t3 serve` behind Tailscale Serve. `pair-ssh` failed there with `cli_not_found`, and any machine paired with `pair-ssh` could only be reached through an `ssh -L` forward.
+
+**Verified:**
+- `npm test`: 94 pass, 1 new. It checks that a machine paired over SSH at an HTTPS address is reached at that address, and that one paired at a loopback forward still needs the forward (`tunnel_missing` with none running). The re-pair test now covers the HTTPS case's `--url`. The new test fails on 2.5.7, which has no such distinction.
+- Live, from this branch with a throwaway config folder:
+  - `pair-ssh --ssh-host kamrui-remote --url https://kamrui-remote.tail9106ac.ts.net` paired kamrui (T3 0.1.5, `t3 serve`) with `orchestration:read`, and `doctor` reached it over HTTPS with no forward running. On 2.5.7 the same command fails with `cli_not_found`.
+  - `pair-local` still pairs the desktop app on the Mac (T3 0.1.8 nightly), and `doctor` passes for both machines.
+- No new network, process, file, clipboard or text-input access: the remote command is the same one-time script, now also able to run the server binary itself as the CLI.
+- `git diff --check` is clean.
+
+**Not verified:**
+- A remote desktop-app T3 paired with `pair-ssh`: that path's code is unchanged, and the local desktop app was checked with `pair-local`, which runs the same script.

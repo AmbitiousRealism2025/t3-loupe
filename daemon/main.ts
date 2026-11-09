@@ -6,7 +6,8 @@
 //   doctor                   human-readable checks per paired environment
 //   pair --url URL [--label NAME]                         paste a pairing link/token (hidden prompt)
 //   pair-local [--url http://127.0.0.1:3773] [--label]    issue + exchange on this machine
-//   pair-ssh --ssh-host HOST --url FORWARD_URL [--label]  issue on HOST over SSH (one-time remote command)
+//   pair-ssh --ssh-host HOST [--url URL] [--label]        issue on HOST over SSH (one-time remote command);
+//                                                         URL is an ssh -L forward (found if omitted) or HOST's HTTPS address
 //   forget --id ENV_ID_PREFIX                             drop a pairing from the local store
 //   demo [offline]           stream synthetic data (UI development); offline: expired pairings, no threads
 import { statSync } from "node:fs";
@@ -19,7 +20,7 @@ import type { Notice } from "./events.ts";
 import { checkEndpoint, getDescriptor, requestJson } from "./http.ts";
 import { compareRows, type Counts, type Row } from "./model.ts";
 import { exchange, extractCredential, issueCredential, READ_SCOPE } from "./pairing.ts";
-import { existingTunnel } from "./tunnel.ts";
+import { environmentBase, existingTunnel, usesTunnel } from "./tunnel.ts";
 import { Failure, failureCode } from "./util.ts";
 
 export const PROTOCOL = 1;
@@ -196,7 +197,7 @@ async function doctor() {
       try { console.log(`  ✓ ${name}: ${await fn()}`); return true; } catch (e) { console.log(`  ✗ ${name}: ${failureCode(e)}`); return false; }
     };
     let base = env.url;
-    if (env.sshHost && !(await check("ssh forward", async () => (base = existingTunnel(env.sshHost!))))) continue;
+    if (usesTunnel(env) && !(await check("ssh forward", async () => (base = environmentBase(env))))) continue;
     if (!(await check("endpoint", async () => checkEndpoint(base).origin))) continue;
     if (!(await check("server", async () => {
       const d = await getDescriptor(base);

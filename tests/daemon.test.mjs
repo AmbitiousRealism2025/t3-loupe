@@ -12,7 +12,7 @@ const { classify, buildRows, compareRows, countRows, activityIcon, isUnread } = 
 const { TransitionDetector } = await import(D + "events.ts");
 const { ThreadWatch } = await import(D + "thread-watch.ts");
 const { loadConfig, saveConfig, upsertEnvironment } = await import(D + "config.ts");
-const { tunnelUrl } = await import(D + "tunnel.ts");
+const { tunnelUrl, usesTunnel, environmentBase } = await import(D + "tunnel.ts");
 const { checkEndpoint, requestJson } = await import(D + "http.ts");
 const { EnvironmentConnection } = await import(D + "connection.ts");
 const { assertOwnListener, listenerUids } = await import(D + "listener.ts");
@@ -253,6 +253,17 @@ test("tunnel discovery only accepts loopback forwards to the configured host", (
   assert.equal(tunnelUrl(["ssh", "-L", "0.0.0.0:5000:localhost:3773", "box"], "box"), null);
   assert.equal(tunnelUrl(["ssh", "-L", "46363:127.0.0.1:3773", "other"], "box"), null);
   assert.equal(tunnelUrl(["ssh", "-L", "46363:10.0.0.2:3773", "box"], "box"), null);
+});
+
+test("a machine paired over SSH at an HTTPS address is reached there, not through a forward", () => {
+  const emptyProc = mkdtempSync(join(tmpdir(), "t3-loupe-proc-"));
+  assert.equal(usesTunnel({ url: "http://127.0.0.1:3773" }), false);
+  assert.equal(usesTunnel({ url: "https://box.example.ts.net" }), false);
+  assert.equal(usesTunnel({ url: "http://127.0.0.1:46363", sshHost: "box" }), true);
+  assert.equal(usesTunnel({ url: "", sshHost: "box" }), true);
+  assert.equal(usesTunnel({ url: "https://box.example.ts.net", sshHost: "box" }), false);
+  assert.equal(environmentBase({ url: "https://box.example.ts.net", sshHost: "box" }, emptyProc), "https://box.example.ts.net");
+  assert.throws(() => environmentBase({ url: "http://127.0.0.1:46363", sshHost: "box" }, emptyProc), /tunnel_missing/);
 });
 
 test("endpoint policy: https anywhere, plaintext only on loopback, no credentials or paths", () => {

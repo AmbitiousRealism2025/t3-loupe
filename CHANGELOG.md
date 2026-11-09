@@ -2,6 +2,15 @@
 
 What changed in each version. [`VALIDATION.md`](VALIDATION.md) records how each one was verified.
 
+## 2.5.8 — 2026-11-09
+
+Fixes pairing a remote machine that runs T3 as a server rather than the desktop app.
+
+- **`pair-ssh` works with `t3 serve`.** On a machine running T3's standalone server, `pair-ssh` stopped with `cli_not_found`: it only knew how to find the CLI inside the desktop app. When the server program is `t3` itself, it now runs that as the CLI.
+- **`pair-ssh` can pair over HTTPS.** `pair-ssh --ssh-host HOST --url https://…` uses SSH only to issue the pairing, then connects to the HTTPS address directly, such as a Tailscale Serve name. Before, any machine paired with `pair-ssh` was looked up through an `ssh -L` forward, so one reached over HTTPS showed "No SSH tunnel". Machines paired at a loopback forward work as before.
+- The panel's re-pair command for such a machine includes its `--url`.
+- New test: a machine paired over SSH at an HTTPS address is reached there, not through a forward (94 pass).
+
 ## 2.5.7 — 2026-11-08
 
 A UI overhaul driven by design reviews. Four reviewer agents scored the panel on eight categories, and it was reworked over ten rounds against their findings. The overall review score went from 5.8 to 7.6 out of 10. No new network, process, file, clipboard or text-input access.
