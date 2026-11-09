@@ -397,6 +397,7 @@ Two README reviews, one on Fable 5.1 and one on Fable 5.2 at high effort, found 
 - Every new README claim checked against the code: the five-second config reload (`daemon/main.ts`), the precedence of `presentation` in `settings.json` over the bar setting (`BarWidget.qml`), the state labels (`lib/Store.js`), the `refresh` IPC call (`Service.qml`), `Space` and `Shift+Tab` (the shell's `PanelKeyCatcher.qml`), the filter keys (`components/FilterField.qml`), the error codes, and Omarchy's unsandboxed-code warning (`omarchy-plugin-add`).
 - `omarchy plugin validate` passes on a clean export. `git diff --check` is clean.
 
+- Screenshots: the installed 2.5.9 plugin on the demo feed, in Matte Black, cropped to each panel's own border (two-pane 2174×1966, dropdown 1428×1752) so no other window or the pointer shows. Published to the media repo under `screens/2.5.10/`; `preview.webp` is the two-pane shot on the theme's stock wallpaper.
+
 **Not verified:**
-- The README's screenshots still show the UI from before 2.5.7. New ones are a separate step.
 - `pair --url` against a T3 on macOS: documented from the code, not run.

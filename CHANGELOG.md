@@ -15,6 +15,7 @@ A working `t3-loupe` command, and a README rewritten for someone installing T3 L
   - A `settings.json` table with every key and its default, instead of a sample that pinned `/usr/bin/node` and a presentation.
   - Troubleshooting keyed to what you actually see.
   - A shorter feature list, security summary and developer section.
+- **New screenshots and marketplace preview** of the current UI, in Omarchy's Matte Black theme, replacing ones from before the 2.5.7 redesign.
 - `VALIDATION.md` no longer names a real Tailscale host, and a test keeps it that way.
 - New tests: the command runs from a symlink and honours a pinned Node; "Server changed" re-pairs the way the machine was paired (101 pass).
 
