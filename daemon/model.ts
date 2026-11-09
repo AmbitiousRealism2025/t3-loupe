@@ -1,6 +1,9 @@
 // Pure derivation: raw T3 thread shells → bounded display rows.
 // Only allowlisted, cleaned fields leave this module.
-import { clean, cleanBlock, isObject, ms } from "./util.ts";
+import { clean, cleanBlock, isObject, ms, validId } from "./util.ts";
+
+/** An id kept whole (cutting one makes subagent ids collide), or "" when it isn't a plausible id. */
+const idOf = (value: unknown): string => (validId(value) ? value : "");
 
 /** Display states, most urgent first. */
 export const STATES = [
@@ -171,12 +174,12 @@ export function toRow(envId: string, t: Record<string, any>, projects: Map<strin
   const { pr, count } = pickPullRequest(t);
   const selection = isObject(t.modelSelection) ? t.modelSelection : {};
   return {
-    key: `${envId}:${t.id}`,
+    key: `${envId}:${idOf(t.id)}`,
     envId,
-    id: clean(t.id, 80),
-    parentId: isSubagent ? clean(lineage.rootThreadId || lineage.parentThreadId, 80) : "",
+    id: idOf(t.id),
+    parentId: isSubagent ? idOf(lineage.rootThreadId || lineage.parentThreadId) : "",
     title: clean(t.title, 140) || "Untitled thread",
-    projectId: clean(t.projectId, 80),
+    projectId: idOf(t.projectId),
     project: clean(project?.title ?? project?.name, 60) || "Project",
     branch: clean(t.branch, 80),
     worktree: typeof t.worktreePath === "string" && t.worktreePath.length > 0,

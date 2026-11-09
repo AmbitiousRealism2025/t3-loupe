@@ -372,3 +372,17 @@ Found while re-pairing kamrui-remote, which runs T3 as `~/.t3/runtime/versions/0
 
 **Not verified:**
 - A remote desktop-app T3 paired with `pair-ssh`: that path's code is unchanged, and the local desktop app was checked with `pair-local`, which runs the same script.
+
+## Marketplace review findings — v2.5.9 (2026-11-09)
+
+The marketplace review of 2.5.7 (omacom/omarchy-plugin-marketplace#14404) reported three conditional Medium findings, all requiring an already paired server under an attacker's control: raw thread ids retained and emitted past the state-line cap, an unbounded pending-request list drawn by a non-virtualised Repeater, and a provider name reaching a measurement Text without `PlainText`. Checking real ids for the fix turned up a fourth problem: subagent ids (about 200 characters, long shared prefix) were cut to 80, so siblings collided.
+
+**Verified:**
+- `npm test`: 99 pass, 5 new: the shell store drops implausible ids and caps threads and projects; sibling subagent rows keep distinct whole ids; the state line fits its cap and keeps the top-ranked rows; the thread watch caps pending at three with a count and bounds every record kind, evicting answered requests before pending ones; every runtime QML `Text` sets `textFormat`. Four of the five fail on 2.5.8; the state-line test needs the new `daemon/state.ts` module, which 2.5.8 doesn't have.
+- Real ids from both paired machines (132 on the Mac, up to 207 characters, using only `: - % .` besides letters and digits; UUIDs on kamrui) all pass the new id rule.
+- Live, from this branch: the collector connected to both machines and sent a 9.6 KB state line with unique row keys; `status` shows both live.
+- `omarchy plugin validate` passes on a clean export. `git diff --check` is clean.
+
+**Not verified:**
+- A hostile server: covered by the unit tests only.
+- Subagent detail loading live: no subagents were running during the check.

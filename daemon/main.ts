@@ -18,44 +18,16 @@ import { handleDesktopCommand } from "./desktop.ts";
 import { EnvironmentConnection, type EnvironmentView } from "./connection.ts";
 import type { Notice } from "./events.ts";
 import { checkEndpoint, getDescriptor, requestJson } from "./http.ts";
-import { compareRows, type Counts, type Row } from "./model.ts";
 import { exchange, extractCredential, issueCredential, READ_SCOPE } from "./pairing.ts";
+import { fitState, PROTOCOL, summarize } from "./state.ts";
 import { environmentBase, existingTunnel, usesTunnel } from "./tunnel.ts";
-import { Failure, failureCode } from "./util.ts";
+import { Failure, failureCode, validId } from "./util.ts";
 
-export const PROTOCOL = 1;
-const MAX_LINE = 2 * 1024 * 1024;
 const EMIT_DEBOUNCE = 200;
 const HEARTBEAT = 30_000;
 
 function write(message: Record<string, unknown>) {
   process.stdout.write(JSON.stringify({ v: PROTOCOL, ...message }) + "\n");
-}
-
-export function summarize(views: EnvironmentView[]) {
-  // One list across machines, in the same order each machine uses.
-  const rows: Row[] = views.flatMap((v) => v.rows.map((r) => ({ ...r, stale: v.stale }))).sort(compareRows);
-  const live = views.filter((v) => v.state === "live" || v.state === "polling");
-  const counts: Counts = { active: 0, busy: 0, attention: 0, input: 0, review: 0 };
-  for (const v of live) for (const k of Object.keys(counts) as (keyof Counts)[]) counts[k] += v.counts[k];
-  return {
-    environments: views.map(({ rows: _rows, ...rest }) => rest),
-    rows,
-    counts,
-    known: live.length > 0,
-  };
-}
-
-/** Keep a state line under the cap by shedding idle subagents, then idle roots. */
-function fitState(state: ReturnType<typeof summarize>): string {
-  let line = JSON.stringify({ v: PROTOCOL, type: "state", at: Date.now(), ...state });
-  const droppable = [(r: Row) => r.parentId !== "" && r.state === "idle", (r: Row) => r.state === "idle", (r: Row) => r.state === "review"];
-  for (const drop of droppable) {
-    if (line.length <= MAX_LINE) break;
-    state = { ...state, rows: state.rows.filter((r) => !drop(r)) };
-    line = JSON.stringify({ v: PROTOCOL, type: "state", at: Date.now(), ...state, truncated: true });
-  }
-  return line;
 }
 
 class Daemon {
@@ -129,8 +101,8 @@ class Daemon {
     try { cmd = JSON.parse(line); } catch { return; }
     if (cmd?.cmd === "copy") {
       void handleDesktopCommand(cmd);
-    } else if (cmd?.cmd === "detail" && typeof cmd.envId === "string" && typeof cmd.threadId === "string") {
-      this.connections.get(cmd.envId)?.requestDetail(cmd.threadId.slice(0, 120));
+    } else if (cmd?.cmd === "detail" && typeof cmd.envId === "string" && validId(cmd.threadId)) {
+      this.connections.get(cmd.envId)?.requestDetail(cmd.threadId);
     } else if (cmd?.cmd === "refresh") {
       for (const c of this.connections.values()) c.retryNow();
       this.emit();
