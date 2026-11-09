@@ -18,6 +18,14 @@ export function ms(value: unknown): number | null {
   return Number.isFinite(t) ? t : null;
 }
 
+/** T3 ids are UUIDs, or provider-derived ids of about 200 characters (subagent threads). */
+export const MAX_ID = 256;
+
+/** An id the server could plausibly send. Anything else is dropped on arrival, never kept or echoed. */
+export function validId(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= MAX_ID && /^[A-Za-z0-9_.:%-]+$/.test(value);
+}
+
 export function isObject(value: unknown): value is Record<string, any> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -2,9 +2,12 @@
 // Rules (ws.ts / ShellStream.ts @ fed41fa8): an authoritative snapshot resets the replica;
 // a snapshot carrying resolvedRepositoryIdentityRoots refreshes project metadata only;
 // events at or below the applied sequence are duplicates from resume overlap.
-import { isObject } from "./util.ts";
+import { isObject, validId } from "./util.ts";
 
 export const SCHEMA_VERSION = 2;
+// Far above any real workspace; bounds what a misbehaving server can make the collector hold.
+export const MAX_THREADS = 5000;
+export const MAX_PROJECTS = 1000;
 
 export class ShellStore {
   sequence = -1;
@@ -25,36 +28,37 @@ export class ShellStore {
         if (!isObject(snapshot) || snapshot.schemaVersion !== SCHEMA_VERSION) throw new Error("unsupported");
         const projects = Array.isArray(snapshot.projects) ? snapshot.projects : [];
         if (Array.isArray(item.resolvedRepositoryIdentityRoots)) {
-          for (const p of projects) if (isObject(p) && typeof p.id === "string") this.projects.set(p.id, p);
+          for (const p of projects) if (validProject(p) && (this.projects.has(p.id) || this.projects.size < MAX_PROJECTS)) this.projects.set(p.id, p);
           break;
         }
-        this.projects = new Map(projects.filter((p: any) => isObject(p) && typeof p.id === "string").map((p: any) => [p.id, p]));
+        this.projects = new Map(projects.filter(validProject).slice(0, MAX_PROJECTS).map((p: any) => [p.id, p]));
         const threads = Array.isArray(snapshot.threads) ? snapshot.threads : [];
-        this.threads = new Map(threads.filter(validThread).map((t: any) => [t.id, t]));
+        this.threads = new Map(threads.filter(validThread).slice(0, MAX_THREADS).map((t: any) => [t.id, t]));
         if (typeof snapshot.snapshotSequence === "number") this.sequence = snapshot.snapshotSequence;
         changed.add("*");
         break;
       }
       case "thread.updated":
         if (!this.fresh(item.sequence)) break;
-        if (isObject(item.thread) && typeof item.thread.id === "string") {
-          if (validThread(item.thread)) this.threads.set(item.thread.id, item.thread);
-          else this.threads.delete(item.thread.id);
+        if (isObject(item.thread) && validId(item.thread.id)) {
+          if (!validThread(item.thread)) this.threads.delete(item.thread.id);
+          else if (this.threads.has(item.thread.id) || this.threads.size < MAX_THREADS) this.threads.set(item.thread.id, item.thread);
+          else break;
           changed.add(item.thread.id);
         }
         break;
       case "thread.removed":
         if (!this.fresh(item.sequence)) break;
-        if (typeof item.threadId === "string" && this.threads.delete(item.threadId)) changed.add(item.threadId);
+        if (validId(item.threadId) && this.threads.delete(item.threadId)) changed.add(item.threadId);
         break;
       case "project.updated":
         if (!this.fresh(item.sequence)) break;
-        if (isObject(item.project) && typeof item.project.id === "string") this.projects.set(item.project.id, item.project);
+        if (validProject(item.project) && (this.projects.has(item.project.id) || this.projects.size < MAX_PROJECTS)) this.projects.set(item.project.id, item.project);
         changed.add("*projects");
         break;
       case "project.removed":
         if (!this.fresh(item.sequence)) break;
-        if (typeof item.projectId === "string") this.projects.delete(item.projectId);
+        if (validId(item.projectId)) this.projects.delete(item.projectId);
         changed.add("*projects");
         break;
     }
@@ -75,5 +79,9 @@ export class ShellStore {
 }
 
 function validThread(t: unknown): t is Record<string, any> {
-  return isObject(t) && typeof t.id === "string" && !t.archivedAt && !t.deletedAt;
+  return isObject(t) && validId(t.id) && !t.archivedAt && !t.deletedAt;
+}
+
+function validProject(p: unknown): p is Record<string, any> {
+  return isObject(p) && validId(p.id);
 }

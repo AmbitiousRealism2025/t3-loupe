@@ -13,7 +13,10 @@ export interface Environment {
   token: string;
   /** Epoch seconds. */
   expiresAt: number;
-  /** When set, the URL is rediscovered from an existing `ssh -L` forward to this host. */
+  /**
+   * The SSH host pairing ran on. With a loopback `url`, the URL is rediscovered from an existing
+   * `ssh -L` forward to this host; with an HTTPS `url`, the machine is reached there directly.
+   */
   sshHost?: string;
 }
 

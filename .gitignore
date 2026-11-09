@@ -2,3 +2,5 @@
 node_modules/
 *.raw.ndjson
 docs/mocks/
+ui-review/
+promo/

@@ -1,5 +1,6 @@
 // Finds an existing `ssh -L <port>:127.0.0.1:3773 <host>` forward. Never starts one.
 import { readdirSync, readFileSync, statSync } from "node:fs";
+import { isLoopbackHost } from "./listener.ts";
 import { Failure } from "./util.ts";
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost"]);
@@ -40,4 +41,15 @@ export function existingTunnel(host: string, procRoot = "/proc"): string {
     } catch {}
   }
   throw new Failure("tunnel_missing");
+}
+
+/** A machine paired over SSH is reached through its forward, unless it was paired at a direct (HTTPS) URL. */
+export function usesTunnel(env: { url: string; sshHost?: string }): boolean {
+  if (!env.sshHost) return false;
+  try { return !env.url || isLoopbackHost(new URL(env.url).hostname); } catch { return true; }
+}
+
+/** Where to reach a paired machine right now. */
+export function environmentBase(env: { url: string; sshHost?: string }, procRoot = "/proc"): string {
+  return usesTunnel(env) ? existingTunnel(env.sshHost!, procRoot) : env.url;
 }

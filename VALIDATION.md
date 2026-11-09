@@ -1,4 +1,4 @@
-# Validation receipts — v2.0.0 to v2.5.0
+# Validation receipts
 
 Validated on 2026-10-12, on this setup:
 - Omarchy 4.0.2 (Mac lineage), Quickshell 0.3.1 / Qt 6.11.2, ARM64.
@@ -357,3 +357,47 @@ A review-driven redesign. The review files stay outside the repository, under `u
 - Motion and reduced motion: reviewers saw still images.
 - Remote machines live: kamrui's pairing is expired. The demo's second machine stands in.
 - Themes other than Blue Clouds and Catppuccin Latte live: covered by the palette tests only.
+
+## pair-ssh with `t3 serve` and HTTPS — v2.5.8 (2026-11-09)
+
+Found while re-pairing kamrui-remote, which runs T3 as `~/.t3/runtime/versions/0.1.5/t3 serve` behind Tailscale Serve. `pair-ssh` failed there with `cli_not_found`, and any machine paired with `pair-ssh` could only be reached through an `ssh -L` forward.
+
+**Verified:**
+- `npm test`: 94 pass, 1 new. It checks that a machine paired over SSH at an HTTPS address is reached at that address, and that one paired at a loopback forward still needs the forward (`tunnel_missing` with none running). The re-pair test now covers the HTTPS case's `--url`. The new test fails on 2.5.7, which has no such distinction.
+- Live, from this branch with a throwaway config folder:
+  - `pair-ssh --ssh-host kamrui-remote --url https://<host>.<tailnet>.ts.net` paired kamrui (T3 0.1.5, `t3 serve`) with `orchestration:read`, and `doctor` reached it over HTTPS with no forward running. On 2.5.7 the same command fails with `cli_not_found`.
+  - `pair-local` still pairs the desktop app on the Mac (T3 0.1.8 nightly), and `doctor` passes for both machines.
+- No new network, process, file, clipboard or text-input access: the remote command is the same one-time script, now also able to run the server binary itself as the CLI.
+- `git diff --check` is clean.
+
+**Not verified:**
+- A remote desktop-app T3 paired with `pair-ssh`: that path's code is unchanged, and the local desktop app was checked with `pair-local`, which runs the same script.
+
+## Marketplace review findings — v2.5.9 (2026-11-09)
+
+The marketplace review of 2.5.7 (omacom/omarchy-plugin-marketplace#14404) reported three conditional Medium findings, all requiring an already paired server under an attacker's control: raw thread ids retained and emitted past the state-line cap, an unbounded pending-request list drawn by a non-virtualised Repeater, and a provider name reaching a measurement Text without `PlainText`. Checking real ids for the fix turned up a fourth problem: subagent ids (about 200 characters, long shared prefix) were cut to 80, so siblings collided.
+
+**Verified:**
+- `npm test`: 99 pass, 5 new: the shell store drops implausible ids and caps threads and projects; sibling subagent rows keep distinct whole ids; the state line fits its cap and keeps the top-ranked rows; the thread watch caps pending at three with a count and bounds every record kind, evicting answered requests before pending ones; every runtime QML `Text` sets `textFormat`. Four of the five fail on 2.5.8; the state-line test needs the new `daemon/state.ts` module, which 2.5.8 doesn't have.
+- Real ids from both paired machines (132 on the Mac, up to 207 characters, using only `: - % .` besides letters and digits; UUIDs on kamrui) all pass the new id rule.
+- Live, from this branch: the collector connected to both machines and sent a 9.6 KB state line with unique row keys; `status` shows both live.
+- `omarchy plugin validate` passes on a clean export. `git diff --check` is clean.
+
+**Not verified:**
+- A hostile server: covered by the unit tests only.
+- Subagent detail loading live: no subagents were running during the check.
+
+## The t3-loupe command and the README rewrite — v2.5.10 (2026-11-09)
+
+Two README reviews, one on Fable 5.1 and one on Fable 5.2 at high effort, found that every command the UI prints (`t3-loupe …`) had nothing behind it, and that the README was written for someone already running the plugin.
+
+**Verified:**
+- `npm test`: 101 pass, 2 new, and 1 re-pair assertion added. The command test runs `bin/t3-loupe` through a symlink in a temporary folder, checks it prints the commands with no arguments, and checks a `"node"` pinned in `settings.json` is the one used. The re-pair assertion fails on 2.5.9.
+- Live: `bin/t3-loupe status`, through a symlink, reported both paired machines live.
+- Every new README claim checked against the code: the five-second config reload (`daemon/main.ts`), the precedence of `presentation` in `settings.json` over the bar setting (`BarWidget.qml`), the state labels (`lib/Store.js`), the `refresh` IPC call (`Service.qml`), `Space` and `Shift+Tab` (the shell's `PanelKeyCatcher.qml`), the filter keys (`components/FilterField.qml`), the error codes, and Omarchy's unsandboxed-code warning (`omarchy-plugin-add`).
+- `omarchy plugin validate` passes on a clean export. `git diff --check` is clean.
+
+- Screenshots: the installed 2.5.9 plugin on the demo feed, in Matte Black, cropped to each panel's own border (two-pane 2174×1966, dropdown 1428×1752) so no other window or the pointer shows. Published to the media repo under `screens/2.5.10/`; `preview.webp` is the two-pane shot on the theme's stock wallpaper.
+
+**Not verified:**
+- `pair --url` against a T3 on macOS: documented from the code, not run.

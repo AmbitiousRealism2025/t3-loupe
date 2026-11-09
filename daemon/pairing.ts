@@ -79,12 +79,18 @@ for process in pathlib.Path("/proc").glob("[0-9]*"):
         if (base / "userdata/environment-id").read_text().strip() != expected:
             raise SystemExit(2)
         args = [s.decode() for s in (process / "cmdline").read_bytes().split(bytes([0])) if s]
-        entry = next((arg for arg in args[1:] if arg.endswith(("bin.mjs", "index.mjs", "/t3", "bin.js"))), None)
-        if not entry: raise SystemExit(3)
         executable = os.readlink(process / "exe")
         env = dict(os.environ)
-        env["ELECTRON_RUN_AS_NODE"] = "1"
-        result = subprocess.run([executable, entry, "auth", "pairing", "create", "--base-dir", str(base),
+        if executable.endswith("/t3"):
+            # Standalone runtime (t3 serve): the server binary is also the CLI.
+            command = [executable]
+        else:
+            # Desktop app: run the bundled server entry point under the app's own runtime.
+            entry = next((arg for arg in args[1:] if arg.endswith(("bin.mjs", "index.mjs", "/t3", "bin.js"))), None)
+            if not entry: raise SystemExit(3)
+            env["ELECTRON_RUN_AS_NODE"] = "1"
+            command = [executable, entry]
+        result = subprocess.run(command + ["auth", "pairing", "create", "--base-dir", str(base),
             "--ttl", "5m", "--label", "T3 Loupe", "--json"],
             capture_output=True, text=True, timeout=20, env=env)
         if result.returncode != 0: raise SystemExit(4)

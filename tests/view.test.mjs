@@ -189,8 +189,13 @@ test("disconnected machines name the step that brings them back", () => {
   assert.deepEqual({ ...Store.repairStep(env()) }, { kind: "command", text: "t3-loupe pair-local --label laptop" });
   assert.deepEqual({ ...Store.repairStep(env({ label: "build-box", sshHost: "build-box", url: "http://127.0.0.1:46363" })) },
     { kind: "command", text: "t3-loupe pair-ssh --ssh-host build-box --label build-box" });
+  assert.equal(Store.repairStep(env({ label: "box", sshHost: "box", url: "https://box.example.ts.net" })).text,
+    "t3-loupe pair-ssh --ssh-host box --url https://box.example.ts.net --label box");
   assert.equal(Store.repairStep(env({ url: "https://t3.example.com" })).text, "t3-loupe pair --url https://t3.example.com --label laptop");
   assert.equal(Store.repairStep(env({ state: "tunnel_missing", sshHost: "box" })).kind, "note");
+  // A server that changed is paired again the way it was paired, not always locally.
+  assert.equal(Store.repairStep(env({ state: "environment_changed", label: "box", sshHost: "box", url: "https://box.example.ts.net" })).text,
+    "t3-loupe pair-ssh --ssh-host box --url https://box.example.ts.net --label box");
   // A label that isn't a plain word stays out of the command rather than being quoted wrong.
   assert.equal(Store.repairStep(env({ label: "my laptop" })).text, "t3-loupe pair-local");
   assert.deepEqual({ ...Store.connection([env(), env({ state: "expired" })]) }, { total: 2, connected: 0, none: true });

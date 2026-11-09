@@ -210,9 +210,16 @@ Column {
     }
   }
 
+  // The collector sends at most three pending requests; the rest are counted here.
+  Note {
+    visible: root.lead && root.detail !== null && (root.detail.pendingMore || 0) > 0
+    width: root.width
+    text: root.detail ? "+" + (root.detail.pendingMore || 0) + " more waiting in T3" : ""
+  }
+
   // Activity trail, newest last — T3's timeline icons. Live steps get a dot and "now".
   // The widest time an activity line shows, for its fixed time column.
-  Text { id: whenProbe; visible: false; text: "waiting"; font.family: root.fontFamily; font.pixelSize: Typo.caption }
+  Text { id: whenProbe; visible: false; text: "waiting"; textFormat: Text.PlainText; font.family: root.fontFamily; font.pixelSize: Typo.caption }
 
   component ActivityTrail: Column {
     width: root.width

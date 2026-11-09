@@ -1,18 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, symlinkSync, writeFileSync, mkdirSync } from "node:fs";
+import { chmodSync, mkdtempSync, symlinkSync, writeFileSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FakeT3 } from "./lib/fake-t3.mjs";
 
 const D = "../daemon/";
-const { ShellStore } = await import(D + "shell-store.ts");
+const { ShellStore, MAX_THREADS } = await import(D + "shell-store.ts");
+const { fitState } = await import(D + "state.ts");
 const { classify, buildRows, compareRows, countRows, activityIcon, isUnread } = await import(D + "model.ts");
 const { TransitionDetector } = await import(D + "events.ts");
 const { ThreadWatch } = await import(D + "thread-watch.ts");
 const { loadConfig, saveConfig, upsertEnvironment } = await import(D + "config.ts");
-const { tunnelUrl } = await import(D + "tunnel.ts");
+const { tunnelUrl, usesTunnel, environmentBase } = await import(D + "tunnel.ts");
 const { checkEndpoint, requestJson } = await import(D + "http.ts");
 const { EnvironmentConnection } = await import(D + "connection.ts");
 const { assertOwnListener, listenerUids } = await import(D + "listener.ts");
@@ -47,6 +49,47 @@ test("shell store: snapshot resets, metadata snapshot keeps threads, stale seque
   s.apply({ kind: "thread.removed", sequence: 8, threadId: "t2" });
   assert.equal(s.threads.size, 1);
   assert.throws(() => s.apply({ kind: "snapshot", snapshot: { schemaVersion: 3, threads: [], projects: [] } }));
+});
+
+// A paired server is trusted for identity, not for size: what it sends is bounded on arrival.
+// Real subagent thread ids are about 200 characters of provider-derived text.
+const subagentId = (n) => "thread:provider:claudeAgent:native-thread:provider-thread%3Aprovider%3AclaudeAgent%3Anative-thread%3Apending%253Arun%253Athread%253A0b1d2c3e-aaaa-bbbb-cccc-0123456789ab%253Aordinal%253A1%3A" + n;
+
+test("shell store: ids must be plausible, and threads and projects are capped", () => {
+  const s = new ShellStore();
+  const huge = "x".repeat(300);
+  s.apply({ kind: "snapshot", snapshot: { schemaVersion: 2, snapshotSequence: 1, projects: [{ id: "p1" }, { id: huge }, { id: "<b>" }],
+    threads: [thread("t1"), thread(huge), thread("bad id"), thread(subagentId("a"))] } });
+  assert.deepEqual([...s.threads.keys()], ["t1", subagentId("a")], "real long ids are kept whole; oversized or odd ones are dropped");
+  assert.deepEqual([...s.projects.keys()], ["p1"]);
+  s.apply({ kind: "thread.updated", sequence: 2, thread: thread(huge) });
+  assert.equal(s.threads.size, 2);
+  const many = Array.from({ length: MAX_THREADS + 50 }, (_, i) => thread("t" + i));
+  s.apply({ kind: "snapshot", snapshot: { schemaVersion: 2, snapshotSequence: 3, projects: [], threads: many } });
+  assert.equal(s.threads.size, MAX_THREADS);
+  s.apply({ kind: "thread.updated", sequence: 4, thread: thread("brand-new") });
+  assert.equal(s.threads.has("brand-new"), false, "no new threads past the cap");
+  s.apply({ kind: "thread.updated", sequence: 5, thread: thread("t1", { title: "Renamed" }) });
+  assert.equal(s.threads.get("t1").title, "Renamed", "known threads still update at the cap");
+});
+
+test("subagent rows keep their whole id, so siblings stay distinct and their detail can load", () => {
+  const rows = buildRows("env", [thread("root", { status: "running", activityRunStatus: "running" }),
+    ...["a", "b"].map((n) => thread(subagentId(n), { status: "running", activityRunStatus: "running",
+      lineage: { relationshipToParent: "subagent", rootThreadId: "root", parentThreadId: "root" } }))], projects);
+  const kids = rows.filter((r) => r.parentId === "root");
+  assert.deepEqual(kids.map((r) => r.id).sort(), [subagentId("a"), subagentId("b")]);
+  assert.equal(new Set(rows.map((r) => r.key)).size, rows.length);
+});
+
+test("the state line always fits its cap, keeping the most urgent rows", () => {
+  const rows = Array.from({ length: 400 }, (_, i) => ({ key: "e:t" + i, id: "t" + i, parentId: "", state: "working", title: "x".repeat(200) }));
+  const line = fitState({ environments: [], rows, counts: {}, known: true }, 20_000);
+  assert.ok(line.length <= 20_000, `line is ${line.length}`);
+  const sent = JSON.parse(line);
+  assert.equal(sent.truncated, true);
+  assert.ok(sent.rows.length > 0);
+  assert.deepEqual(sent.rows.map((r) => r.id), rows.slice(0, sent.rows.length).map((r) => r.id));
 });
 
 // ---------- model ----------
@@ -243,6 +286,50 @@ test("thread watch: activity trail, pending command text, context, sequence dedu
   assert.equal(d.pending.length, 0);
 });
 
+test("thread watch: pending requests are capped and counted, and every record kind is bounded", () => {
+  const w = new ThreadWatch();
+  const requests = Array.from({ length: 50 }, (_, i) => ({ id: "r" + i, kind: "command", status: "pending", createdAt: iso(1000) }));
+  w.apply({ kind: "snapshot", snapshotSequence: 1, projection: { turnItems: [], runtimeRequests: requests,
+    runs: Array.from({ length: 500 }, (_, i) => ({ id: "run" + i, ordinal: i, status: "completed" })),
+    providerThreads: [], subagents: Array.from({ length: 500 }, (_, i) => ({ id: "s" + i, status: "running" })) } });
+  let d = w.detail();
+  assert.equal(d.pending.length, 3);
+  assert.ok(d.pendingMore > 0 && d.pending.length + d.pendingMore <= 64);
+  assert.ok(w.runs.size <= 64 && w.subagents.size <= 64 && w.requests.size <= 64);
+  // Answered requests are evicted before pending ones.
+  for (let i = 0; i < 200; i++) w.apply({ kind: "event", sequence: 2 + i, event: { type: "runtime-request.updated", payload: { id: "done" + i, kind: "command", status: "resolved" } } });
+  d = w.detail();
+  assert.equal(d.pending.length + d.pendingMore, [...w.requests.values()].filter((r) => r.status === "pending").length);
+  assert.ok(d.pending.length === 3 && w.requests.size <= 64);
+  assert.equal(w.apply({ kind: "event", sequence: 999, event: { type: "runtime-request.updated", payload: { id: "y".repeat(300), status: "pending" } } }), false);
+});
+
+// ---------- the t3-loupe command ----------
+
+test("the t3-loupe command runs from a symlink on PATH and uses settings.json's node", () => {
+  const root = new URL("../", import.meta.url).pathname;
+  const dir = mkdtempSync(join(tmpdir(), "t3t-cmd-"));
+  const cfg = join(dir, "cfg");
+  mkdirSync(cfg, { mode: 0o700 });
+  symlinkSync(join(root, "bin/t3-loupe"), join(dir, "t3-loupe"));
+  assert.ok(statSync(join(root, "bin/t3-loupe")).mode & 0o100, "executable");
+  const env = { ...process.env, T3_LOUPE_CONFIG_DIR: cfg };
+  const help = execFileSync(join(dir, "t3-loupe"), [], { env, encoding: "utf8" });
+  assert.match(help, /t3-loupe pair-local/);
+  assert.match(help, /--url URL/);
+  // A pinned node that doesn't exist is used, and fails, rather than being ignored.
+  writeFileSync(join(cfg, "settings.json"), JSON.stringify({ node: join(dir, "no-such-node") }));
+  const pinned = spawnSync(join(dir, "t3-loupe"), ["help"], { env, encoding: "utf8" });
+  assert.notEqual(pinned.status, 0);
+});
+
+test("no tracked text file names a real tailnet host", () => {
+  const root = new URL("../", import.meta.url).pathname;
+  const files = execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" }).split("\n").filter((f) => /\.(md|ts|js|mjs|qml|json)$/.test(f));
+  const leaks = files.filter((f) => /\btail[0-9a-f]{6}\.ts\.net\b/.test(readFileSync(join(root, f), "utf8")));
+  assert.deepEqual(leaks, []);
+});
+
 // ---------- config ----------
 
 test("config: private round trip keyed by environmentId", () => {
@@ -278,6 +365,17 @@ test("tunnel discovery only accepts loopback forwards to the configured host", (
   assert.equal(tunnelUrl(["ssh", "-L", "0.0.0.0:5000:localhost:3773", "box"], "box"), null);
   assert.equal(tunnelUrl(["ssh", "-L", "46363:127.0.0.1:3773", "other"], "box"), null);
   assert.equal(tunnelUrl(["ssh", "-L", "46363:10.0.0.2:3773", "box"], "box"), null);
+});
+
+test("a machine paired over SSH at an HTTPS address is reached there, not through a forward", () => {
+  const emptyProc = mkdtempSync(join(tmpdir(), "t3-loupe-proc-"));
+  assert.equal(usesTunnel({ url: "http://127.0.0.1:3773" }), false);
+  assert.equal(usesTunnel({ url: "https://box.example.ts.net" }), false);
+  assert.equal(usesTunnel({ url: "http://127.0.0.1:46363", sshHost: "box" }), true);
+  assert.equal(usesTunnel({ url: "", sshHost: "box" }), true);
+  assert.equal(usesTunnel({ url: "https://box.example.ts.net", sshHost: "box" }), false);
+  assert.equal(environmentBase({ url: "https://box.example.ts.net", sshHost: "box" }, emptyProc), "https://box.example.ts.net");
+  assert.throws(() => environmentBase({ url: "http://127.0.0.1:46363", sshHost: "box" }, emptyProc), /tunnel_missing/);
 });
 
 test("endpoint policy: https anywhere, plaintext only on loopback, no credentials or paths", () => {

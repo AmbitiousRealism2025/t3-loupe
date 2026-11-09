@@ -1,0 +1,17 @@
+#!/bin/bash
+# The t3-loupe command: pair machines, check them, and read the collector's status.
+#
+# Runs the plugin's own collector with the same Node the shell uses: "node" in
+# ~/.config/t3-loupe/settings.json when set, otherwise node on PATH. Link it onto
+# your PATH once:
+#   ln -sf ~/.config/omarchy/plugins/ambitiousrealism.t3-loupe/bin/t3-loupe ~/.local/bin/t3-loupe
+set -euo pipefail
+plugin=$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")
+node=node
+settings="${T3_LOUPE_CONFIG_DIR:-$HOME/.config/t3-loupe}/settings.json"
+if [[ -r $settings ]] && command -v jq >/dev/null; then
+  pinned=$(jq -r 'if (.node | type) == "string" then .node else empty end' "$settings" 2>/dev/null || true)
+  [[ -n $pinned ]] && node=$pinned
+fi
+[[ $# -eq 0 ]] && set -- help
+exec "$node" --disable-warning=ExperimentalWarning "$plugin/daemon/main.ts" "$@"

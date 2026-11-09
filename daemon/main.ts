@@ -6,7 +6,8 @@
 //   doctor                   human-readable checks per paired environment
 //   pair --url URL [--label NAME]                         paste a pairing link/token (hidden prompt)
 //   pair-local [--url http://127.0.0.1:3773] [--label]    issue + exchange on this machine
-//   pair-ssh --ssh-host HOST --url FORWARD_URL [--label]  issue on HOST over SSH (one-time remote command)
+//   pair-ssh --ssh-host HOST [--url URL] [--label]        issue on HOST over SSH (one-time remote command);
+//                                                         URL is an ssh -L forward (found if omitted) or HOST's HTTPS address
 //   forget --id ENV_ID_PREFIX                             drop a pairing from the local store
 //   demo [offline]           stream synthetic data (UI development); offline: expired pairings, no threads
 import { statSync } from "node:fs";
@@ -17,44 +18,16 @@ import { handleDesktopCommand } from "./desktop.ts";
 import { EnvironmentConnection, type EnvironmentView } from "./connection.ts";
 import type { Notice } from "./events.ts";
 import { checkEndpoint, getDescriptor, requestJson } from "./http.ts";
-import { compareRows, type Counts, type Row } from "./model.ts";
 import { exchange, extractCredential, issueCredential, READ_SCOPE } from "./pairing.ts";
-import { existingTunnel } from "./tunnel.ts";
-import { Failure, failureCode } from "./util.ts";
+import { fitState, PROTOCOL, summarize } from "./state.ts";
+import { environmentBase, existingTunnel, usesTunnel } from "./tunnel.ts";
+import { Failure, failureCode, validId } from "./util.ts";
 
-export const PROTOCOL = 1;
-const MAX_LINE = 2 * 1024 * 1024;
 const EMIT_DEBOUNCE = 200;
 const HEARTBEAT = 30_000;
 
 function write(message: Record<string, unknown>) {
   process.stdout.write(JSON.stringify({ v: PROTOCOL, ...message }) + "\n");
-}
-
-export function summarize(views: EnvironmentView[]) {
-  // One list across machines, in the same order each machine uses.
-  const rows: Row[] = views.flatMap((v) => v.rows.map((r) => ({ ...r, stale: v.stale }))).sort(compareRows);
-  const live = views.filter((v) => v.state === "live" || v.state === "polling");
-  const counts: Counts = { active: 0, busy: 0, attention: 0, input: 0, review: 0 };
-  for (const v of live) for (const k of Object.keys(counts) as (keyof Counts)[]) counts[k] += v.counts[k];
-  return {
-    environments: views.map(({ rows: _rows, ...rest }) => rest),
-    rows,
-    counts,
-    known: live.length > 0,
-  };
-}
-
-/** Keep a state line under the cap by shedding idle subagents, then idle roots. */
-function fitState(state: ReturnType<typeof summarize>): string {
-  let line = JSON.stringify({ v: PROTOCOL, type: "state", at: Date.now(), ...state });
-  const droppable = [(r: Row) => r.parentId !== "" && r.state === "idle", (r: Row) => r.state === "idle", (r: Row) => r.state === "review"];
-  for (const drop of droppable) {
-    if (line.length <= MAX_LINE) break;
-    state = { ...state, rows: state.rows.filter((r) => !drop(r)) };
-    line = JSON.stringify({ v: PROTOCOL, type: "state", at: Date.now(), ...state, truncated: true });
-  }
-  return line;
 }
 
 class Daemon {
@@ -128,8 +101,8 @@ class Daemon {
     try { cmd = JSON.parse(line); } catch { return; }
     if (cmd?.cmd === "copy") {
       void handleDesktopCommand(cmd);
-    } else if (cmd?.cmd === "detail" && typeof cmd.envId === "string" && typeof cmd.threadId === "string") {
-      this.connections.get(cmd.envId)?.requestDetail(cmd.threadId.slice(0, 120));
+    } else if (cmd?.cmd === "detail" && typeof cmd.envId === "string" && validId(cmd.threadId)) {
+      this.connections.get(cmd.envId)?.requestDetail(cmd.threadId);
     } else if (cmd?.cmd === "refresh") {
       for (const c of this.connections.values()) c.retryNow();
       this.emit();
@@ -196,7 +169,7 @@ async function doctor() {
       try { console.log(`  ✓ ${name}: ${await fn()}`); return true; } catch (e) { console.log(`  ✗ ${name}: ${failureCode(e)}`); return false; }
     };
     let base = env.url;
-    if (env.sshHost && !(await check("ssh forward", async () => (base = existingTunnel(env.sshHost!))))) continue;
+    if (usesTunnel(env) && !(await check("ssh forward", async () => (base = environmentBase(env))))) continue;
     if (!(await check("endpoint", async () => checkEndpoint(base).origin))) continue;
     if (!(await check("server", async () => {
       const d = await getDescriptor(base);
@@ -229,11 +202,28 @@ async function oneShotStatus() {
   process.exit(0);
 }
 
+const USAGE = `t3-loupe: pair T3 machines with T3 Loupe and check them
+
+  t3-loupe pair-local                          the T3 running on this machine
+  t3-loupe pair-ssh --ssh-host HOST            a remote T3 you reach with  ssh -L PORT:127.0.0.1:3773 HOST
+  t3-loupe pair-ssh --ssh-host HOST --url URL  a remote T3 at an HTTPS address, such as Tailscale Serve
+  t3-loupe pair --url URL                      paste a pairing link from that T3's Settings → Connections
+  t3-loupe doctor                              check every paired machine
+  t3-loupe status                              connection summary (no thread titles)
+  t3-loupe forget --id PREFIX                  drop a pairing from this machine
+
+Each pairing command also takes --label NAME.`;
+
 async function main() {
   const command = process.argv[2] ?? "run";
   switch (command) {
     case "run":
       new Daemon().start();
+      return;
+    case "help":
+    case "--help":
+    case "-h":
+      console.log(USAGE);
       return;
     case "demo": {
       const { runDemo } = await import("./demo.ts");
@@ -262,7 +252,7 @@ async function main() {
     case "pair-ssh": {
       const host = arg("ssh-host");
       const url = arg("url") ?? (host ? existingTunnel(host) : undefined);
-      if (!host || !url) throw new Failure("usage", "pair-ssh --ssh-host HOST [--url FORWARD_URL] [--label NAME]");
+      if (!host || !url) throw new Failure("usage", "pair-ssh --ssh-host HOST [--url URL] [--label NAME]");
       const env = await exchange(url, await issueCredential(url, host, Number(arg("server-port") ?? 3773)), arg("label") ?? host, host);
       console.log(JSON.stringify({ paired: true, label: env.label, environmentId: env.environmentId, scope: READ_SCOPE }));
       return;

@@ -2,13 +2,42 @@
 
 What changed in each version. [`VALIDATION.md`](VALIDATION.md) records how each one was verified.
 
+## 2.5.10 — 2026-11-09
+
+A working `t3-loupe` command, and a README rewritten for someone installing T3 Loupe for the first time.
+
+- **`t3-loupe` is a real command.** The panel, its re-pair cards, `doctor` and the expiry notification all said to run `t3-loupe …`, but nothing installed one, so a new user's first step failed with "command not found". The plugin now ships `bin/t3-loupe`, which runs the collector with the same Node the shell uses (`"node"` in `settings.json`, or `node` on `PATH`). Link it onto your `PATH` once; the README's quick start shows how. With no arguments it prints the commands.
+- **Re-pairing a changed server names the right command.** "Server changed" suggested `pair-local` even for a machine paired over SSH or with a link; it now repeats how that machine was paired.
+- **The header names the right file.** It said "SETTINGS UNREADABLE" when the unreadable file was `connections.json`; it now says "PAIRINGS UNREADABLE".
+- **README:**
+  - A quick start on the first screen, and the demo feed for anyone just looking.
+  - Requirements that match what was tested, including `python3` for pairing and how to pair a T3 on macOS.
+  - A `settings.json` table with every key and its default, instead of a sample that pinned `/usr/bin/node` and a presentation.
+  - Troubleshooting keyed to what you actually see.
+  - A shorter feature list, security summary and developer section.
+- **New screenshots and marketplace preview** of the current UI, in Omarchy's Matte Black theme, replacing ones from before the 2.5.7 redesign.
+- `VALIDATION.md` no longer names a real Tailscale host, and a test keeps it that way.
+- New tests: the command runs from a symlink and honours a pinned Node; "Server changed" re-pairs the way the machine was paired (101 pass).
+
+## 2.5.9 — 2026-11-09
+
+Addresses the Medium findings from the marketplace review of 2.5.7. Each needed a paired T3 server that had turned hostile; none could be reached otherwise.
+
+- **What the collector keeps from a server is bounded.** Thread, project and request ids must look like T3's ids (up to 256 characters of letters, digits and `_ . : % -`); anything else is dropped on arrival instead of being kept and echoed into the state line. Each machine holds at most 5,000 threads and 1,000 projects, and each open thread at most 64 requests, runs, provider threads and subagents. Option, question and plan-step lists are trimmed when they arrive.
+- **The state line always fits.** When shedding idle and finished threads isn't enough, the collector keeps the most urgent rows that fit, so the shell never has to drop the whole update.
+- **Pending requests are capped.** The detail pane shows the first three pending requests and "+N more waiting in T3" for the rest, instead of drawing every one.
+- **Text is never read as markup.** The provider-name label used to size the usage footer didn't force plain text, so markup in a provider name could make Qt fetch an image. Every Text element now sets its format, and a test holds them to it.
+- **Subagent rows keep their whole id.** Ids were cut to 80 characters, and real subagent ids are about 200 characters with a long shared prefix, so sibling subagents could share an id and their detail couldn't load. Ids are kept whole now.
+- New tests for each (99 pass).
+
 ## 2.5.8 — 2026-11-09
 
-Settled threads no longer come back as work.
+Fixes pairing a remote machine that runs T3 as a server rather than the desktop app.
 
-- **Settled means put away.** T3's own inbox leaves settled threads out, but T3 Loupe kept classifying a settled thread by its last run, so a settled failure, a stale plan or a leftover approval could sit in **Needs you** indefinitely, inflate the bar badge and keep **Active** high. `settledAt`, and T3's explicit `settledOverride`, now suppress those attention states. A thread whose run is actually in flight still shows as **Working**, so settling a live thread cannot hide its work.
-- **Subagents follow their parent.** Settled failed subagents no longer count as active children, so a finished parent stops reporting "N subagents running".
-- New tests: settled failures, plans, pending requests, usage limits and background tasks stay out of attention and the counts, while a settled thread with a live run stays Working (96 tests).
+- **`pair-ssh` works with `t3 serve`.** On a machine running T3's standalone server, `pair-ssh` stopped with `cli_not_found`: it only knew how to find the CLI inside the desktop app. When the server program is `t3` itself, it now runs that as the CLI.
+- **`pair-ssh` can pair over HTTPS.** `pair-ssh --ssh-host HOST --url https://…` uses SSH only to issue the pairing, then connects to the HTTPS address directly, such as a Tailscale Serve name. Before, any machine paired with `pair-ssh` was looked up through an `ssh -L` forward, so one reached over HTTPS showed "No SSH tunnel". Machines paired at a loopback forward work as before.
+- The panel's re-pair command for such a machine includes its `--url`.
+- New test: a machine paired over SSH at an HTTPS address is reached there, not through a forward (94 pass).
 
 ## 2.5.7 — 2026-11-08
 
