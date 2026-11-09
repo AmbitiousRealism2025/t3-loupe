@@ -385,7 +385,7 @@ Item {
               var alarm = root.colors.attentionInk
               if (!root.service) return "SERVICE NOT LOADED"
               if (root.service.health === "down") return tint(alarm, "COLLECTOR STOPPED · RESTARTING")
-              if (root.service.configError) return tint(alarm, "SETTINGS UNREADABLE · " + root.service.configError.toUpperCase())
+              if (root.service.configError) return tint(alarm, "PAIRINGS UNREADABLE · " + root.service.configError.toUpperCase())
               if (!root.environments.length) return "NO T3 MACHINES PAIRED"
               var sep = "&nbsp;&nbsp;·&nbsp;&nbsp;"
               var strong = root.colors.text
@@ -596,7 +596,7 @@ Item {
           horizontalAlignment: Text.AlignHCenter
           wrapMode: Text.Wrap
           visible: text !== ""
-          text: !root.environments.length ? "Run:  t3-loupe pair-local   (see README for remote machines)"
+          text: !root.environments.length ? "Run:  t3-loupe pair-local   (first time? see Quick start in the README)"
             : root.filter === "attention" && root.tally.working > 0 ? Format.plural(root.tally.working, "thread") + " working — press 2 to see them" : ""
           textFormat: Text.PlainText
           color: root.colors.textFaint

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, symlinkSync, writeFileSync, mkdirSync } from "node:fs";
+import { chmodSync, mkdtempSync, symlinkSync, writeFileSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -276,6 +277,32 @@ test("thread watch: pending requests are capped and counted, and every record ki
   assert.equal(d.pending.length + d.pendingMore, [...w.requests.values()].filter((r) => r.status === "pending").length);
   assert.ok(d.pending.length === 3 && w.requests.size <= 64);
   assert.equal(w.apply({ kind: "event", sequence: 999, event: { type: "runtime-request.updated", payload: { id: "y".repeat(300), status: "pending" } } }), false);
+});
+
+// ---------- the t3-loupe command ----------
+
+test("the t3-loupe command runs from a symlink on PATH and uses settings.json's node", () => {
+  const root = new URL("../", import.meta.url).pathname;
+  const dir = mkdtempSync(join(tmpdir(), "t3t-cmd-"));
+  const cfg = join(dir, "cfg");
+  mkdirSync(cfg, { mode: 0o700 });
+  symlinkSync(join(root, "bin/t3-loupe"), join(dir, "t3-loupe"));
+  assert.ok(statSync(join(root, "bin/t3-loupe")).mode & 0o100, "executable");
+  const env = { ...process.env, T3_LOUPE_CONFIG_DIR: cfg };
+  const help = execFileSync(join(dir, "t3-loupe"), [], { env, encoding: "utf8" });
+  assert.match(help, /t3-loupe pair-local/);
+  assert.match(help, /--url URL/);
+  // A pinned node that doesn't exist is used, and fails, rather than being ignored.
+  writeFileSync(join(cfg, "settings.json"), JSON.stringify({ node: join(dir, "no-such-node") }));
+  const pinned = spawnSync(join(dir, "t3-loupe"), ["help"], { env, encoding: "utf8" });
+  assert.notEqual(pinned.status, 0);
+});
+
+test("no tracked text file names a real tailnet host", () => {
+  const root = new URL("../", import.meta.url).pathname;
+  const files = execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" }).split("\n").filter((f) => /\.(md|ts|js|mjs|qml|json)$/.test(f));
+  const leaks = files.filter((f) => /\btail[0-9a-f]{6}\.ts\.net\b/.test(readFileSync(join(root, f), "utf8")));
+  assert.deepEqual(leaks, []);
 });
 
 // ---------- config ----------
