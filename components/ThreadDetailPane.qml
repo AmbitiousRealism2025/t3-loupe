@@ -21,30 +21,47 @@ Item {
 
   signal actionRequested(string action)
 
+  // How copying this thread's title just ended: "" | "ok" | "failed". Shown on the copy action.
+  property string copyState: ""
+
   // d / u: a page down or up through a detail longer than the pane.
+  // Scrollable: the detail itself (without the room kept for the scroll strip) is taller than the pane.
+  readonly property bool scrollable: column.implicitHeight - column.bottomPadding > flick.height + 2
+  readonly property bool moreBelow: scrollable && flick.contentY + flick.height < flick.contentHeight - 2
+  readonly property bool moreAbove: scrollable && flick.contentY > 2
   function page(direction) {
     var step = Math.max(Style.space(40), flick.height * 0.8)
     var maxY = Math.max(0, flick.contentHeight - flick.height)
     flick.contentY = Math.max(0, Math.min(maxY, flick.contentY + direction * step))
   }
 
-  // The thread's actions, labelled with their keys (o, p and c also work from anywhere in the panel).
-  // short: "open" and "copy", for when even a line of their own is too narrow for the full labels.
+  // The thread's actions, labelled with their keys (o, c and p also work from anywhere in the panel).
+  // Always on a line of their own, from the pane's left edge, so they are in the same place on
+  // every thread; the PR action comes last because not every thread has one.
+  // short: "open" and "copy", for when the line is too narrow for the full labels.
   component ActionKeys: Row {
     property bool short: false
-    spacing: Style.space(14)
+    spacing: Style.space(16)
     KeyAction { key: "o"; text: parent.short ? "open" : "open T3"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily; onClicked: root.actionRequested("focus") }
     KeyAction {
+      key: "c"; text: parent.short ? "copy" : "copy title"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily
+      feedback: root.copyState === "ok" ? "✓ copied" : root.copyState === "failed" ? "copy failed" : ""
+      feedbackInk: root.copyState === "failed" ? root.colors.attentionInk : root.colors.text
+      onClicked: root.actionRequested("copy")
+    }
+    KeyAction {
       visible: root.hasRow && !!root.row.pr && root.row.pr.url !== ""
-      key: "p"; text: "PR"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily
+      key: "p"; text: parent.short ? "PR" : "open PR"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily
       onClicked: root.actionRequested("pr")
     }
-    KeyAction { key: "c"; text: parent.short ? "copy" : "copy title"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily; onClicked: root.actionRequested("copy") }
   }
   // The space the action row keeps before the pane's edge (and the scrollbar beyond it).
   readonly property real actionsMargin: Style.space(16)
 
   readonly property bool hasRow: row !== null && row !== undefined
+  // A new thread starts at its top; an update to the same thread keeps its place.
+  readonly property string rowKey: hasRow && row.key ? row.key : ""
+  onRowKeyChanged: flick.contentY = 0
   readonly property bool working: hasRow && Store.BUSY[row.state] === true
   readonly property var ctx: detail && detail.context && detail.context.max > 0 ? detail.context : null
   readonly property int subs: hasRow ? Math.max(row.background ? row.background.subagents : 0, row.activeChildren || 0) : 0
@@ -59,7 +76,7 @@ Item {
       // The number is the value; checks and size go on one line underneath.
       var c = row.pr.checks === "passing" ? "✓ checks pass" : row.pr.checks === "failing" ? "✗ checks fail" : row.pr.checks === "pending" ? "checks pending" : row.pr.state
       var size = (row.pr.additions || row.pr.deletions) ? "+" + row.pr.additions + " −" + row.pr.deletions : ""
-      f.push({ label: "PR", value: "#" + row.pr.number, note: c + (size ? " · " + size + " lines" : ""), alarm: row.pr.checks === "failing" })
+      f.push({ label: "PR", value: "#" + row.pr.number, note: c + (size ? " · " + size : ""), alarm: row.pr.checks === "failing" })
     }
     if (ctx) f.push({ label: "Context", value: Format.tokens(ctx.used) + " / " + Format.tokens(ctx.max) + " tokens", meter: ctx.used / ctx.max })
     if (ctx && ctx.cost !== null) f.push({ label: "Cost", value: Format.money(ctx.cost, ctx.currency), note: "at API prices" })
@@ -87,10 +104,10 @@ Item {
     visible: root.hasRow
     anchors.fill: parent
     contentWidth: width
-    contentHeight: column.implicitHeight
+    contentHeight: root.scrollable ? column.implicitHeight : height
     clip: true
     boundsBehavior: Flickable.StopAtBounds
-    interactive: contentHeight > height
+    interactive: root.scrollable
     // A visible bar whenever the detail is longer than the pane, so cut-off content reads as "more".
     ScrollBar.vertical: LoupeScrollBar { id: scrollBar; colors: root.colors; policy: ScrollBar.AlwaysOn }
 
@@ -99,11 +116,11 @@ Item {
       // A fixed inset for the scrollbar, whether or not it shows: content never runs under it.
       width: flick.width - scrollBar.inset
       spacing: Style.space(14)
-      // Room for the "more below" strip at the end, so the last block scrolls fully above it.
-      bottomPadding: Style.space(24)
+      // Room for the scroll strip at the end, so the last block scrolls fully above it.
+      bottomPadding: scrollStrip.height + Style.space(4)
 
-      // Header: the title across the full width; the state and the thread's actions, each with its
-      // key, on one line; then where it runs.
+      // Header: the title across the full width; the state; where it runs; then the thread's
+      // actions, each with its key.
       Column {
         width: parent.width
         spacing: Style.space(7)
@@ -121,46 +138,31 @@ Item {
           elide: Text.ElideRight
         }
 
-        // State on the left; the thread's actions on the right when they fit there in full,
-        // otherwise on their own line under the metadata. A key label never wraps.
-        Item {
-          id: stateLine
-          width: parent.width
-          // Inline only when the whole row fits after the state with room to spare before the edge.
-          readonly property bool actionsInline: stateRow.implicitWidth + Style.space(24) + fullActions.implicitWidth + root.actionsMargin <= width
-          height: Math.max(stateRow.implicitHeight, actionsInline ? inlineActions.implicitHeight : 0)
-          Row {
-            id: stateRow
+        // The state, alone on its line, for threads the block below doesn't already lead with:
+        // a request, a failure or any other callout names the state and its time itself, and
+        // saying it twice a line apart only pushed the detail down.
+        Row {
+          id: stateRow
+          visible: !leadView.hasLead
+          spacing: Style.space(7)
+          StateGlyph {
+            id: glyph
             anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.space(7)
-            StateGlyph {
-              id: glyph
-              anchors.verticalCenter: parent.verticalCenter
-              icon: root.hasRow ? Store.stateIcon(root.row) : "circle-dot"
-              threadState: root.hasRow ? root.row.state : "idle"
-              color: root.hasRow ? (root.colors[Store.stateRole(root.row.state)] || root.colors.textDim) : root.colors.textDim
-              size: Math.round(Typo.body * 1.05)
-              reduceMotion: root.reduceMotion
-            }
-            Text {
-              id: stateText
-              anchors.verticalCenter: parent.verticalCenter
-              text: root.hasRow ? Store.stateLabel(root.row) + " " + Format.elapsed(root.row, root.now, root.working) : ""
-              textFormat: Text.PlainText
-              color: root.hasRow && Store.inkRole(root.row.state) ? root.colors[Store.inkRole(root.row.state)] : root.colors.text
-              font.family: root.fontFamily
-              font.pixelSize: Typo.caption
-              font.weight: Font.DemiBold
-            }
+            icon: root.hasRow ? Store.stateIcon(root.row) : "circle-dot"
+            threadState: root.hasRow ? root.row.state : "idle"
+            color: root.hasRow ? (root.colors[Store.stateRole(root.row.state)] || root.colors.textDim) : root.colors.textDim
+            size: Math.round(Typo.body * 1.05)
+            reduceMotion: root.reduceMotion
           }
-          // Measured, not shown: the full row's width decides where it goes.
-          ActionKeys { id: fullActions; opacity: 0; enabled: false; y: -10000 }
-          ActionKeys {
-            id: inlineActions
-            visible: stateLine.actionsInline
-            // Right after the state, not pinned to the pane's edge: it never runs up to the scrollbar.
-            x: stateRow.implicitWidth + Style.space(24)
+          Text {
+            id: stateText
             anchors.verticalCenter: parent.verticalCenter
+            text: root.hasRow ? Store.stateLabel(root.row) + " " + Format.elapsed(root.row, root.now, root.working) : ""
+            textFormat: Text.PlainText
+            color: root.hasRow && Store.inkRole(root.row.state) ? root.colors[Store.inkRole(root.row.state)] : root.colors.text
+            font.family: root.fontFamily
+            font.pixelSize: Typo.caption
+            font.weight: Font.DemiBold
           }
         }
 
@@ -186,15 +188,24 @@ Item {
           readonly property int count: root.hasRow ? Store.metaParts(root.row, root.machineLabel).length : 0
         }
 
-        // Below the metadata when it doesn't fit beside the state; short labels if even this is too narrow.
-        ActionKeys {
-          visible: !stateLine.actionsInline
-          short: fullActions.implicitWidth + root.actionsMargin > parent.width
+        // The actions: one line, in the same place on every thread. A key label never wraps; if the
+        // full labels don't fit, the short ones do.
+        Item {
+          width: parent.width
+          height: actions.implicitHeight + Style.space(2)
+          // Measured, not shown: the full labels' width decides which labels are used.
+          ActionKeys { id: fullActions; opacity: 0; enabled: false; y: -10000 }
+          ActionKeys {
+            id: actions
+            anchors.bottom: parent.bottom
+            short: fullActions.implicitWidth + root.actionsMargin > parent.width
+          }
         }
       }
 
       // What to act on comes first: the callout and any pending request, right under the title.
       DetailView {
+        id: leadView
         visible: hasLead
         width: parent.width
         topPadding: 0
@@ -259,13 +270,18 @@ Item {
                   danger: root.colors.text
                   track: root.colors.edge
                 }
-                ElidedText {
+                // A note too long for its cell wraps onto a second line; it is never cut.
+                Text {
                   visible: !!modelData.note
                   width: parent.width
-                  fullText: modelData.note || ""
+                  text: modelData.note || ""
+                  textFormat: Text.PlainText
                   color: root.colors.textFaint
                   font.family: root.fontFamily
                   font.pixelSize: Typo.caption
+                  wrapMode: Text.Wrap
+                  maximumLineCount: 3
+                  elide: Text.ElideRight
                 }
               }
             }
@@ -289,25 +305,38 @@ Item {
     }
   }
 
-  // More below: a solid strip with a note, so nothing under it is half-faded (a fade dimmed the
-  // runs chart below 3:1). The scrollbar stays on while the detail is longer than the pane.
+  // A detail longer than the pane: a solid strip at its foot says so, and names the keys that
+  // page it (d down, u back up), each as a keycap you can also click. Solid, so nothing under it
+  // is half-faded (a fade dimmed the runs chart below 3:1). The scrollbar stays on meanwhile.
   Rectangle {
-    visible: root.hasRow && flick.contentY + flick.height < flick.contentHeight - 2
+    id: scrollStrip
+    visible: root.hasRow && root.scrollable
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.rightMargin: Style.space(12)
     anchors.bottom: parent.bottom
-    height: Style.space(22)
+    height: stripProbe.implicitHeight + Style.space(14)
     color: root.colors.background
     Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: root.colors.line }
-    Text {
+    Row {
       anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      text: "more below ↓"
-      textFormat: Text.PlainText
-      color: root.colors.textDim
-      font.family: root.fontFamily
-      font.pixelSize: Typo.caption
+      anchors.rightMargin: Style.space(4)
+      anchors.bottom: parent.bottom
+      spacing: Style.space(18)
+      KeyAction {
+        visible: root.moreAbove
+        key: "u"; text: root.moreBelow ? "up ↑" : "back up ↑"; quiet: true
+        colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily
+        onClicked: root.page(-1)
+      }
+      KeyAction {
+        visible: root.moreBelow
+        key: "d"; text: "more below ↓"; quiet: true
+        colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily
+        onClicked: root.page(1)
+      }
     }
+    // The strip's height follows the text size, whichever keys it is showing.
+    Text { id: stripProbe; visible: false; text: "Ag"; textFormat: Text.PlainText; font.family: root.monoFamily; font.pixelSize: Typo.caption; font.bold: true }
   }
 }

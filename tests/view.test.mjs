@@ -177,6 +177,12 @@ test("the detail leads with the state, why, and the next step", () => {
   assert.ok(plan.next);
   const bg = Store.statusCallout(r("b", "background", { background: { subagents: 2, commands: 0, monitors: 0, other: 0 } }), now, false);
   assert.match(bg.body, /^2 subagents still out/);
+  // Routine states lead in ink. Only what needs you gets a colour: red is for failures alone.
+  assert.equal(bg.tone, "idle", "background work is healthy: never a failure's colour");
+  assert.equal(Store.statusCallout(r("q", "queued", { activeSince: now - 60_000 }), now, false).tone, "idle");
+  const tones = ["input", "plan", "failed", "limited", "background", "queued", "review", "stopped"].map((s) => [s, Store.statusCallout(r(s, s, { rawStatus: s === "stopped" ? "interrupted" : "completed" }), now, false).tone]);
+  assert.deepEqual(tones.filter(([, tone]) => tone === "attention").map(([s]) => s), ["failed"], "one state is red");
+  for (const [state, tone] of tones) assert.ok(["attention", "warning", "ask", "success", "idle"].includes(tone), `${state}: ${tone}`);
   // A request whose text has loaded speaks for itself; before that, the callout stands in.
   assert.equal(Store.statusCallout(r("i", "input", { pendingKind: "command" }), now, true), null);
   assert.equal(Store.statusCallout(r("i", "input", { pendingKind: "command" }), now, false).headline, "Waiting for your answer");
@@ -216,26 +222,53 @@ test("one needs-you colour where only one fits: the most severe kind present", (
   assert.equal(Store.needsRole([r("k", "failed", { parentId: "w" }), r("a", "input")]), "ask", "subagents don't count");
 });
 
-test("legend: two rows of the keys that work, closed up, Enter last on its row", () => {
-  const rows = (mode, enter) => Array.from(Store.legendRows(mode, enter), (row) => Array.from(row, (c) => c.key + " " + c.verb));
-  assert.deepEqual(rows("list", "subagents"), [
-    ["j/k select", "g needs you", "1–4 view", "/ filter", "↵ subagents"],
-    ["o open T3", "f layout", "r refresh", "+/− size", "esc close"],
-  ]);
-  // Enter with nothing to do isn't there, and nothing else moves: it was last on its row.
-  assert.deepEqual(rows("list", ""), [["j/k select", "g needs you", "1–4 view", "/ filter"], rows("list", "x")[1]]);
-  assert.deepEqual(rows("list", "")[0], rows("list", "details")[0].slice(0, 4));
-  assert.deepEqual(rows("empty", "")[0], ["1–4 view", "/ filter"]);
-  // Offline has no list keys: the window keys take the top row, the second is empty.
-  assert.deepEqual(rows("offline", ""), [["o open T3", "f layout", "r refresh", "+/− size", "esc close"], []]);
-  for (const mode of ["list", "empty", "offline"]) for (const enter of ["", ...Store.ENTER_VERBS]) {
-    const shown = Store.legendRows(mode, enter);
-    assert.equal(shown.length, 2, "always two rows");
-    for (const row of shown) for (const c of row) {
-      assert.ok(c.verb.length > 0, `${c.key} without its label`);
-      assert.ok(!/·/.test(c.key + c.verb), "no separators");
+test("legend: three groups by purpose, each in columns two rows tall; Enter at the foot of a column", () => {
+  // A group as its columns, each column as its "key verb" cells top to bottom ("" for an empty slot).
+  const groups = (mode, opts) => Object.fromEntries(Array.from(Store.legendGroups(mode, opts), (g) =>
+    [g.name, Array.from(g.columns, (col) => Array.from(col, (c) => (c.key ? c.key + " " + c.verb : "")))]));
+  // The two-pane window: the detail's paging keys are in the legend, with Enter under them.
+  assert.deepEqual(groups("list", { enter: "subagents", centered: true }), {
+    navigate: [["j/k select", "g needs you"], ["1–4 view", "/ filter"], ["d/u scroll detail", "↵ subagents"]],
+    act: [["o open T3", "c copy title"]],
+    window: [["f layout", "r refresh"], ["+/− size", "esc close"]],
+  });
+  // Enter with nothing to do leaves an empty slot at the foot of its column: no other key moves.
+  const idle = groups("list", { enter: "", centered: true });
+  assert.deepEqual(idle.navigate, [["j/k select", "g needs you"], ["1–4 view", "/ filter"], ["d/u scroll detail", ""]]);
+  assert.deepEqual([idle.act, idle.window], [groups("list", { enter: "fold", centered: true }).act, groups("list", { enter: "fold", centered: true }).window]);
+  // The dropdown has no detail pane to page: no d/u, and Enter (always "details" or a fold there) has the column.
+  assert.deepEqual(groups("list", { enter: "details", centered: false }).navigate, [["j/k select", "g needs you"], ["1–4 view", "/ filter"], ["↵ details"]]);
+  assert.ok(!Array.from(Store.legendKeys("list", { enter: "details", centered: false })).some((k) => /^d\/u/.test(k)));
+  // No threads in this view: the list keys go, the views and the filter stay.
+  assert.deepEqual(groups("empty", { centered: true }), { navigate: [["1–4 view", "/ filter"]], act: [["o open T3"]], window: groups("list", { centered: true }).window });
+  // Offline: nothing to navigate. The digits copy the re-pair commands, as many as there are.
+  assert.deepEqual(groups("offline", { commands: 2 }), { act: [["1–2 copy command", "o open T3"]], window: groups("list", {}).window });
+  assert.deepEqual(groups("offline", { commands: 1 }).act, [["1 copy command", "o open T3"]]);
+  assert.deepEqual(groups("offline", { commands: 0 }).act, [["o open T3"]]);
+  assert.deepEqual(groups("offline", { commands: 40 }).act[0][0], "1–9 copy command");
+  // (Enter says "subagents" only in the two-pane window and "details" only in the dropdown.)
+  for (const mode of ["list", "empty", "offline"]) for (const centered of [true, false]) for (const enter of ["", "unfold", "fold", centered ? "subagents" : "details"]) {
+    const shown = Array.from(Store.legendGroups(mode, { enter, centered, commands: 2 }));
+    assert.deepEqual(shown.map((g) => g.name), mode === "offline" ? ["act", "window"] : ["navigate", "act", "window"]);
+    for (const g of shown) for (const col of g.columns) {
+      assert.ok(col.length >= 1 && col.length <= 2, "a column is at most two rows tall");
+      for (const [i, c] of Array.from(col).entries()) {
+        assert.ok(!/·/.test(c.key + c.verb), "no separators");
+        if (c.key) assert.ok(c.verb.length > 0, `${c.key} without its label`);
+        // Only Enter comes and goes with the selection, and only from the foot of a column.
+        if (c.slot === "enter") {
+          assert.equal(i, col.length - 1, "Enter is last in its column");
+          assert.ok(c.widest.length >= c.verb.length && (!c.verb || Store.ENTER_VERBS.includes(c.verb)), `Enter's column is as wide as the longest verb: ${c.widest}`);
+        }
+      }
     }
+    // Every key the legend lists is one the panel answers in that mode.
+    const keys = Array.from(Store.legendKeys(mode, { enter, centered, commands: 2 }));
+    assert.equal(new Set(keys).size, keys.length, "no key is listed twice");
   }
+  // The text-size control has one place: beside "+/− size".
+  const sized = Array.from(Store.legendGroups("list", { centered: true })).flatMap((g) => Array.from(g.columns).flatMap((c) => Array.from(c))).filter((c) => c.slot === "size");
+  assert.deepEqual(sized.map((c) => c.key + " " + c.verb), ["+/− size"]);
   assert.equal(Store.enterVerb({ kind: "idle-line", open: false }, true, false), "unfold");
   assert.equal(Store.enterVerb({ kind: "idle-line", open: true }, false, false), "fold");
   assert.equal(Store.enterVerb(r("a", "working", { childCount: 2 }), true, false), "subagents");
@@ -288,6 +321,27 @@ test("usage windows are named from T3's label, qualifiers kept, every label dist
   assert.equal(Store.windowValue({ usedPercent: 95, resetsAt: now + 3600_000 }, now, false), "95% resets in 1h", "near the limit: the reset, still with its meter");
   assert.equal(Store.windowValue({ usedPercent: 100, resetsAt: now + 47 * 60_000 }, now, false), "limit reached, resets in 47m");
   assert.equal(Store.windowValue({ usedPercent: 38 }, now, false), "38%");
+  assert.equal(Store.windowValue({ usedPercent: 95, resetsAt: now + 3600_000 }, now, true), "95% resets 1h");
+  // Which way the numbers count is said once, in the band's heading: they are the share used.
+  assert.match(Store.USAGE_HEADING, /\bUSED\b/);
+});
+
+test("what needs you has one name, and the header spells out how the Active tab's number is made", () => {
+  assert.deepEqual({ ...Store.VIEW_LABEL }, { attention: "Needs you", active: "Active", done: "Done", all: "All" });
+  const line = (t, sum) => Array.from(Store.headerCounts(t, sum), (p, i) => (i ? (p.join ? ` ${p.join} ` : " · ") : "") + p.text).join("");
+  const rows = [r("in", "input"), r("pl", "plan"), r("f", "failed", { rawStatus: "failed" }), r("lim", "limited", { rawStatus: "failed" }),
+    r("w", "working", { rawStatus: "running" }), r("d", "review"), r("s", "stopped", { rawStatus: "interrupted" }), r("i", "idle", { rawStatus: "" })];
+  const t = Store.tally(rows);
+  assert.equal(line(t), "3 NEED YOU + 2 WORKING = 5 ACTIVE · 1 DONE · 1 STOPPED · 1 IDLE");
+  // The sum on the line is the Active tab's count, and the parts after it add up to All.
+  assert.equal(t.needs + t.working, Store.filterCount(rows, "active"));
+  assert.equal(t.active + t.done + t.stopped + t.other, Store.filterCount(rows, "all"));
+  // Where the line has no room for the sum, the plus sign still says the two belong together.
+  assert.equal(line(t, false), "3 NEED YOU + 2 WORKING · 1 DONE · 1 STOPPED · 1 IDLE");
+  assert.equal(line(Store.tally([r("a", "input")])), "1 NEEDS YOU + 0 WORKING = 1 ACTIVE · 0 DONE");
+  // Nothing waiting: nothing to add up.
+  assert.equal(line(Store.tally([r("w", "working"), r("d", "review")])), "NOTHING NEEDS YOU · 1 WORKING · 1 DONE");
+  assert.deepEqual(Array.from(Store.headerCounts(t), (p) => p.tone), ["needs", "strong", "quiet", "quiet", "quiet", "quiet"]);
 });
 
 test("detail metadata lists whole items", () => {

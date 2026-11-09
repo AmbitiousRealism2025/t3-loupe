@@ -20,11 +20,12 @@ Item {
   readonly property var pinnedHeading: sticky.heading
   readonly property real pinnedHeight: sticky.stripHeight
   readonly property real legendHeight: legend.height
-  readonly property real legendWidth: legendFull.implicitWidth
-  readonly property real legendX: legend.x
-  readonly property real legendRoom: bottomRow.width - sizeControl.width - Style.space(20)
-  readonly property var legendShown: root.legendRows
+  readonly property real legendWidth: legend.width
+  readonly property real legendX: keysBand.contentX
+  readonly property real legendRoom: keysBand.width - keysBand.contentX
+  readonly property var legendShown: root.legendGroups
   readonly property Item legendItem: legend
+  readonly property Item detailItem: detailPane.item
 
   signal closeRequested()
   signal switchRequested(int direction)
@@ -222,12 +223,52 @@ Item {
     ensureVisible(cursor)
   }
 
-  // The key legend (Store.legendRows): two rows of the keys that work here; Enter's names what it
-  // does on the item under the cursor, or isn't there.
+  // The key legend (Store.legendGroups): the keys that work here, grouped by purpose; Enter's names
+  // what it does on the item under the cursor, or isn't there.
   readonly property string legendMode: disconnected ? "offline" : visible_.length === 0 ? "empty" : "list"
   readonly property var cursorItem: cursor >= 0 && cursor < visible_.length ? visible_[cursor] : null
-  readonly property var legendRows: Store.legendRows(legendMode,
-    Store.enterVerb(cursorItem, centered, cursorItem && !cursorItem.kind ? expanded[cursorItem.key] === true : false))
+  readonly property string enterVerb: Store.enterVerb(cursorItem, centered, cursorItem && !cursorItem.kind ? expanded[cursorItem.key] === true : false)
+  readonly property int repairCount: repairCommands.length
+  readonly property var legendGroups: Store.legendGroups(legendMode, { enter: enterVerb, centered: centered, commands: repairCount })
+  // What the footer is built from: the same groups with Enter's slot left open. It changes only
+  // with the mode (not with each state update, nor with the selection), so moving the selection
+  // redraws one cell's words, not the legend.
+  readonly property var legendFrame: Store.legendGroups(legendMode, { centered: centered, commands: repairCount })
+
+  // Offline: the re-pair command for each machine that has one, in the order shown. Keys 1–9 copy them.
+  readonly property var repairCommands: {
+    var out = []
+    if (!disconnected) return out
+    for (var i = 0; i < environments.length; i++) {
+      var step = Store.repairStep(environments[i])
+      if (step.kind === "command") out.push({ id: environments[i].id, text: step.text })
+    }
+    return out.slice(0, 9)
+  }
+
+  // Copying: what was asked for last ("title:<thread key>" or "command:<machine id>") and how it
+  // ended ("ok" | "failed"), as the collector reports it. Shown at the action for a moment.
+  property string copyTarget: ""
+  property string copyResult: ""
+  function copy(target, text) {
+    if (!service || !text) return
+    copyTarget = target
+    copyResult = ""
+    copyNote.stop()
+    // Piped to wl-copy's stdin by the collector: the text never appears in a process's argv.
+    service.send({ cmd: "copy", text: text })
+  }
+  function copyState(target) { return copyTarget === target ? copyResult : "" }
+  Timer { id: copyNote; interval: 2200; onTriggered: { root.copyTarget = ""; root.copyResult = "" } }
+  Connections {
+    target: root.service
+    ignoreUnknownSignals: true
+    function onCopied(ok) {
+      if (root.copyTarget === "") return
+      root.copyResult = ok ? "ok" : "failed"
+      copyNote.restart()
+    }
+  }
 
   // One machine: ink dot (hollow attention ring when unreachable), name, and any issue.
   component MachineTag: Row {
@@ -275,8 +316,7 @@ Item {
     } else if (action === "pr" && row.pr && row.pr.url) {
       Qt.openUrlExternally(row.pr.url)
     } else if (action === "copy") {
-      // Piped to wl-copy's stdin by the collector: the title never appears in a process's argv.
-      if (service) service.send({ cmd: "copy", text: row.title })
+      root.copy("title:" + row.key, row.title)
     }
   }
 
@@ -315,6 +355,12 @@ Item {
     }
     onActivateRequested: if (root.cursor >= 0 && root.cursor < root.visible_.length) root.activate(root.visible_[root.cursor])
     onTextKey: function(t) {
+      // Offline there are no views to switch: the digits copy the re-pair commands instead.
+      if (root.disconnected && t.length === 1 && "123456789".indexOf(t) >= 0) {
+        var n = "123456789".indexOf(t)
+        if (n < root.repairCommands.length) root.copy("command:" + root.repairCommands[n].id, root.repairCommands[n].text)
+        return
+      }
       if (t === "1") root.setFilter("attention")
       else if (t === "2") root.setFilter("active")
       else if (t === "3") root.setFilter("done")
@@ -369,18 +415,45 @@ Item {
           anchors.rightMargin: Style.space(12)
           anchors.verticalCenter: parent.verticalCenter
           spacing: Style.space(3)
-          Text {
-            text: "T3 Loupe"
-            textFormat: Text.PlainText
-            color: root.colors.text
-            font.family: root.fontFamily
-            font.pixelSize: Typo.heading
-            font.bold: true
-          }
-          // The tabs' numbers in the tabs' words, adding up to All.
-          Text {
+          // The name, and on its line the machines (two-pane window, when they fit there).
+          Item {
+            id: titleRow
             width: parent.width
-            text: {
+            height: Math.max(title.implicitHeight, machinesInline.implicitHeight)
+            Text {
+              id: title
+              anchors.verticalCenter: parent.verticalCenter
+              text: "T3 Loupe"
+              textFormat: Text.PlainText
+              color: root.colors.text
+              font.family: root.fontFamily
+              font.pixelSize: Typo.heading
+              font.bold: true
+            }
+            Row {
+              id: machinesInline
+              // Measured even while hidden (opacity, not visible), so `fits` doesn't depend on itself.
+              readonly property bool fits: root.centered && implicitWidth + title.implicitWidth + Style.space(24) <= parent.width
+              opacity: fits ? 1 : 0
+              enabled: fits
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.space(16)
+              Repeater {
+                model: root.centered ? root.environments : []
+                MachineTag { anchors.verticalCenter: parent.verticalCenter }
+              }
+            }
+          }
+          // The counts line: what needs you first, in the colour of the most pressing kind waiting;
+          // working in full ink; the rest dimmed. With something waiting it spells out the Active
+          // tab's number ("6 NEED YOU + 7 WORKING = 13 ACTIVE"), and the parts after it add up to All.
+          // If the sum doesn't fit the line, it goes and the "+" stays.
+          Item {
+            id: countsLine
+            width: parent.width
+            height: counts.implicitHeight
+            function styled(sum) {
               function tint(color, words) { return "<font color=\"" + color + "\">" + words + "</font>" }
               var alarm = root.colors.attentionInk
               if (!root.service) return "SERVICE NOT LOADED"
@@ -388,56 +461,60 @@ Item {
               if (root.service.configError) return tint(alarm, "PAIRINGS UNREADABLE · " + root.service.configError.toUpperCase())
               if (!root.environments.length) return "NO T3 MACHINES PAIRED"
               var sep = "&nbsp;&nbsp;·&nbsp;&nbsp;"
-              var strong = root.colors.text
               var quiet = root.colors.textFaint
               if (root.disconnected) return tint(alarm, "NOT CONNECTED") + sep + Format.plural(root.link.total, "MACHINE", "MACHINES")
-              // The tabs' own words and numbers, scannable: what needs you first, in the colour of the
-              // most pressing kind waiting; working in full ink; done, stopped and idle dimmed.
-              // The parts add up to All, and match the All view's folds.
-              var t = root.tally
-              var parts = [t.needs ? tint(root.colors[Store.needsRole(root.rows) + "Ink"], t.needs + " NEED" + (t.needs === 1 ? "S" : "") + " YOU") : tint(quiet, "NOTHING NEEDS YOU")]
-              parts.push(tint(strong, t.working + " WORKING"))
-              parts.push(tint(quiet, t.done + " DONE"))
-              if (t.stopped) parts.push(tint(quiet, t.stopped + " STOPPED"))
-              if (t.other) parts.push(tint(quiet, t.other + " IDLE"))
-              if (root.link.connected !== root.link.total) parts.push(tint(alarm, root.link.connected + " OF " + root.link.total + " MACHINES CONNECTED"))
-              return parts.join(sep)
+              var tones = { needs: root.colors[Store.needsRole(root.rows) + "Ink"], strong: root.colors.text, quiet: quiet }
+              var parts = Store.headerCounts(root.tally, sum)
+              var out = ""
+              for (var i = 0; i < parts.length; i++) {
+                if (i > 0) out += parts[i].join ? tint(quiet, "&nbsp;" + parts[i].join + "&nbsp;") : sep
+                out += tint(tones[parts[i].tone], parts[i].text.replace(/ /g, "&nbsp;"))
+              }
+              if (root.link.connected !== root.link.total) out += sep + tint(alarm, root.link.connected + " OF " + root.link.total + " MACHINES CONNECTED")
+              return out
             }
-            textFormat: Text.StyledText
-            color: root.colors.textDim
-            font.family: root.fontFamily
-            font.pixelSize: Typo.caption
-            font.bold: true
-            font.letterSpacing: 1.2
-            elide: Text.ElideRight
+            // The line with the sum spelled out, measured to see whether it fits.
+            Text {
+              id: countsFull
+              visible: false
+              text: countsLine.styled(true)
+              textFormat: Text.StyledText
+              font: counts.font
+            }
+            Text {
+              id: counts
+              width: parent.width
+              text: countsFull.implicitWidth <= width ? countsFull.text : countsLine.styled(false)
+              textFormat: Text.StyledText
+              color: root.colors.textDim
+              font.family: root.fontFamily
+              font.pixelSize: Typo.caption
+              font.bold: true
+              font.letterSpacing: 1.2
+              elide: Text.ElideRight
+            }
           }
         }
 
+        // Refresh and close, on the name's line, so the header's right side reads as one row.
         Row {
           id: headRight
           anchors.right: parent.right
-          anchors.verticalCenter: parent.verticalCenter
-          spacing: Style.space(16)
-          Repeater {
-            model: root.centered ? root.environments : []
-            MachineTag { anchors.verticalCenter: parent.verticalCenter }
-          }
-          Row {
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.space(2)
-            IconButton { icon: "refresh-cw"; foreground: root.colors.textDim; hoverForeground: root.colors.text; onClicked: if (root.service) root.service.refresh() }
-            IconButton { icon: "x"; foreground: root.colors.textDim; hoverForeground: root.colors.text; onClicked: root.closeRequested() }
-          }
+          y: Math.round(headText.y + titleRow.y + (titleRow.height - height) / 2)
+          spacing: Style.space(2)
+          IconButton { icon: "refresh-cw"; foreground: root.colors.textDim; hoverForeground: root.colors.text; onClicked: if (root.service) root.service.refresh() }
+          IconButton { icon: "x"; foreground: root.colors.textDim; hoverForeground: root.colors.text; onClicked: root.closeRequested() }
         }
       }
 
-      // Dropdown: machines on one quiet line under the header.
+      // Machines on one quiet line under the header: in the dropdown, and in the two-pane window
+      // when there are too many to sit beside the name.
       Flow {
-        visible: !root.centered && root.environments.length > 0
+        visible: !machinesInline.fits && root.environments.length > 0
         width: parent.width
         spacing: Style.space(16)
         Repeater {
-          model: root.centered ? [] : root.environments
+          model: machinesInline.fits ? [] : root.environments
           MachineTag {}
         }
       }
@@ -451,11 +528,13 @@ Item {
           id: filters
           anchors.left: parent.left
           anchors.top: parent.top
+          // The views by the names the header and the legend use: what needs you is "Needs you"
+          // everywhere, and each count is the header's.
           options: [
-            { value: "attention", label: "   Inbox  " + root.needCount, tooltip: "1" },
-            { value: "active", label: "   Active  " + root.activeCount, tooltip: "2" },
-            { value: "done", label: "   Done  " + root.doneCount, tooltip: "3" },
-            { value: "all", label: "   All  " + root.allCount, tooltip: "4" }
+            { value: "attention", label: "   " + Store.VIEW_LABEL.attention + "  " + root.needCount, tooltip: "1" },
+            { value: "active", label: "   " + Store.VIEW_LABEL.active + "  " + root.activeCount, tooltip: "2" },
+            { value: "done", label: "   " + Store.VIEW_LABEL.done + "  " + root.doneCount, tooltip: "3" },
+            { value: "all", label: "   " + Store.VIEW_LABEL.all + "  " + root.allCount, tooltip: "4" }
           ]
           value: root.filter
           foreground: root.colors.text
@@ -564,6 +643,10 @@ Item {
         now: root.now
         fontFamily: root.fontFamily
         monoFamily: root.monoFamily
+        commands: root.repairCommands
+        copyTarget: root.copyTarget
+        copyResult: root.copyResult
+        onCopyRequested: function(id, text) { root.copy("command:" + id, text) }
       }
 
       // Setup / empty states
@@ -831,6 +914,7 @@ Item {
         }
         fontFamily: root.fontFamily
         monoFamily: root.monoFamily
+        copyState: root.selectedRow ? root.copyState("title:" + root.selectedRow.key) : ""
         onActionRequested: function(action) { if (root.selectedRow) root.act(root.selectedRow, action) }
       }
     }
@@ -839,101 +923,144 @@ Item {
       id: footer
       anchors.bottom: parent.bottom
       width: parent.width
-      spacing: Style.space(8)
+      spacing: Style.space(9)
 
       Rectangle { width: parent.width; height: 1; color: root.colors.line }
 
-      // Two-pane: usage on one line, key hints right-aligned beneath.
+      // The footer is two aligned bands: usage limits on one, the keys on the other. In the
+      // two-pane window each has a caption in a shared left column, so their content starts at
+      // the same x; the dropdown has no room for the keys' caption and starts them at the edge.
       ProviderStrip {
-        visible: root.centered && root.hasMetered
+        id: usage
+        visible: root.hasMetered
+        // Compact in the dropdown, so each provider fits a row.
+        compact: !root.centered
         width: parent.width
+        headingColumn: keysBand.captioned ? keysCaption.implicitWidth : 0
         environments: root.environments
         colors: root.colors
         now: root.now
         fontFamily: root.fontFamily
       }
 
-      // Dropdown: the same, compact, so both providers fit one row.
-      ProviderStrip {
-        visible: !root.centered && root.hasMetered
-        compact: true
-        width: parent.width
-        environments: root.environments
-        colors: root.colors
-        now: root.now
-        fontFamily: root.fontFamily
-      }
-      // Bottom row: the text-size control on the left, the key legend beside it: two rows of the
-      // keys that work, each flowing left with equal gaps, a fixed two lines tall. The legend starts
-      // where the widest legend (every key, Enter at its longest) would, so it never shifts as the
-      // selection moves; a key that isn't there leaves no hole.
+      // The keys that work here, in three groups by purpose (navigate | act | window) with a
+      // hairline between groups. Each group is a few columns two rows tall, so keys line up down
+      // the rows and the band is always two lines. The text-size control sits beside its keys.
+      // Nothing moves as the selection moves: Enter is the one cell that comes and goes, at the
+      // foot of its column, which keeps the width of the longest thing Enter can say.
       Item {
-        id: bottomRow
+        id: keysBand
         width: parent.width
-        height: Math.max(sizeControl.implicitHeight, legend.height)
-        readonly property real gap: Style.space(18)
-        TextSizeControl {
-          id: sizeControl
-          anchors.left: parent.left
-          anchors.verticalCenter: parent.verticalCenter
-          sizes: root.service ? root.service.textSizes : [0, 2, 4, 6]
-          step: root.service ? root.service.textSizeStep : 0
-          colors: root.colors
-          onStepRequested: function(delta) { if (root.service) root.service.stepTextSize(delta) }
-          onSizeRequested: function(size) { if (root.service) root.service.setTextSize(size) }
+        height: legend.height
+        readonly property bool captioned: root.centered
+        readonly property real rowHeight: Math.round(Typo.caption * 1.6)
+        readonly property real contentX: !captioned ? 0 : usage.visible ? usage.contentX : keysCaption.implicitWidth + usage.itemGap
+
+        Text {
+          id: keysCaption
+          visible: keysBand.captioned
+          y: Math.round((keysBand.rowHeight - implicitHeight) / 2)
+          text: "KEYS"
+          textFormat: Text.PlainText
+          color: root.colors.textDim
+          font.family: root.fontFamily
+          font.pixelSize: Typo.caption
+          font.bold: true
+          font.letterSpacing: 1.2
         }
-        component LegendCell: Row {
+
+        component LegendCell: Item {
+          id: lc
           property var cell: ({})
-          spacing: Style.space(6)
-          Text {
-            text: parent.cell.key || ""
-            textFormat: Text.PlainText
-            color: root.colors.text
-            font.family: root.fontFamily
-            font.pixelSize: Typo.caption
-          }
-          Text {
-            text: parent.cell.verb || ""
-            textFormat: Text.PlainText
-            color: root.colors.textDim
-            font.family: root.fontFamily
-            font.pixelSize: Typo.caption
-          }
-        }
-        // Every key, Enter at its longest: measured, not shown, to fix where the legend starts.
-        Column {
-          id: legendFull
-          visible: false
-          Repeater {
-            model: Store.legendGrid("list", Store.ENTER_VERBS.reduce(function(a, b) { return b.length > a.length ? b : a }, ""))
-            Row {
-              required property var modelData
-              spacing: bottomRow.gap
-              Repeater { model: modelData; LegendCell { required property var modelData; cell: modelData } }
+          // Enter's slot says what Enter does on the item under the cursor, or nothing.
+          readonly property bool enterSlot: cell.slot === "enter"
+          readonly property string shownKey: enterSlot ? (root.enterVerb !== "" ? "↵" : "") : (cell.key || "")
+          readonly property string shownVerb: enterSlot ? root.enterVerb : (cell.verb || "")
+          // It keeps the width of the longest thing Enter can say here.
+          readonly property real held: cell.widest ? enterProbe.implicitWidth + line.spacing + widestProbe.implicitWidth : 0
+          implicitWidth: Math.max(line.implicitWidth, held)
+          implicitHeight: keysBand.rowHeight
+          Row {
+            id: line
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.space(6)
+            Text {
+              visible: text !== ""
+              anchors.verticalCenter: parent.verticalCenter
+              text: lc.shownKey
+              textFormat: Text.PlainText
+              color: root.colors.text
+              font.family: root.fontFamily
+              font.pixelSize: Typo.caption
+            }
+            Text {
+              visible: text !== ""
+              anchors.verticalCenter: parent.verticalCenter
+              text: lc.shownVerb
+              textFormat: Text.PlainText
+              color: root.colors.textDim
+              font.family: root.fontFamily
+              font.pixelSize: Typo.caption
+            }
+            Loader {
+              active: lc.cell.slot === "size"
+              visible: active
+              anchors.verticalCenter: parent.verticalCenter
+              sourceComponent: TextSizeControl {
+                compact: !root.centered
+                rowHeight: keysBand.rowHeight
+                sizes: root.service ? root.service.textSizes : [0, 2, 4, 6]
+                step: root.service ? root.service.textSizeStep : 0
+                colors: root.colors
+                onStepRequested: function(delta) { if (root.service) root.service.stepTextSize(delta) }
+                onSizeRequested: function(size) { if (root.service) root.service.setTextSize(size) }
+              }
             }
           }
+          Text { id: enterProbe; visible: false; text: "↵"; textFormat: Text.PlainText; font.family: root.fontFamily; font.pixelSize: Typo.caption }
+          Text { id: widestProbe; visible: false; text: lc.cell.widest || ""; textFormat: Text.PlainText; font.family: root.fontFamily; font.pixelSize: Typo.caption }
         }
-        Column {
+
+        Row {
           id: legend
-          x: Math.max(sizeControl.width + Style.space(20), parent.width - legendFull.implicitWidth)
-          anchors.verticalCenter: parent.verticalCenter
-          spacing: Style.space(4)
+          x: keysBand.contentX
+          readonly property real columnGap: Style.space(root.centered ? 18 : 12)
+          readonly property real groupGap: Style.space(root.centered ? 16 : 9)
+          readonly property real rowGap: Style.space(3)
+          height: keysBand.rowHeight * 2 + rowGap
           Repeater {
-            model: root.legendRows
-            // Each line is one text line tall even when empty, so the legend is always two lines.
-            Item {
+            model: root.legendFrame
+            Row {
+              id: group
               required property var modelData
-              width: line.implicitWidth
-              height: lineProbe.implicitHeight
+              required property int index
+              objectName: "legendGroup:" + modelData.name
+              height: legend.height
+              // The hairline between this group and the one before it.
+              Item {
+                visible: group.index > 0
+                width: legend.groupGap * 2 + 1
+                height: parent.height
+                Rectangle { anchors.horizontalCenter: parent.horizontalCenter; width: 1; height: parent.height; color: root.colors.line }
+              }
               Row {
-                id: line
-                spacing: bottomRow.gap
-                Repeater { model: modelData; LegendCell { required property var modelData; cell: modelData } }
+                spacing: legend.columnGap
+                Repeater {
+                  model: group.modelData.columns
+                  Column {
+                    required property var modelData
+                    objectName: "legendColumn"
+                    spacing: legend.rowGap
+                    Repeater {
+                      model: parent.modelData
+                      LegendCell { required property var modelData; objectName: "legendCell"; cell: modelData }
+                    }
+                  }
+                }
               }
             }
           }
         }
-        Text { id: lineProbe; visible: false; text: "Ag"; textFormat: Text.PlainText; font.family: root.fontFamily; font.pixelSize: Typo.caption }
       }
     }
   }

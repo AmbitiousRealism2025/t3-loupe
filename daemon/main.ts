@@ -100,7 +100,8 @@ class Daemon {
     let cmd: any;
     try { cmd = JSON.parse(line); } catch { return; }
     if (cmd?.cmd === "copy") {
-      void handleDesktopCommand(cmd);
+      // The outcome goes back with no text in it: just whether the clipboard took it.
+      void handleDesktopCommand(cmd, undefined, undefined, (ok) => write({ type: "copied", ok }));
     } else if (cmd?.cmd === "detail" && typeof cmd.envId === "string" && validId(cmd.threadId)) {
       this.connections.get(cmd.envId)?.requestDetail(cmd.threadId);
     } else if (cmd?.cmd === "refresh") {

@@ -95,3 +95,18 @@ test("desktop commands: only well-formed copy requests act; logs never contain t
   assert.deepEqual(copied, [PRIVATE, "boom"]);
   assert.deepEqual(logs, ["copy failed: failed"]);
 });
+
+test("desktop commands: a copy reports how it ended, so the panel says \"copied\" only when it was", async () => {
+  const outcomes = [];
+  const copy = async (t) => { if (t === "boom") throw new Error(PRIVATE); };
+  const done = (ok) => outcomes.push(ok);
+  await handleDesktopCommand({ cmd: "copy", text: PRIVATE }, copy, () => {}, done);
+  await handleDesktopCommand({ cmd: "copy", text: "boom" }, copy, () => {}, done);
+  assert.deepEqual(outcomes, [true, false]);
+  // Nothing was attempted for a malformed request, so nothing is reported.
+  await handleDesktopCommand({ cmd: "copy", text: "" }, copy, () => {}, done);
+  await handleDesktopCommand({ cmd: "notify" }, copy, () => {}, done);
+  assert.deepEqual(outcomes, [true, false]);
+  // A listener that throws can't take the collector down.
+  assert.equal(await handleDesktopCommand({ cmd: "copy", text: "x" }, copy, () => {}, () => { throw new Error("listener"); }), true);
+});

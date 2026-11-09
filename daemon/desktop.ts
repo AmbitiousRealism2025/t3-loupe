@@ -51,19 +51,24 @@ export function copyText(value: string, command: string[] = ["wl-copy"], timeout
 }
 
 /** Handle a desktop command from the shell. Returns false when `cmd` isn't one. Never throws;
- *  failures are logged by code only, never with the text. */
+ *  failures are logged by code only, never with the text. `done` hears how a copy ended (true
+ *  once the text is on the clipboard), so the panel can say "copied" only when it was. */
 export async function handleDesktopCommand(
   cmd: unknown,
   copy: (value: string) => Promise<void> = copyText,
   log: (line: string) => void = (line) => process.stderr.write(line + "\n"),
+  done: (ok: boolean) => void = () => {},
 ): Promise<boolean> {
   if (!cmd || typeof cmd !== "object" || (cmd as any).cmd !== "copy") return false;
   const text = (cmd as any).text;
   if (typeof text !== "string" || text.length === 0) return true;
+  let ok = true;
   try {
     await copy(text.slice(0, MAX_TEXT));
   } catch (error) {
+    ok = false;
     log(`copy failed: ${failureCode(error)}`);
   }
+  try { done(ok); } catch {}
   return true;
 }

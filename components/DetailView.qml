@@ -230,13 +230,17 @@ Column {
       Item {
         required property var modelData
         readonly property bool live: modelData.status === "running" || modelData.status === "pending"
+        // A step waiting on your answer is marked in the answer's violet, like its row and its
+        // request above: red is for failures only, and the accent for what is running.
+        readonly property bool asking: modelData.status === "pending" && root.row.state === "input"
         width: root.width
         height: Math.max(aText.implicitHeight, aIcon.height) + Style.space(2)
         LucideIcon {
           id: aIcon
           y: Math.max(0, (Typo.caption * 1.4 - height) / 2)
           name: modelData.icon
-          color: parent.live ? root.colors.accentInk : modelData.status === "failed" ? root.colors.attentionInk : root.colors.textFaint
+          color: parent.asking ? root.colors.askInk : modelData.status === "running" ? root.colors.accentInk
+            : modelData.status === "failed" ? root.colors.attentionInk : parent.live ? root.colors.textDim : root.colors.textFaint
           size: Math.round(Typo.body * 1.05)
         }
         Text {
@@ -272,10 +276,11 @@ Column {
             font.pixelSize: Typo.caption
           }
           Rectangle {
+            objectName: "liveDot"
             visible: parent.parent.live
             anchors.verticalCenter: parent.verticalCenter
             width: Style.space(6); height: width; radius: width / 2
-            color: modelData.status === "pending" ? root.colors.attention : root.colors.accent
+            color: parent.parent.asking ? root.colors.ask : modelData.status === "pending" ? root.colors.edge : root.colors.accent
           }
         }
       }

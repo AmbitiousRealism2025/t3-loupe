@@ -54,4 +54,17 @@ Item {
       fontFamily: root.fontFamily
     }
   }
+
+  // What the line does, in the legend's words, so it reads as something to open and not as a
+  // heading; with the cursor on it, the key that does it.
+  Text {
+    anchors.right: parent.right
+    anchors.rightMargin: Style.space(10)
+    anchors.verticalCenter: parent.verticalCenter
+    text: (root.selected ? "↵ " : "") + (root.open ? "fold" : "unfold")
+    textFormat: Text.PlainText
+    color: root.selected ? root.colors.text : root.colors.textFaint
+    font.family: root.fontFamily
+    font.pixelSize: Typo.caption
+  }
 }

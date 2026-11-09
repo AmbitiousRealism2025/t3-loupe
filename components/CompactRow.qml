@@ -2,10 +2,11 @@ import QtQuick
 import qs.Commons
 import "../lib/Store.js" as Store
 import "../lib/Format.js" as Format
+import "../lib/Palette.js" as Palette
 
-// Two-pane list row. Flat on the surface; the shell's hover/selected fills mark state.
-// Rows that need you carry a rail and a faint wash in their colour (red: blocked or failed;
-// amber: plan to review); the selected row adds an accent outline and rail.
+// Two-pane list row. Flat on the surface; hover and selection lift it a step.
+// Rows that need you carry a rail in their colour (violet: an answer; red: failed; amber: a plan
+// to review), and those waiting on an answer a faint wash; the selected row adds the ring.
 Item {
   id: root
 
@@ -72,19 +73,22 @@ Item {
   implicitHeight: body.implicitHeight + Style.space(child ? 8 : 14)
 
   Rectangle {
+    objectName: "fill"
     anchors.fill: parent
     anchors.leftMargin: root.child ? Style.space(18) : 0
     radius: Style.cornerRadius
     // Shaded rows (subagents sit unshaded under their parent); hover and selection step up from there.
-    color: root.selected ? root.colors.surfaceSelected
+    // Selection is a neutral lift and the ring: a washed row keeps its wash under it, so the row
+    // still reads as what it is while it is selected.
+    color: root.selected ? (root.washed ? Palette.wash(root.colors.surfaceSelected, root.glyphColor) : root.colors.surfaceSelected)
       : hover.hovered ? Style.hoverFillFor(root.colors.text, root.colors.accent)
-      : root.washed ? Qt.tint(root.colors.surface, Qt.rgba(root.glyphColor.r, root.glyphColor.g, root.glyphColor.b, 0.07))
+      : root.washed ? Palette.wash(root.colors.surface, root.glyphColor)
       : root.child ? "transparent" : root.colors.surface
     border.width: root.selected ? Style.space(2) : 0
     border.color: root.colors.focus
     Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
-    // Rail: the state's colour on rows that need you, the accent on the selected row.
+    // Rail: the state's colour on rows that need you, the ring's on any other selected row.
     Rail {
       visible: root.needsYou || root.selected
       height: parent.height

@@ -144,7 +144,7 @@ export function runDemo(write: (m: Record<string, unknown>) => void, mode: DemoM
     try {
       const cmd = JSON.parse(line);
       if (cmd.cmd === "copy") {
-        void handleDesktopCommand(cmd);
+        void handleDesktopCommand(cmd, undefined, undefined, (ok) => write({ type: "copied", ok }));
       } else if (cmd.cmd === "detail") {
         const id = String(cmd.threadId);
         if (noDetail.has(id)) return;
@@ -169,5 +169,11 @@ function runOffline(write: (m: Record<string, unknown>) => void, env: { a: strin
   const emit = () => write({ type: "state", at: Date.now(), environments, rows: [], counts: none, known: false });
   emit();
   setInterval(emit, 5000);
-  createInterface({ input: process.stdin }).on("line", () => {});
+  // The offline screen's one action is copying a re-pair command.
+  createInterface({ input: process.stdin }).on("line", (line) => {
+    try {
+      const cmd = JSON.parse(line);
+      if (cmd.cmd === "copy") void handleDesktopCommand(cmd, undefined, undefined, (ok) => write({ type: "copied", ok }));
+    } catch {}
+  });
 }

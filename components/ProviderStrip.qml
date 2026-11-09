@@ -4,13 +4,14 @@ import "../lib/Format.js" as Format
 import "../lib/Store.js" as Store
 
 // Provider usage limits beside their heading, one provider per row, whatever its number of windows:
-//   USAGE LIMITS  Claude  5-hour ▬ 95% resets in 1h   weekly ▬ 55%   weekly · Fable ▬ 0%
-//                 Codex   5-hour limit reached, resets in 47m   weekly ▬ 30%
+//   LIMITS USED  Claude  5-hour ▭ 95% resets in 1h   weekly ▭ 55%   weekly · Fable ▭ 0%
+//                Codex   5-hour ◔ limit reached, resets in 47m   weekly ▭ 30%
+// The heading says which way the numbers count: they are the share of each limit used.
 // Names share a column; each provider's windows sit side by side at their own widths (label,
 // meter, value, then the next), so one long value never widens another provider's row. A row
 // that's too long wraps inside its provider, never into another's. Ink meters (agents-panel
-// style); a spent window says so in words in place of its meter and value. Providers that report
-// no usage are left out.
+// style); a spent window says so in words, with the usage-limit gauge, in place of its meter and
+// value. Providers that report no usage are left out.
 Row {
   id: root
 
@@ -21,6 +22,11 @@ Row {
 
   // Compact (the dropdown): short window names ("5h", "week") and meters.
   property bool compact: false
+  // The footer's bands share a heading column: the widest heading sets it for all of them.
+  property real headingColumn: 0
+  readonly property real headingWidth: heading.implicitWidth
+  // Where the content starts, for the band under this one to line up with.
+  readonly property real contentX: heading.visible ? heading.width + spacing : 0
 
   readonly property real itemGap: compact ? Style.space(12) : Style.space(22)
 
@@ -58,7 +64,8 @@ Row {
   Text {
     id: heading
     visible: root.metered.length > 0
-    text: root.compact ? "LIMITS" : "USAGE LIMITS"
+    width: Math.max(implicitWidth, root.headingColumn)
+    text: Store.USAGE_HEADING
     textFormat: Text.PlainText
     color: root.colors.textDim
     font.family: root.fontFamily
@@ -73,7 +80,8 @@ Row {
     Item {
       id: body
       readonly property real gap: root.compact ? Style.space(6) : Style.space(8)
-      readonly property real meterWidth: root.compact ? Style.space(26) : Style.space(44)
+      // Long enough to read a share from: a quarter and a half are visibly different lengths.
+      readonly property real meterWidth: root.compact ? Style.space(32) : Style.space(60)
       width: Math.max(0, root.width - (heading.visible ? heading.width + root.spacing : 0))
       height: blocks.implicitHeight
 
@@ -136,19 +144,28 @@ Row {
                     visible: !parent.spent
                     anchors.verticalCenter: parent.verticalCenter
                     width: body.meterWidth
-                    thickness: Style.space(3)
                     value: modelData.usedPercent / 100
                     ink: root.colors.text
                     danger: root.colors.text
                     track: root.colors.edge
                   }
+                  // A spent window: the gauge that marks a usage-limited thread, and full-weight ink.
+                  // No colour: a limit is a wait, not a failure.
+                  LucideIcon {
+                    visible: parent.spent
+                    anchors.verticalCenter: parent.verticalCenter
+                    name: "gauge"
+                    color: root.colors.text
+                    size: Math.round(Typo.caption * 1.15)
+                  }
                   Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: Store.windowValue(modelData, root.now, root.compact)
                     textFormat: Text.PlainText
-                    color: modelData.usedPercent >= 90 ? root.colors.text : root.colors.textFaint
+                    color: modelData.usedPercent >= 90 ? root.colors.text : root.colors.textDim
                     font.family: root.fontFamily
                     font.pixelSize: Typo.caption
+                    font.weight: parent.spent ? Font.DemiBold : Font.Normal
                   }
                 }
               }
