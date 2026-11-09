@@ -91,12 +91,13 @@ L=~/.config/omarchy/plugins/ambitiousrealism.t3-loupe/daemon/main.ts
 
 node $L pair-local                                  # the T3 running on this machine
 node $L pair-ssh --ssh-host my-server               # a remote T3 you reach with  ssh -L PORT:127.0.0.1:3773 my-server
+node $L pair-ssh --ssh-host my-server --url https://my-server.example.ts.net   # a remote T3 you reach over HTTPS, such as Tailscale Serve
 node $L pair --url https://t3.example.com           # paste a pairing link from T3 → Settings → Connections
 node $L doctor                                      # check every machine: reachability, identity, scope, expiry
 ```
 
 - **`pair-local`** asks your own T3 installation for a five-minute, single-use pairing grant, then exchanges it.
-- **`pair-ssh`** does the same on the remote machine. It runs one fixed command there, once. It uses an SSH forward you already have; T3 Loupe never opens tunnels itself.
+- **`pair-ssh`** does the same on the remote machine. It runs one fixed command there, once, and works whether T3 runs there as the desktop app or as `t3 serve`. Without `--url` it uses an SSH forward you already have; T3 Loupe never opens tunnels itself. With an HTTPS `--url`, SSH is only used to pair, and T3 Loupe connects to that address directly.
 - **`pair`** prompts for the link with hidden input. Don't paste tokens into command arguments or chat.
 
 Sessions last 30 days, and T3 doesn't issue refresh tokens. T3 Loupe warns you three days before a session expires; re-pair the same way.
@@ -235,7 +236,7 @@ Omarchy shell (Quickshell)                         T3 server(s)
 |---|---|
 | The bar shows `—` | The collector can't reach any machine. Run `node $L doctor`. |
 | The bar shows `+` | Nothing is paired yet; see [Pair your T3 machines](#pair-your-t3-machines). |
-| "No SSH tunnel" | Start your `ssh -L …:127.0.0.1:3773 host` forward. T3 Loupe picks it up within 15 s. If T3 itself reaches that machine another way, such as over Tailscale HTTPS, there is no forward to find: re-pair it with `pair --url https://<host>`, which replaces the old entry. |
+| "No SSH tunnel" | Start your `ssh -L …:127.0.0.1:3773 host` forward. T3 Loupe picks it up within 15 s. If T3 itself reaches that machine another way, such as over Tailscale HTTPS, there is no forward to find: re-pair it with `pair-ssh --ssh-host <host> --url https://<host>`, or with `pair --url https://<host>` and a pairing link. If `doctor` still lists the old entry, `forget` it. |
 | "Pairing required" / "Pairing expired" | Re-pair that machine. |
 | "Port owned by another user" | Something run by a different user account is listening on that machine's T3 port, so T3 Loupe won't send it your token. Check what's listening with `ss -ltnp`; start T3 (or your SSH forward) as your own user. |
 | "Collector stopped" | Node is missing or too old on the shell's `PATH`. Set `"node"` in `settings.json`. `omarchy-shell ambitiousrealism.t3-loupe status` shows the last error. On v2.5.4 and earlier, a thread with a linked PR or on a branch with an open PR also stopped it; [update](#update) to 2.5.5. |

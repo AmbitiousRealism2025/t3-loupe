@@ -9,7 +9,7 @@ import { ATTENTION, BUSY, buildRows, countRows, type Counts, type Row } from "./
 import { RpcSocket } from "./rpc.ts";
 import { ShellStore } from "./shell-store.ts";
 import { type Detail, ThreadWatch } from "./thread-watch.ts";
-import { existingTunnel } from "./tunnel.ts";
+import { environmentBase, usesTunnel } from "./tunnel.ts";
 import { clean, Failure, failureCode, isObject, ms } from "./util.ts";
 
 export type ConnectionState =
@@ -162,7 +162,7 @@ export class EnvironmentConnection {
     let identityVerified = false;
     try {
       if (this.sessionExpiresAt !== null && this.sessionExpiresAt <= Date.now()) throw new Failure("expired");
-      this.base = this.env.sshHost ? existingTunnel(this.env.sshHost) : this.env.url;
+      this.base = environmentBase(this.env);
       const descriptor = await this.verifyIdentity();
       identityVerified = true;
       this.hostLabel = clean(descriptor.label, 40);
@@ -395,7 +395,7 @@ export class EnvironmentConnection {
       sshHost: this.env.sshHost ?? "",
       state: this.state,
       stale: !live && this.hasData,
-      url: this.base || (this.env.sshHost ? "" : this.env.url),
+      url: this.base || (usesTunnel(this.env) ? "" : this.env.url),
       serverVersion: this.serverVersion,
       lastLiveAt: live ? Date.now() : this.lastLiveAt,
       sessionExpiresAt: this.sessionExpiresAt,
