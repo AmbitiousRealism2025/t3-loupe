@@ -2,6 +2,13 @@
 
 What changed in each version. [`VALIDATION.md`](VALIDATION.md) records how each one was verified.
 
+## 2.5.11 — 2026-11-09
+
+Settled threads stay out of Needs you. Contributed by [@farseenmanekhan1232](https://github.com/farseenmanekhan1232) in [#5](https://github.com/AmbitiousRealism2025/t3-loupe/pull/5).
+
+- **Settled means put away.** T3's own inbox leaves out a thread you have settled (`settledAt`, or `settledOverride: "settled"`), but T3 Loupe classified it from its last run. A settled failed run, a stale plan, a leftover pending request, a past usage limit or background tasks all put it under Needs you, raised the bar badge and the Active count, and kept a finished parent showing "1 subagent running". Settled threads now skip those states: a settled failure shows as stopped, and a settled finished thread as done. A run that is actually running still shows as working, so settling a live thread doesn't hide it.
+- New tests for each case (103 pass).
+
 ## 2.5.10 — 2026-11-09
 
 A working `t3-loupe` command, and a README rewritten for someone installing T3 Loupe for the first time.
