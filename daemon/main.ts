@@ -202,11 +202,28 @@ async function oneShotStatus() {
   process.exit(0);
 }
 
+const USAGE = `t3-loupe: pair T3 machines with T3 Loupe and check them
+
+  t3-loupe pair-local                          the T3 running on this machine
+  t3-loupe pair-ssh --ssh-host HOST            a remote T3 you reach with  ssh -L PORT:127.0.0.1:3773 HOST
+  t3-loupe pair-ssh --ssh-host HOST --url URL  a remote T3 at an HTTPS address, such as Tailscale Serve
+  t3-loupe pair --url URL                      paste a pairing link from that T3's Settings → Connections
+  t3-loupe doctor                              check every paired machine
+  t3-loupe status                              connection summary (no thread titles)
+  t3-loupe forget --id PREFIX                  drop a pairing from this machine
+
+Each pairing command also takes --label NAME.`;
+
 async function main() {
   const command = process.argv[2] ?? "run";
   switch (command) {
     case "run":
       new Daemon().start();
+      return;
+    case "help":
+    case "--help":
+    case "-h":
+      console.log(USAGE);
       return;
     case "demo": {
       const { runDemo } = await import("./demo.ts");
@@ -235,7 +252,7 @@ async function main() {
     case "pair-ssh": {
       const host = arg("ssh-host");
       const url = arg("url") ?? (host ? existingTunnel(host) : undefined);
-      if (!host || !url) throw new Failure("usage", "pair-ssh --ssh-host HOST [--url FORWARD_URL] [--label NAME]");
+      if (!host || !url) throw new Failure("usage", "pair-ssh --ssh-host HOST [--url URL] [--label NAME]");
       const env = await exchange(url, await issueCredential(url, host, Number(arg("server-port") ?? 3773)), arg("label") ?? host, host);
       console.log(JSON.stringify({ paired: true, label: env.label, environmentId: env.environmentId, scope: READ_SCOPE }));
       return;

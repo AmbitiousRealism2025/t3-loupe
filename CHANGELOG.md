@@ -2,6 +2,23 @@
 
 What changed in each version. [`VALIDATION.md`](VALIDATION.md) records how each one was verified.
 
+## 2.5.10 — 2026-11-09
+
+A working `t3-loupe` command, and a README rewritten for someone installing T3 Loupe for the first time.
+
+- **`t3-loupe` is a real command.** The panel, its re-pair cards, `doctor` and the expiry notification all said to run `t3-loupe …`, but nothing installed one, so a new user's first step failed with "command not found". The plugin now ships `bin/t3-loupe`, which runs the collector with the same Node the shell uses (`"node"` in `settings.json`, or `node` on `PATH`). Link it onto your `PATH` once; the README's quick start shows how. With no arguments it prints the commands.
+- **Re-pairing a changed server names the right command.** "Server changed" suggested `pair-local` even for a machine paired over SSH or with a link; it now repeats how that machine was paired.
+- **The header names the right file.** It said "SETTINGS UNREADABLE" when the unreadable file was `connections.json`; it now says "PAIRINGS UNREADABLE".
+- **README:**
+  - A quick start on the first screen, and the demo feed for anyone just looking.
+  - Requirements that match what was tested, including `python3` for pairing and how to pair a T3 on macOS.
+  - A `settings.json` table with every key and its default, instead of a sample that pinned `/usr/bin/node` and a presentation.
+  - Troubleshooting keyed to what you actually see.
+  - A shorter feature list, security summary and developer section.
+- **New screenshots and marketplace preview** of the current UI, in Omarchy's Matte Black theme, replacing ones from before the 2.5.7 redesign.
+- `VALIDATION.md` no longer names a real Tailscale host, and a test keeps it that way.
+- New tests: the command runs from a symlink and honours a pinned Node; "Server changed" re-pairs the way the machine was paired (101 pass).
+
 ## 2.5.9 — 2026-11-09
 
 Addresses the Medium findings from the marketplace review of 2.5.7. Each needed a paired T3 server that had turned hostile; none could be reached otherwise.
