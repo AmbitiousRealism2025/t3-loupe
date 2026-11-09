@@ -66,6 +66,31 @@ test("classify maps T3 status into display states", () => {
   assert.equal(classify(thread("a", { status: "completed", latestRunCompletedAt: iso(5000), lastVisitedAt: iso(1000) })), "idle");
 });
 
+test("settled threads never ask for attention", () => {
+  assert.equal(classify(thread("a", { status: "failed", settledAt: iso(1000) })), "stopped");
+  assert.equal(classify(thread("a", { status: "failed", settledOverride: "settled" })), "stopped");
+  assert.equal(classify(thread("a", { status: "completed", hasActionableProposedPlan: true, settledAt: iso(1000) })), "idle");
+  assert.equal(classify(thread("a", { status: "completed", hasActionableProposedPlan: true, settledAt: iso(1000), latestRunCompletedAt: iso(1000), lastVisitedAt: iso(5000) })), "review");
+  assert.equal(classify(thread("a", { pendingRuntimeRequest: { kind: "command", createdAt: iso(0) }, status: "completed", settledAt: iso(1000) })), "idle");
+  assert.equal(classify(thread("a", { status: "failed", lastErrorClass: "usage_limit", usageLimitResetAt: new Date(Date.now() + 60000).toISOString(), settledAt: iso(1000) })), "stopped");
+  assert.equal(classify(thread("a", { status: "completed", pendingBackgroundTasks: [{ kind: "subagent" }], settledAt: iso(1000) })), "idle");
+  // Settling must not hide a run that is actually in flight.
+  assert.equal(classify(thread("a", { activityRunStatus: "running", settledAt: iso(1000) })), "working");
+});
+
+test("settled failures leave the counts and stop counting as active children", () => {
+  const rows = buildRows("e", [
+    thread("root", { status: "completed", settledAt: iso(1000), latestRunCompletedAt: iso(1000), lastVisitedAt: iso(0) }),
+    thread("kid", { status: "failed", settledAt: iso(1000), lineage: { relationshipToParent: "subagent", rootThreadId: "root", parentThreadId: "root" } }),
+    thread("live", { activityRunStatus: "running" }),
+  ], projects);
+  const counts = countRows(rows);
+  assert.equal(counts.attention, 0);
+  assert.equal(counts.busy, 1);
+  assert.equal(counts.active, 1);
+  assert.equal(rows.find((r) => r.id === "root").activeChildren, 0);
+});
+
 test("subagent threads are never unread", () => {
   assert.equal(isUnread(thread("s", { latestRunCompletedAt: iso(0), lineage: { relationshipToParent: "subagent", rootThreadId: "r" } })), false);
 });

@@ -2,6 +2,14 @@
 
 What changed in each version. [`VALIDATION.md`](VALIDATION.md) records how each one was verified.
 
+## 2.5.8 — 2026-11-09
+
+Settled threads no longer come back as work.
+
+- **Settled means put away.** T3's own inbox leaves settled threads out, but T3 Loupe kept classifying a settled thread by its last run, so a settled failure, a stale plan or a leftover approval could sit in **Needs you** indefinitely, inflate the bar badge and keep **Active** high. `settledAt`, and T3's explicit `settledOverride`, now suppress those attention states. A thread whose run is actually in flight still shows as **Working**, so settling a live thread cannot hide its work.
+- **Subagents follow their parent.** Settled failed subagents no longer count as active children, so a finished parent stops reporting "N subagents running".
+- New tests: settled failures, plans, pending requests, usage limits and background tasks stay out of attention and the counts, while a settled thread with a live run stays Working (96 tests).
+
 ## 2.5.7 — 2026-11-08
 
 A UI overhaul driven by design reviews. Four reviewer agents scored the panel on eight categories, and it was reworked over ten rounds against their findings. The overall review score went from 5.8 to 7.6 out of 10. No new network, process, file, clipboard or text-input access.

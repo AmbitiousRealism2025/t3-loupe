@@ -79,19 +79,31 @@ export interface Row {
   activity: Activity[];
 }
 
+/**
+ * Whether the user has settled the thread. T3 treats a thread as settled when it carries a
+ * `settledAt`, or when an explicit `settledOverride` says so; its own inbox excludes both.
+ */
+export function isSettled(t: Record<string, any>): boolean {
+  return Boolean(t.settledAt) || t.settledOverride === "settled";
+}
+
 export function classify(t: Record<string, any>, now = Date.now()): State {
+  // A settled thread is work the user has put away. It never asks for attention: T3's own inbox
+  // leaves it out, so a failed run, a pending approval or a stale plan must not resurface here.
+  // An actually running run still wins, so settling a live thread cannot hide its work.
+  const settled = isSettled(t);
   const pending = t.pendingRuntimeRequest;
-  if (isObject(pending) && pending.kind) return "input";
+  if (!settled && isObject(pending) && pending.kind) return "input";
   const run = t.activityRunStatus;
   if (run === "preparing" || run === "starting" || run === "running") return "working";
   if (run === "waiting" || t.status === "waiting") return "waiting";
   if (t.status === "queued") return "queued";
   if (t.status === "preparing" || t.status === "starting" || t.status === "running") return "working";
-  if (t.hasActionableProposedPlan) return "plan";
-  if (Array.isArray(t.pendingBackgroundTasks) && t.pendingBackgroundTasks.length) return "background";
+  if (!settled && t.hasActionableProposedPlan) return "plan";
+  if (!settled && Array.isArray(t.pendingBackgroundTasks) && t.pendingBackgroundTasks.length) return "background";
   const resetAt = ms(t.usageLimitResetAt) ?? ms(t.limitRecovery?.resetAt);
-  if (t.lastErrorClass === "usage_limit" && resetAt !== null && resetAt > now) return "limited";
-  if (t.status === "failed") return "failed";
+  if (!settled && t.lastErrorClass === "usage_limit" && resetAt !== null && resetAt > now) return "limited";
+  if (t.status === "failed") return settled ? "stopped" : "failed";
   if (t.status === "interrupted" || t.status === "cancelled" || t.status === "rolled_back") return "stopped";
   if (t.status === "completed" && isUnread(t)) return "review";
   return "idle";
@@ -195,7 +207,7 @@ export function toRow(envId: string, t: Record<string, any>, projects: Map<strin
     updatedAt: ms(t.updatedAt),
     unread: isUnread(t),
     pinned: Boolean(t.pinnedAt),
-    settled: Boolean(t.settledAt),
+    settled: isSettled(t),
     snoozedUntil: ms(t.snoozedUntil),
     background: backgroundCounts(t),
     pr,
