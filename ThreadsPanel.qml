@@ -933,7 +933,7 @@ Item {
             }
           }
         }
-        Text { id: lineProbe; visible: false; text: "Ag"; font.family: root.fontFamily; font.pixelSize: Typo.caption }
+        Text { id: lineProbe; visible: false; text: "Ag"; textFormat: Text.PlainText; font.family: root.fontFamily; font.pixelSize: Typo.caption }
       }
     }
   }

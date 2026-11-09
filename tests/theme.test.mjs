@@ -78,3 +78,23 @@ test("Theme: no QML file names the shell's Color unqualified", () => {
   assert.ok(files.length > 10, "found the plugin's QML files");
   assert.deepEqual(bare, []);
 });
+
+// Text interprets a string as rich text when it looks like markup, and rich text can fetch
+// images. Every Text element sets textFormat explicitly, so server text is never read as markup.
+test("Every QML Text element sets its textFormat", () => {
+  const files = readdirSync(root, { recursive: true }).filter((f) => f.endsWith(".qml") && !/^(tests|promo|ui-review|node_modules)\//.test(f) && !f.startsWith("."));
+  const missing = [];
+  for (const file of files) {
+    const source = readFileSync(join(root, file), "utf8");
+    for (const match of source.matchAll(/(^|[^.\w])Text\s*\{/g)) {
+      let depth = 0, end = match.index;
+      for (; end < source.length; end++) {
+        if (source[end] === "{") depth++;
+        else if (source[end] === "}" && --depth === 0) break;
+      }
+      if (!/\btextFormat\s*:/.test(source.slice(match.index, end))) missing.push(`${file}:${source.slice(0, match.index).split("\n").length}`);
+    }
+  }
+  assert.ok(files.length > 10, "found the plugin's QML files");
+  assert.deepEqual(missing, []);
+});

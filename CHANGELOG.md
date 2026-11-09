@@ -2,6 +2,17 @@
 
 What changed in each version. [`VALIDATION.md`](VALIDATION.md) records how each one was verified.
 
+## 2.5.9 — 2026-11-09
+
+Addresses the Medium findings from the marketplace review of 2.5.7. Each needed a paired T3 server that had turned hostile; none could be reached otherwise.
+
+- **What the collector keeps from a server is bounded.** Thread, project and request ids must look like T3's ids (up to 256 characters of letters, digits and `_ . : % -`); anything else is dropped on arrival instead of being kept and echoed into the state line. Each machine holds at most 5,000 threads and 1,000 projects, and each open thread at most 64 requests, runs, provider threads and subagents. Option, question and plan-step lists are trimmed when they arrive.
+- **The state line always fits.** When shedding idle and finished threads isn't enough, the collector keeps the most urgent rows that fit, so the shell never has to drop the whole update.
+- **Pending requests are capped.** The detail pane shows the first three pending requests and "+N more waiting in T3" for the rest, instead of drawing every one.
+- **Text is never read as markup.** The provider-name label used to size the usage footer didn't force plain text, so markup in a provider name could make Qt fetch an image. Every Text element now sets its format, and a test holds them to it.
+- **Subagent rows keep their whole id.** Ids were cut to 80 characters, and real subagent ids are about 200 characters with a long shared prefix, so sibling subagents could share an id and their detail couldn't load. Ids are kept whole now.
+- New tests for each (99 pass).
+
 ## 2.5.8 — 2026-11-09
 
 Fixes pairing a remote machine that runs T3 as a server rather than the desktop app.

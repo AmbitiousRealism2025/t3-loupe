@@ -2,12 +2,17 @@
 // Holds only what the monitor shows: activity trail, pending request text, runs,
 // context usage, subagents and plan progress. Everything else is dropped on arrival.
 import { type Activity, toActivity } from "./model.ts";
-import { clean, cleanBlock, isObject, ms } from "./util.ts";
+import { clean, cleanBlock, isObject, ms, validId } from "./util.ts";
 
 const KEEP_ITEMS = 40;
 const SHOW_ACTIVITY = 6;
 const SHOW_RUNS = 12;
 const SHOW_SUBAGENTS = 12;
+const SHOW_PENDING = 3;
+// Records kept per kind. Real threads hold a handful; this bounds what a misbehaving server can add.
+const KEEP_RECORDS = 64;
+
+const idOf = (value: unknown): string => (validId(value) ? value : "");
 
 export interface PendingDetail {
   id: string;
@@ -41,6 +46,8 @@ export interface SubagentSummary {
 export interface Detail {
   activity: Activity[];
   pending: PendingDetail[];
+  /** Pending requests beyond the ones shown, answered in T3. */
+  pendingMore: number;
   runs: RunSummary[];
   context: { used: number; max: number; cost: number | null; currency: string } | null;
   subagents: SubagentSummary[];
@@ -88,38 +95,48 @@ export class ThreadWatch {
     this.subagents.clear();
     const items = (Array.isArray(p.turnItems) ? p.turnItems : []).filter(isObject);
     for (const raw of items.slice(-KEEP_ITEMS)) this.putItem(raw);
-    for (const r of arr(p.runtimeRequests)) this.requests.set(r.id, r);
-    for (const r of arr(p.runs)) this.runs.set(r.id, r);
-    for (const t of arr(p.providerThreads)) this.providerThreads.set(t.id, t);
-    for (const s of arr(p.subagents)) this.subagents.set(s.id, s);
+    for (const r of arr(p.runtimeRequests).slice(-KEEP_RECORDS)) this.putRequest(r);
+    for (const r of arr(p.runs).slice(-KEEP_RECORDS)) keep(this.runs, r);
+    for (const t of arr(p.providerThreads).slice(-KEEP_RECORDS)) keep(this.providerThreads, t);
+    for (const s of arr(p.subagents).slice(-KEEP_RECORDS)) keep(this.subagents, s);
   }
 
   private event(e: Record<string, any>): boolean {
     const payload = e.payload;
-    if (!isObject(payload) || typeof payload.id !== "string") return false;
+    if (!isObject(payload) || !validId(payload.id)) return false;
     switch (e.type) {
       case "turn-item.updated":
         this.putItem(payload);
         return true;
       case "runtime-request.updated":
-        this.requests.set(payload.id, payload);
+        this.putRequest(payload);
         return true;
       case "run.created":
       case "run.updated":
-        this.runs.set(payload.id, payload);
+        keep(this.runs, payload);
         return true;
       case "provider-thread.updated":
-        this.providerThreads.set(payload.id, payload);
+        keep(this.providerThreads, payload);
         return true;
       case "subagent.updated":
-        this.subagents.set(payload.id, payload);
+        keep(this.subagents, payload);
         return true;
     }
     return false;
   }
 
+  /** Keep a request, evicting answered ones before any that are still pending. */
+  private putRequest(r: Record<string, any>) {
+    this.requests.delete(r.id);
+    this.requests.set(r.id, r);
+    while (this.requests.size > KEEP_RECORDS) {
+      const answered = [...this.requests].find(([, v]) => v.status !== "pending");
+      this.requests.delete(answered ? answered[0] : this.requests.keys().next().value!);
+    }
+  }
+
   private putItem(raw: Record<string, any>) {
-    if (typeof raw.id !== "string") return;
+    if (!validId(raw.id)) return;
     // Keep only fields the labels/icons/pending text need; drop outputs, diffs and bodies.
     const slim: Record<string, any> = {
       id: raw.id, type: raw.type, status: raw.status, title: raw.title, toolSurface: raw.toolSurface,
@@ -130,8 +147,9 @@ export class ThreadWatch {
       text: raw.type === "assistant_message" && typeof raw.text === "string" ? raw.text.slice(-400) : undefined,
       requestId: raw.requestId, requestKind: raw.requestKind,
       prompt: typeof raw.prompt === "string" ? raw.prompt.slice(0, 4000) : undefined, appName: raw.appName,
-      options: raw.options, questions: raw.questions,
-      steps: raw.type === "todo_list" ? raw.steps : undefined,
+      options: Array.isArray(raw.options) ? raw.options.slice(0, 8) : undefined,
+      questions: Array.isArray(raw.questions) ? raw.questions.slice(0, 4) : undefined,
+      steps: raw.type === "todo_list" && Array.isArray(raw.steps) ? raw.steps.slice(0, 200) : undefined,
       providerTurnId: raw.providerTurnId,
       updatedAt: raw.updatedAt, startedAt: raw.startedAt,
     };
@@ -158,8 +176,13 @@ export class ThreadWatch {
       .slice(-SHOW_ACTIVITY);
 
     const pending: PendingDetail[] = [];
+    let pendingMore = 0;
     for (const r of this.requests.values()) {
       if (r.status !== "pending") continue;
+      if (pending.length >= SHOW_PENDING) {
+        pendingMore++;
+        continue;
+      }
       const approval = items.find((i) => i.requestId === r.id && i.type === "approval_request");
       const question = items.find((i) => i.requestId === r.id && i.type === "user_input_request");
       let prompt = cleanBlock(approval?.prompt, 1200);
@@ -173,7 +196,7 @@ export class ThreadWatch {
         prompt = cleanBlock(files.join("\n"), 1200);
       }
       pending.push({
-        id: clean(r.id, 80),
+        id: idOf(r.id),
         kind: clean(r.kind, 24),
         since: ms(r.createdAt),
         prompt,
@@ -182,7 +205,7 @@ export class ThreadWatch {
         questions: (Array.isArray(question?.questions) ? question.questions : []).slice(0, 4).map((q: any) => ({
           header: clean(q?.header, 60),
           question: cleanBlock(q?.question, 600),
-          options: (Array.isArray(q?.options) ? q.options : []).map((o: any) => clean(o?.label, 60)).filter(Boolean).slice(0, 8),
+          options: (Array.isArray(q?.options) ? q.options.slice(0, 16) : []).map((o: any) => clean(o?.label, 60)).filter(Boolean).slice(0, 8),
         })),
       });
     }
@@ -219,14 +242,14 @@ export class ThreadWatch {
       .sort((a, b) => (ms(b.updatedAt) ?? 0) - (ms(a.updatedAt) ?? 0))
       .slice(0, SHOW_SUBAGENTS)
       .map((s) => ({
-        id: clean(s.id, 80),
+        id: idOf(s.id),
         title: clean(s.title, 120) || clean(s.prompt, 120) || "Subagent",
         status: clean(s.status, 16),
         progress: clean(s.progress, 160),
         model: clean(s.model, 60),
         startedAt: ms(s.startedAt),
         completedAt: ms(s.completedAt),
-        childThreadId: clean(s.childThreadId, 80),
+        childThreadId: idOf(s.childThreadId),
       }));
 
     let todo: Detail["todo"] = null;
@@ -240,10 +263,17 @@ export class ThreadWatch {
       };
     }
 
-    return { activity, pending, runs, context, subagents, todo };
+    return { activity, pending, pendingMore, runs, context, subagents, todo };
   }
 }
 
 function arr(value: unknown): Record<string, any>[] {
-  return Array.isArray(value) ? value.filter((v): v is Record<string, any> => isObject(v) && typeof v.id === "string") : [];
+  return Array.isArray(value) ? value.filter((v): v is Record<string, any> => isObject(v) && validId(v.id)) : [];
+}
+
+/** Keep the latest record per id, holding at most KEEP_RECORDS and dropping the oldest first. */
+function keep(map: Map<string, Record<string, any>>, record: Record<string, any>) {
+  map.delete(record.id);
+  map.set(record.id, record);
+  while (map.size > KEEP_RECORDS) map.delete(map.keys().next().value!);
 }

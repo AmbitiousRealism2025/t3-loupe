@@ -84,7 +84,7 @@ Row {
         opacity: 0
         Repeater {
           model: root.metered
-          Text { required property var modelData; text: modelData.name; font.family: root.fontFamily; font.pixelSize: Typo.caption; font.weight: Font.Medium }
+          Text { required property var modelData; text: modelData.name; textFormat: Text.PlainText; font.family: root.fontFamily; font.pixelSize: Typo.caption; font.weight: Font.Medium }
         }
       }
 

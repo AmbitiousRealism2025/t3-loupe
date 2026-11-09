@@ -7,7 +7,8 @@ import { join } from "node:path";
 import { FakeT3 } from "./lib/fake-t3.mjs";
 
 const D = "../daemon/";
-const { ShellStore } = await import(D + "shell-store.ts");
+const { ShellStore, MAX_THREADS } = await import(D + "shell-store.ts");
+const { fitState } = await import(D + "state.ts");
 const { classify, buildRows, compareRows, countRows, activityIcon, isUnread } = await import(D + "model.ts");
 const { TransitionDetector } = await import(D + "events.ts");
 const { ThreadWatch } = await import(D + "thread-watch.ts");
@@ -47,6 +48,47 @@ test("shell store: snapshot resets, metadata snapshot keeps threads, stale seque
   s.apply({ kind: "thread.removed", sequence: 8, threadId: "t2" });
   assert.equal(s.threads.size, 1);
   assert.throws(() => s.apply({ kind: "snapshot", snapshot: { schemaVersion: 3, threads: [], projects: [] } }));
+});
+
+// A paired server is trusted for identity, not for size: what it sends is bounded on arrival.
+// Real subagent thread ids are about 200 characters of provider-derived text.
+const subagentId = (n) => "thread:provider:claudeAgent:native-thread:provider-thread%3Aprovider%3AclaudeAgent%3Anative-thread%3Apending%253Arun%253Athread%253A0b1d2c3e-aaaa-bbbb-cccc-0123456789ab%253Aordinal%253A1%3A" + n;
+
+test("shell store: ids must be plausible, and threads and projects are capped", () => {
+  const s = new ShellStore();
+  const huge = "x".repeat(300);
+  s.apply({ kind: "snapshot", snapshot: { schemaVersion: 2, snapshotSequence: 1, projects: [{ id: "p1" }, { id: huge }, { id: "<b>" }],
+    threads: [thread("t1"), thread(huge), thread("bad id"), thread(subagentId("a"))] } });
+  assert.deepEqual([...s.threads.keys()], ["t1", subagentId("a")], "real long ids are kept whole; oversized or odd ones are dropped");
+  assert.deepEqual([...s.projects.keys()], ["p1"]);
+  s.apply({ kind: "thread.updated", sequence: 2, thread: thread(huge) });
+  assert.equal(s.threads.size, 2);
+  const many = Array.from({ length: MAX_THREADS + 50 }, (_, i) => thread("t" + i));
+  s.apply({ kind: "snapshot", snapshot: { schemaVersion: 2, snapshotSequence: 3, projects: [], threads: many } });
+  assert.equal(s.threads.size, MAX_THREADS);
+  s.apply({ kind: "thread.updated", sequence: 4, thread: thread("brand-new") });
+  assert.equal(s.threads.has("brand-new"), false, "no new threads past the cap");
+  s.apply({ kind: "thread.updated", sequence: 5, thread: thread("t1", { title: "Renamed" }) });
+  assert.equal(s.threads.get("t1").title, "Renamed", "known threads still update at the cap");
+});
+
+test("subagent rows keep their whole id, so siblings stay distinct and their detail can load", () => {
+  const rows = buildRows("env", [thread("root", { status: "running", activityRunStatus: "running" }),
+    ...["a", "b"].map((n) => thread(subagentId(n), { status: "running", activityRunStatus: "running",
+      lineage: { relationshipToParent: "subagent", rootThreadId: "root", parentThreadId: "root" } }))], projects);
+  const kids = rows.filter((r) => r.parentId === "root");
+  assert.deepEqual(kids.map((r) => r.id).sort(), [subagentId("a"), subagentId("b")]);
+  assert.equal(new Set(rows.map((r) => r.key)).size, rows.length);
+});
+
+test("the state line always fits its cap, keeping the most urgent rows", () => {
+  const rows = Array.from({ length: 400 }, (_, i) => ({ key: "e:t" + i, id: "t" + i, parentId: "", state: "working", title: "x".repeat(200) }));
+  const line = fitState({ environments: [], rows, counts: {}, known: true }, 20_000);
+  assert.ok(line.length <= 20_000, `line is ${line.length}`);
+  const sent = JSON.parse(line);
+  assert.equal(sent.truncated, true);
+  assert.ok(sent.rows.length > 0);
+  assert.deepEqual(sent.rows.map((r) => r.id), rows.slice(0, sent.rows.length).map((r) => r.id));
 });
 
 // ---------- model ----------
@@ -216,6 +258,24 @@ test("thread watch: activity trail, pending command text, context, sequence dedu
   assert.equal(w.apply({ kind: "event", sequence: 4, event: { type: "runtime-request.updated", payload: { id: "r1", kind: "command", status: "resolved" } } }), true);
   d = w.detail();
   assert.equal(d.pending.length, 0);
+});
+
+test("thread watch: pending requests are capped and counted, and every record kind is bounded", () => {
+  const w = new ThreadWatch();
+  const requests = Array.from({ length: 50 }, (_, i) => ({ id: "r" + i, kind: "command", status: "pending", createdAt: iso(1000) }));
+  w.apply({ kind: "snapshot", snapshotSequence: 1, projection: { turnItems: [], runtimeRequests: requests,
+    runs: Array.from({ length: 500 }, (_, i) => ({ id: "run" + i, ordinal: i, status: "completed" })),
+    providerThreads: [], subagents: Array.from({ length: 500 }, (_, i) => ({ id: "s" + i, status: "running" })) } });
+  let d = w.detail();
+  assert.equal(d.pending.length, 3);
+  assert.ok(d.pendingMore > 0 && d.pending.length + d.pendingMore <= 64);
+  assert.ok(w.runs.size <= 64 && w.subagents.size <= 64 && w.requests.size <= 64);
+  // Answered requests are evicted before pending ones.
+  for (let i = 0; i < 200; i++) w.apply({ kind: "event", sequence: 2 + i, event: { type: "runtime-request.updated", payload: { id: "done" + i, kind: "command", status: "resolved" } } });
+  d = w.detail();
+  assert.equal(d.pending.length + d.pendingMore, [...w.requests.values()].filter((r) => r.status === "pending").length);
+  assert.ok(d.pending.length === 3 && w.requests.size <= 64);
+  assert.equal(w.apply({ kind: "event", sequence: 999, event: { type: "runtime-request.updated", payload: { id: "y".repeat(300), status: "pending" } } }), false);
 });
 
 // ---------- config ----------
