@@ -401,3 +401,12 @@ Two README reviews, one on Fable 5.1 and one on Fable 5.2 at high effort, found 
 
 **Not verified:**
 - `pair --url` against a T3 on macOS: documented from the code, not run.
+
+## Settled threads — v2.5.11 (2026-11-09)
+
+Contributed in #5. Checked before merging:
+
+- T3 0.1.8 nightly sends `settledAt`, `settledOverride`, `unsettledAt` and `autoSettleDisabledAt` on every thread, so the fields the fix reads are real.
+- `npm test`: 103 pass, the contributor's 2 new tests included, after merging main (2.5.10) into the branch. Only the version and changelog conflicted.
+- Live, from the merged branch: `status` shows both machines live, with the same counts as 2.5.10. On this account none of the 73 settled threads failed, so the bug the contributor saw (17 settled threads under Needs you on 427 threads) doesn't occur here; their before and after figures are in the PR.
+- `omarchy plugin validate` passes on a clean export.
