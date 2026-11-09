@@ -937,6 +937,9 @@ Item {
         compact: !root.centered
         width: parent.width
         headingColumn: keysBand.captioned ? keysCaption.implicitWidth : 0
+        // One pitch for all the footer's rows: the usage rows are as tall and as far apart as the keys'.
+        rowHeight: keysBand.rowHeight
+        rowGap: legend.rowGap
         environments: root.environments
         colors: root.colors
         now: root.now
@@ -1024,7 +1027,8 @@ Item {
         Row {
           id: legend
           x: keysBand.contentX
-          readonly property real columnGap: Style.space(root.centered ? 18 : 12)
+          // The usage grid's own gap between columns, so both bands keep one rhythm.
+          readonly property real columnGap: usage.itemGap
           readonly property real groupGap: Style.space(root.centered ? 16 : 9)
           readonly property real rowGap: Style.space(3)
           height: keysBand.rowHeight * 2 + rowGap

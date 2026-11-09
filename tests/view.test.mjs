@@ -322,8 +322,44 @@ test("usage windows are named from T3's label, qualifiers kept, every label dist
   assert.equal(Store.windowValue({ usedPercent: 100, resetsAt: now + 47 * 60_000 }, now, false), "limit reached, resets in 47m");
   assert.equal(Store.windowValue({ usedPercent: 38 }, now, false), "38%");
   assert.equal(Store.windowValue({ usedPercent: 95, resetsAt: now + 3600_000 }, now, true), "95% resets 1h");
+  // The dropdown's words are shorter: a spent window sets the width of a column every provider shares.
+  assert.equal(Store.windowValue({ usedPercent: 100, resetsAt: now + 47 * 60_000 }, now, true), "full, resets 47m");
   // Which way the numbers count is said once, in the band's heading: they are the share used.
   assert.match(Store.USAGE_HEADING, /\bUSED\b/);
+});
+
+test("usage is one grid: a column per kind of window, shared by every provider", () => {
+  const w = (label, durationMins, usedPercent = 10) => ({ label, durationMins, usedPercent });
+  const claude = { name: "Claude", windows: [w("Session", 300), w("Weekly", 10080), w("Weekly · Fable", 10080)] };
+  const codex = { name: "Codex", windows: [w("Session", 300, 100), w("Weekly", 10080)] };
+  const shape = (g) => ({ columns: Array.from(g.columns), rows: Array.from(g.rows, (r) => [r.name, ...Array.from(r.cells, (c) => (c ? c.index : null))]) });
+  // The demo's accounts: Codex has no "weekly · Fable", so its cell there is empty.
+  assert.deepEqual(shape(Store.usageGrid([claude, codex], false)), {
+    columns: ["5-hour", "weekly", "weekly · Fable"], rows: [["Claude", 0, 1, 2], ["Codex", 0, 1, null]] });
+  // Whichever provider comes first, and in the dropdown's short names.
+  assert.deepEqual(shape(Store.usageGrid([codex, claude], true)), {
+    columns: ["5h", "week", "week · Fable"], rows: [["Codex", 0, 1, null], ["Claude", 0, 1, 2]] });
+  // A cell is the provider's own window.
+  assert.equal(Store.usageGrid([claude, codex], false).rows[1].cells[0].window.usedPercent, 100);
+  // Shorter windows come first even when a provider lists only the longer one, or lists them the other way round.
+  const weeklyOnly = { name: "Pi", windows: [w("Weekly", 10080)] };
+  const backwards = { name: "Amp", windows: [w("Weekly", 10080), w("Session", 300)] };
+  assert.deepEqual(shape(Store.usageGrid([weeklyOnly, backwards, claude], false)), {
+    columns: ["5-hour", "weekly", "weekly · Fable"], rows: [["Pi", null, 0, null], ["Amp", 1, 0, null], ["Claude", 0, 1, 2]] });
+  // Two windows one provider names alike are two kinds; a label Loupe doesn't know is its own kind, last.
+  const odd = { name: "X", windows: [w("Weekly", 10080), w("Weekly", 10080), w("Opus monthly cap", 0)] };
+  assert.deepEqual(shape(Store.usageGrid([odd, codex], false)), {
+    columns: ["5-hour", "weekly", "weekly 2", "Opus monthly cap"], rows: [["X", null, 0, 1, 2], ["Codex", 0, 1, null, null]] });
+  assert.deepEqual(shape(Store.usageGrid([], false)), { columns: [], rows: [] });
+});
+
+test("usage columns too wide for the band break at the same column on every row", () => {
+  const lines = (widths, room, gap = 10) => Array.from(Store.usageLines(widths, room, gap), (line) => Array.from(line, (c) => [c.column, c.x]));
+  assert.deepEqual(lines([100, 60, 80], 400), [[[0, 0], [1, 110], [2, 180]]], "all on one line, each after the widest entry before it");
+  assert.deepEqual(lines([100, 60, 80], 200), [[[0, 0], [1, 110]], [[2, 0]]], "the third starts a second line at the first column's x");
+  assert.deepEqual(lines([100, 60, 80], 170), [[[0, 0], [1, 110]], [[2, 0]]], "a column that just fits stays");
+  assert.deepEqual(lines([100, 60, 80], 50), [[[0, 0]], [[1, 0]], [[2, 0]]], "a column wider than the band still gets a line");
+  assert.deepEqual(lines([], 100), [[]]);
 });
 
 test("what needs you has one name, and the header spells out how the Active tab's number is made", () => {

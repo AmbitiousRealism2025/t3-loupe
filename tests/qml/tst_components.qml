@@ -888,9 +888,13 @@ TestCase {
     verify(has(strip, /^limit reached, resets in 47m$/))
     compare(String(textItem(strip, "limit reached, resets in 47m").color), String(Qt.color(tc.colors.text)))
     // The meters are long enough to read a share from, and drawn whole: an outline as long as the
-    // limit, filled as far as the use, so 0% still shows how long 100% would be.
-    var meters = named(strip, "meter").filter(function(m) { return m.visible })
-    compare(meters.length, 4, "one meter per window that isn't spent")
+    // limit, filled as far as the use, so 0% still shows how long 100% would be. A spent window's is full.
+    var meters = []
+    var cells = shown(strip, "block:").filter(function(c) { return c.kind !== undefined })
+    for (var n = 0; n < cells.length; n++) meters = meters.concat(named(cells[n], "meter"))
+    compare(meters.length, 5, "one meter per window")
+    var spentCell = shown(strip, "block:Codex:0")[0]
+    compare(named(spentCell, "meterFill")[0].width, named(spentCell, "meter")[0].width, "the spent window's meter is full")
     for (var m = 0; m < meters.length; m++) {
       verify(meters[m].width >= 56, "meter " + m + " is " + meters[m].width + " px long")
       var track = named(meters[m], "meterTrack")[0], fill = named(meters[m], "meterFill")[0]
@@ -904,8 +908,101 @@ TestCase {
     for (var k = 0; k < 2; k++) compare(y("block:Codex:" + k), y("block:Codex:name"), "Codex window " + k + " on Codex's row")
     for (var j = 0; j < 3; j++) compare(y("block:Claude:" + j), y("block:Claude:name"), "Claude window " + j + " on Claude's row")
     compare(x("block:Codex:0"), x("block:Claude:0"), "first windows start in one column")
-    // Codex's long "limit reached" pushes only Codex's second window, not Claude's.
-    verify(x("block:Claude:1") < x("block:Codex:1"), "Claude's weekly sits right after its own 5-hour window")
+    // The columns are shared: Codex's long "limit reached" sets the 5-hour column's width for both
+    // rows, so weekly starts at the same x on each.
+    compare(x("block:Claude:1"), x("block:Codex:1"), "weekly starts at the same x on both rows")
+  }
+
+  // Where a cell's parts start, in the strip's coordinates: its label, its meter and its value.
+  function cellParts(strip, cell) {
+    var label = cell.children[0], meter = named(cell, "meter")[0], value = cell.children[cell.children.length - 1]
+    return { kind: cell.kind, x: Math.round(cell.mapToItem(strip, 0, 0).x), y: Math.round(cell.mapToItem(strip, 0, 0).y), label: label.text,
+      meterX: Math.round(meter.mapToItem(strip, 0, 0).x), meterWidth: meter.width, valueX: Math.round(value.mapToItem(strip, 0, 0).x),
+      right: cell.mapToItem(strip, cell.width, 0).x }
+  }
+
+  // Usage is one grid: each kind of window has its own column, the same for every provider row.
+  // With the demo's accounts (Codex has two windows, one of them spent; Claude has three, with
+  // "weekly · Fable"), in both layouts and at each text size: the same kind of window starts at the
+  // same x on both rows, its meter too, the meters are one length, a kind only one provider has
+  // keeps its own column, and nothing overlaps the column after it.
+  function test_usageWindowsShareColumnsAcrossProviders() {
+    var providers = [
+      { name: "Claude", driver: "claudeAgent", status: "ready", auth: "authenticated", checkedAt: now,
+        windows: [{ label: "Session", kind: "session", usedPercent: 38, resetsAt: now + 140 * 60000, durationMins: 300 }, { label: "Weekly", kind: "weekly", usedPercent: 61, resetsAt: now + 3 * 86400000, durationMins: 10080 },
+                  { label: "Weekly · Fable", kind: "weekly", usedPercent: 4, resetsAt: now + 3 * 86400000, durationMins: 10080 }] },
+      { name: "Codex", driver: "codex", status: "ready", auth: "authenticated", checkedAt: now,
+        windows: [{ label: "Session", kind: "session", usedPercent: 100, resetsAt: now + 47 * 60000, durationMins: 300 }, { label: "Weekly", kind: "weekly", usedPercent: 82, resetsAt: now + 5 * 86400000, durationMins: 10080 }] }
+    ]
+    var layouts = [{ compact: false, base: 820, step: 56, name: "panel", kinds: ["5-hour", "weekly", "weekly · Fable"] },
+                   { compact: true, base: 540, step: 36, name: "dropdown", kinds: ["5h", "week", "week · Fable"] }]
+    var bumps = [0, 2, 4, 6]
+    try {
+      for (var l = 0; l < layouts.length; l++) for (var b = 0; b < bumps.length; b++) {
+        Typo.bump = bumps[b]
+        var L = layouts[l]
+        var where = L.name + " at bump " + bumps[b]
+        var strip = createTemporaryObject(stripC, tc, { compact: L.compact, width: L.base + L.step * bumps[b] - 24 })
+        strip.environments = [{ id: "e", label: "laptop", state: "live", providers: providers }]
+        waitForRendering(strip)
+        wait(20)
+        var claude = [0, 1, 2].map(function(i) { return cellParts(strip, shown(strip, "block:Claude:" + i)[0]) })
+        var codex = [0, 1].map(function(i) { return cellParts(strip, shown(strip, "block:Codex:" + i)[0]) })
+        compare(claude.map(function(c) { return c.kind }), L.kinds, where + ": Claude's windows, each in its kind's column")
+        compare(codex.map(function(c) { return c.kind }), L.kinds.slice(0, 2), where + ": Codex's")
+        for (var k = 0; k < 2; k++) {
+          compare(codex[k].label, claude[k].label, where)
+          compare(codex[k].x, claude[k].x, where + ": '" + claude[k].kind + "' starts at the same x on both rows")
+          compare(codex[k].meterX, claude[k].meterX, where + ": so does its meter")
+          compare(codex[k].valueX, claude[k].valueX, where + ": and its value")
+        }
+        // Rows differ in what they hold: Codex's 5-hour is the wide one, yet Claude's weekly waits for it.
+        verify(codex[0].right > claude[0].right, where + ": Codex's spent window is the widest in its column")
+        verify(claude[1].x >= codex[0].right, where + ": the next column starts after the widest entry of this one")
+        // The kind only Claude has keeps a column of its own, clear of weekly on either row.
+        verify(claude[2].x >= Math.max(claude[1].right, codex[1].right) || claude[2].y > claude[1].y, where + ": 'weekly · Fable' has its own column")
+        var lengths = {}
+        claude.concat(codex).forEach(function(c) { lengths[c.meterWidth] = true })
+        compare(Object.keys(lengths).length, 1, where + ": every meter is one length: " + Object.keys(lengths).join(", "))
+        // On one line where there is room for it (the usual sizes); nothing runs past the band.
+        claude.concat(codex).forEach(function(c) { verify(c.right <= strip.width + 0.5, where + ": '" + c.kind + "' runs past the edge") })
+        if (!L.compact && bumps[b] <= 2) compare(claude[2].y, claude[0].y, where + ": all three columns fit one line")
+        compare(codex[0].y, codex[1].y, where + ": Codex's two share a line")
+        // Provider rows are a row apart, and each provider's name leads its row.
+        verify(codex[0].y > claude[0].y, where)
+        compare(Math.round(shown(strip, "block:Codex:name")[0].mapToItem(strip, 0, 0).x), Math.round(shown(strip, "block:Claude:name")[0].mapToItem(strip, 0, 0).x), where + ": names share a column")
+      }
+    } finally {
+      Typo.bump = 0
+    }
+  }
+
+  // A band too narrow for every column breaks at the same column on every row, so the kinds still
+  // line up; a provider with nothing on the second line stays one line tall.
+  function test_usageColumnsWrapTogetherWhenTheBandIsNarrow() {
+    var providers = [
+      { name: "Claude", driver: "claudeAgent", status: "ready", auth: "authenticated", checkedAt: now, windows: windowsOf(3) },
+      { name: "Codex", driver: "codex", status: "ready", auth: "authenticated", checkedAt: now, windows: [windowsOf(4)[3], windowsOf(2)[1]] }
+    ]
+    // Wide enough for the first two columns beside the heading and the names, not for the third.
+    var wide = createTemporaryObject(stripC, tc, { width: 2000 })
+    wide.environments = [{ id: "e", label: "laptop", state: "live", providers: providers }]
+    waitForRendering(wide)
+    wait(20)
+    var third = cellParts(wide, shown(wide, "block:Claude:2")[0])
+    var strip = createTemporaryObject(stripC, tc, { width: third.x + 20 })
+    strip.environments = [{ id: "e", label: "laptop", state: "live", providers: providers }]
+    waitForRendering(strip)
+    wait(20)
+    var claude = [0, 1, 2].map(function(i) { return cellParts(strip, shown(strip, "block:Claude:" + i)[0]) })
+    var codex = [0, 1].map(function(i) { return cellParts(strip, shown(strip, "block:Codex:" + i)[0]) })
+    compare(claude[1].y, claude[0].y, "the first two columns still share the first line")
+    verify(claude[2].y > claude[0].y, "the third column moved to a second line: " + JSON.stringify(claude.map(function(c) { return [c.x, c.y] })))
+    compare(claude[1].x, codex[1].x, "weekly still starts at the same x on both rows")
+    compare(claude[0].x, codex[0].x)
+    compare(claude[2].x, claude[0].x, "the wrapped column starts where the first does")
+    verify(codex[0].y > claude[2].y, "Codex's row starts below Claude's second line")
+    claude.concat(codex).forEach(function(c) { verify(c.right <= strip.width + 0.5, "'" + c.kind + "' runs past the edge") })
   }
 
 
