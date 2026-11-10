@@ -100,12 +100,16 @@ test("sections follow urgency and count only what is shown", () => {
   assert.equal(Store.isStop({ kind: "idle-line" }), true);
 });
 
-test("colour budget: violet for an answer, red for failed, amber for a plan or limit, accent for working; ring is ink except needs-you", () => {
+test("colour budget: violet for an answer, red for failed, amber for a plan; working is ink, not the accent; ring is ink except needs-you", () => {
   assert.equal(Store.stateRole("input"), "ask");
   assert.equal(Store.stateRole("failed"), "attention");
   assert.equal(Store.stateRole("plan"), "warning");
   assert.equal(Store.stateRole("limited"), "textDim", "amber is for plans only");
-  assert.equal(Store.stateRole("working"), "accent");
+  // A hue says "this needs you". What is running has its own role, which the palette draws in ink:
+  // the accent is left to selection.
+  assert.equal(Store.stateRole("working"), "working");
+  assert.equal(Store.stateRole("waiting"), "working");
+  assert.ok(!Object.values({ ...Store.ROLE }).includes("accent"), "no state borrows the accent");
   assert.equal(Store.stateRole("review"), "success");
   for (const s of ["queued", "background", "idle", "stopped"]) assert.equal(Store.stateRole(s), "textDim", s);
   // Words are tinted only on rows that need you.
@@ -215,11 +219,34 @@ test("sub-second durations read as <1s, not 0s", () => {
   assert.equal(Format.duration(1500), "1s");
 });
 
-test("one needs-you colour where only one fits: the most severe kind present", () => {
-  assert.equal(Store.needsRole([r("a", "input"), r("b", "failed"), r("c", "plan")]), "attention");
-  assert.equal(Store.needsRole([r("a", "input"), r("c", "plan")]), "ask");
-  assert.equal(Store.needsRole([r("c", "plan"), r("w", "working")]), "warning");
-  assert.equal(Store.needsRole([r("k", "failed", { parentId: "w" }), r("a", "input")]), "ask", "subagents don't count");
+test("a row's time says what kind of time it is", () => {
+  const now = 10_000_000;
+  const time = (state, extra, busy = Store.BUSY[state] === true) => Format.rowTime(r("t", state, extra), now, busy);
+  // A duration carries the word for what has lasted that long.
+  assert.equal(time("input", { pendingSince: now - 124_000 }), "waiting 2m");
+  assert.equal(time("working", { activeSince: now - 23 * 60_000 - 8000 }), "running 23m");
+  assert.equal(time("background", { activeSince: now - 9 * 60_000 }), "running 9m");
+  assert.equal(time("queued", { activeSince: now - 60_000 }), "queued 1m");
+  // A time since and a time until already say what they are.
+  assert.equal(time("failed", { completedAt: now - 11 * 60_000 }), "11m ago");
+  assert.equal(time("plan", { completedAt: now - 4 * 60_000 }), "4m ago");
+  assert.equal(time("limited", { usageResetAt: now + 47 * 60_000 }), "resets in 47m");
+  // No bare duration is ever shown: that was the form that could mean either.
+  for (const t of [time("input", { pendingSince: now - 42_000 }), time("working", { activeSince: now - 3_725_000 })]) assert.match(t, /^(waiting|running) /);
+  // Seconds only under a minute: a row is read at a glance, the detail has the exact time.
+  assert.equal(Format.span(42_000), "42s");
+  assert.equal(Format.span(124_000), "2m");
+  assert.equal(Format.span(3_725_000), "1h 02m");
+  assert.equal(Format.span(400), "<1s");
+  assert.equal(Format.span(26 * 3_600_000), "1d 2h");
+  assert.equal(Format.elapsed(r("t", "working", { activeSince: now - 23 * 60_000 - 8000 }), now, true), "23m 08s", "the detail keeps the seconds");
+});
+
+test("a request's choices are a sentence, not a row of buttons", () => {
+  assert.equal(Store.choicesSentence(["Allow once", "Allow for session", "Decline"]), "T3 offers: Allow once, Allow for session or Decline");
+  assert.equal(Store.choicesSentence(["Yes", "No"]), "T3 offers: Yes or No");
+  assert.equal(Store.choicesSentence(["Continue"]), "T3 offers: Continue");
+  assert.equal(Store.choicesSentence([]), "");
 });
 
 test("legend: three groups by purpose, each in columns two rows tall; Enter at the foot of a column", () => {
@@ -318,14 +345,40 @@ test("usage windows are named from T3's label, qualifiers kept, every label dist
     }
   }
   const now = 10_000_000;
-  assert.equal(Store.windowValue({ usedPercent: 95, resetsAt: now + 3600_000 }, now, false), "95% resets in 1h", "near the limit: the reset, still with its meter");
-  assert.equal(Store.windowValue({ usedPercent: 100, resetsAt: now + 47 * 60_000 }, now, false), "limit reached, resets in 47m");
-  assert.equal(Store.windowValue({ usedPercent: 38 }, now, false), "38%");
-  assert.equal(Store.windowValue({ usedPercent: 95, resetsAt: now + 3600_000 }, now, true), "95% resets 1h");
-  // The dropdown's words are shorter: a spent window sets the width of a column every provider shares.
-  assert.equal(Store.windowValue({ usedPercent: 100, resetsAt: now + 47 * 60_000 }, now, true), "full, resets 47m");
+  // A window's value is short whatever its state, so no row's words set the width of a column
+  // every provider shares: a percentage, or "full".
+  assert.equal(Store.windowValue({ usedPercent: 38 }), "38%");
+  assert.equal(Store.windowValue({ usedPercent: 95, resetsAt: now + 3600_000 }), "95%");
+  assert.equal(Store.windowValue({ usedPercent: 100, resetsAt: now + 47 * 60_000 }), "full");
+  for (const used of [0, 4, 38, 95, 99.6, 100, 140]) assert.ok(Store.windowValue({ usedPercent: used, resetsAt: now + 1000 }).length <= 4, String(used));
   // Which way the numbers count is said once, in the band's heading: they are the share used.
   assert.match(Store.USAGE_HEADING, /\bUSED\b/);
+});
+
+test("when a spent or nearly spent window resets is said after its row, not in its cell", () => {
+  const now = 10_000_000;
+  const w = (label, durationMins, usedPercent, resetsIn) => ({ label, durationMins, usedPercent, resetsAt: resetsIn ? now + resetsIn : 0 });
+  const claude = { name: "Claude", windows: [w("Session", 300, 38, 140 * 60_000), w("Weekly", 10080, 61, 3 * 86400_000), w("Weekly · Fable", 10080, 4, 3 * 86400_000)] };
+  const codex = { name: "Codex", windows: [w("Session", 300, 100, 47 * 60_000), w("Weekly", 10080, 82, 5 * 86400_000)] };
+  const grid = Store.usageGrid([claude, codex], false);
+  assert.equal(Store.usageNote(grid.rows[0], grid.columns, now, false), "", "nothing near its limit: nothing to say");
+  assert.equal(Store.usageNote(grid.rows[1], grid.columns, now, false), "5-hour resets in 47m");
+  const compact = Store.usageGrid([claude, codex], true);
+  assert.equal(Store.usageNote(compact.rows[1], compact.columns, now, true), "5h resets 47m");
+  // Each window at 90% or more is named, by its kind.
+  const both = Store.usageGrid([{ name: "Claude", windows: [w("Session", 300, 95, 3600_000), w("Weekly", 10080, 100, 2 * 86400_000)] }], false);
+  assert.equal(Store.usageNote(both.rows[0], both.columns, now, false), "5-hour resets in 1h  ·  weekly resets in 2d");
+  assert.equal(Store.usageNote(Store.usageGrid([{ name: "X", windows: [w("Session", 300, 100, 0)] }], false).rows[0], ["5-hour"], now, false), "", "no reset time known");
+
+  // Where it goes: on the grid, where the next column would start, if it fits; else a line below.
+  const lines = Store.usageLines([100, 60, 80], 400, 10);
+  const place = (row, room, noteWidth) => ({ ...Store.usageNotePlace(row, lines, [100, 60, 80], 10, room, noteWidth) });
+  assert.deepEqual(place(grid.rows[1], 400, 120), { line: 0, x: 180 }, "Codex has no third window: its note starts at that column");
+  assert.deepEqual(place(grid.rows[0], 400, 120), { line: 0, x: 270 }, "after a full row, past the last column");
+  assert.deepEqual(place(grid.rows[0], 380, 120), { line: 1, x: 0 }, "no room: a line of its own");
+  const wrapped = Store.usageLines([100, 60, 80], 200, 10);
+  assert.deepEqual({ ...Store.usageNotePlace(grid.rows[1], wrapped, [100, 60, 80], 10, 300, 100) }, { line: 0, x: 180 }, "Codex uses only the first line; the note follows it there");
+  assert.deepEqual({ ...Store.usageNotePlace(grid.rows[0], wrapped, [100, 60, 80], 10, 300, 100) }, { line: 1, x: 90 }, "Claude's follows its second line");
 });
 
 test("usage is one grid: a column per kind of window, shared by every provider", () => {

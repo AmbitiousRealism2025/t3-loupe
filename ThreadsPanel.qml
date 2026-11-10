@@ -19,6 +19,9 @@ Item {
   readonly property Item listView: list
   readonly property var pinnedHeading: sticky.heading
   readonly property real pinnedHeight: sticky.stripHeight
+  // The list's edge covers: { top, bottom, first, firstIsHeading } and the strips' own heights.
+  readonly property var edgeCovers: edge.covers
+  readonly property real moreBelowHeight: edge.belowHeight
   readonly property real legendHeight: legend.height
   readonly property real legendWidth: legend.width
   readonly property real legendX: keysBand.contentX
@@ -201,10 +204,12 @@ Item {
     if (!it) return
     var margin = Style.space(8)
     var maxY = list.originY + Math.max(0, list.contentHeight - list.height)
-    var bottom = list.contentY + list.height - moreBelow.height - margin
+    var bottom = list.contentY + list.height - edge.belowHeight - margin
     if (it.y + it.height > bottom) list.contentY = Math.min(maxY, list.contentY + (it.y + it.height - bottom))
-    var top = list.contentY + (list.contentY > list.originY + 1 ? sticky.stripHeight : 0)
-    if (it.y < top && list.contentY > list.originY) list.contentY = Math.max(list.originY, it.y - sticky.stripHeight - margin)
+    var top = list.contentY + (list.contentY > list.originY + 1 ? edge.stripHeight : 0)
+    if (it.y < top && list.contentY > list.originY) list.contentY = Math.max(list.originY, it.y - edge.stripHeight - margin)
+    // Land with the top row whole under the strip: scrolling on never uncovers the selection.
+    edge.snapTop()
   }
 
   // Section headings are not cursor stops.
@@ -276,7 +281,10 @@ Item {
     readonly property bool ok: Store.environmentOk(modelData.state)
     readonly property bool expiring: !!modelData.sessionExpiresAt && modelData.sessionExpiresAt - root.now < 3 * 86400000
     spacing: Style.space(6)
+    // Healthy: a dot. A pairing about to lapse: an hourglass in its place, so it differs from the
+    // healthy machine beside it by shape. Unreachable: a hollow ring in the failure colour.
     Rectangle {
+      visible: !(parent.ok && parent.expiring)
       anchors.verticalCenter: parent.verticalCenter
       width: Style.space(7); height: width; radius: width / 2
       color: parent.ok ? root.colors.text : "transparent"
@@ -284,11 +292,19 @@ Item {
       border.width: parent.ok ? 0 : 1.5
       border.color: root.colors.attention
     }
+    LucideIcon {
+      objectName: "machineExpiring"
+      visible: parent.ok && parent.expiring
+      anchors.verticalCenter: parent.verticalCenter
+      name: "hourglass"
+      color: root.colors.text
+      size: Math.round(Typo.caption * 1.05)
+    }
     Text {
       anchors.verticalCenter: parent.verticalCenter
       text: modelData.label
       textFormat: Text.PlainText
-      color: root.colors.textDim
+      color: parent.ok && parent.expiring ? root.colors.text : root.colors.textDim
       font.family: root.fontFamily
       font.pixelSize: Typo.caption
     }
@@ -298,9 +314,8 @@ Item {
       text: !parent.ok ? Store.environmentLabel(modelData.state).toLowerCase() + (modelData.stale && modelData.lastLiveAt ? " · " + Format.ago(modelData.lastLiveAt, root.now) : "")
         : "pairing expires " + Format.until(modelData.sessionExpiresAt, root.now)
       textFormat: Text.PlainText
-      // Broken is red. An expiry is a note in dim ink; amber is kept for plans, so even the last
-      // day before it lapses is full ink, not a colour.
-      color: !parent.ok ? root.colors.attentionInk : modelData.sessionExpiresAt - root.now < 86400000 ? root.colors.text : root.colors.textDim
+      // Broken is red. An expiry is full ink with its hourglass, not a colour: amber is kept for plans.
+      color: !parent.ok ? root.colors.attentionInk : root.colors.text
       font.family: root.fontFamily
       font.pixelSize: Typo.caption
     }
@@ -445,14 +460,41 @@ Item {
               }
             }
           }
-          // The counts line: what needs you first, in the colour of the most pressing kind waiting;
-          // working in full ink; the rest dimmed. With something waiting it spells out the Active
-          // tab's number ("6 NEED YOU + 7 WORKING = 13 ACTIVE"), and the parts after it add up to All.
-          // If the sum doesn't fit the line, it goes and the "+" stays.
+          // The counts line: what needs you first, its number on an ink pill (the bar's badge, again)
+          // and its words in full ink; the rest dimmer. No hue: the six that need you are of three
+          // kinds with three colours, and the count in any one of them (it used to be the worst
+          // kind's, so usually failure red) said something untrue about the others. The ring beside
+          // it shows the kinds. With something waiting the line spells out the Active tab's number
+          // ("6 NEED YOU + 7 WORKING = 13 ACTIVE"), and the parts after it add up to All. If the sum
+          // doesn't fit the line, it goes and the "+" stays.
           Item {
             id: countsLine
             width: parent.width
-            height: counts.implicitHeight
+            height: Math.max(counts.implicitHeight, needPill.visible ? needPill.height : 0)
+            // The ordinary line (not an error or a not-connected notice) with something waiting.
+            readonly property bool pilled: !!root.service && root.service.health !== "down" && !root.service.configError
+              && root.environments.length > 0 && !root.disconnected && root.tally.needs > 0
+            readonly property real textX: pilled ? needPill.width + Style.space(7) : 0
+            Rectangle {
+              id: needPill
+              objectName: "needPill"
+              visible: countsLine.pilled
+              anchors.verticalCenter: parent.verticalCenter
+              height: pillText.implicitHeight + Style.space(2)
+              width: Math.max(height, pillText.implicitWidth + Style.space(9))
+              radius: Math.min(height / 2, Math.max(Style.space(2), Style.cornerRadius))
+              color: root.colors.text
+              Text {
+                id: pillText
+                anchors.centerIn: parent
+                text: String(root.tally.needs)
+                textFormat: Text.PlainText
+                color: root.colors.background
+                font.family: root.fontFamily
+                font.pixelSize: Typo.caption
+                font.bold: true
+              }
+            }
             function styled(sum) {
               function tint(color, words) { return "<font color=\"" + color + "\">" + words + "</font>" }
               var alarm = root.colors.attentionInk
@@ -463,12 +505,13 @@ Item {
               var sep = "&nbsp;&nbsp;·&nbsp;&nbsp;"
               var quiet = root.colors.textFaint
               if (root.disconnected) return tint(alarm, "NOT CONNECTED") + sep + Format.plural(root.link.total, "MACHINE", "MACHINES")
-              var tones = { needs: root.colors[Store.needsRole(root.rows) + "Ink"], strong: root.colors.text, quiet: quiet }
+              var tones = { needs: root.colors.text, strong: root.colors.textDim, quiet: quiet }
               var parts = Store.headerCounts(root.tally, sum)
               var out = ""
               for (var i = 0; i < parts.length; i++) {
                 if (i > 0) out += parts[i].join ? tint(quiet, "&nbsp;" + parts[i].join + "&nbsp;") : sep
-                out += tint(tones[parts[i].tone], parts[i].text.replace(/ /g, "&nbsp;"))
+                // The needs-you count is on the pill; its words follow it here.
+                out += tint(tones[parts[i].tone], (parts[i].words || parts[i].text).replace(/ /g, "&nbsp;"))
               }
               if (root.link.connected !== root.link.total) out += sep + tint(alarm, root.link.connected + " OF " + root.link.total + " MACHINES CONNECTED")
               return out
@@ -483,7 +526,9 @@ Item {
             }
             Text {
               id: counts
-              width: parent.width
+              x: countsLine.textX
+              anchors.verticalCenter: parent.verticalCenter
+              width: parent.width - x
               text: countsFull.implicitWidth <= width ? countsFull.text : countsLine.styled(false)
               textFormat: Text.StyledText
               color: root.colors.textDim
@@ -522,7 +567,7 @@ Item {
       // Filters + search
       Item {
         width: parent.width
-        height: Math.max(filters.implicitHeight, search.implicitHeight) + Style.space(4)
+        height: filters.implicitHeight
         visible: root.environments.length > 0 && !root.disconnected
         ButtonGroup {
           id: filters
@@ -568,10 +613,10 @@ Item {
               color: "transparent"
               radius: Style.cornerRadius
               border.width: 1
-              border.color: parent.tab && parent.tab.selected === true ? root.colors.focus : root.colors.edge
+              border.color: root.colors.edge
             }
             // The tab's key, drawn as a small keycap in the label's first two (blank) character cells,
-            // so it reads as a key, not a second count: "[1] Inbox 6". The shell centres the label.
+            // so it reads as a key, not a second count: "[1] Needs you 6". The shell centres the label.
             Rectangle {
               id: digitCap
               readonly property string label: parent.tab ? String(parent.tab.text) : ""
@@ -598,29 +643,35 @@ Item {
             }
           }
         }
-        // The current view, marked under its tab in the accent: the shell's selected fill alone is faint.
+        // The current view: the shell's selected fill and bold, and one mark of ours, the tab's
+        // bottom edge in the theme's accent (the fill alone is faint). The accent is the theme's
+        // own colour for "where you are"; nothing else in the panel uses it but the selection ring.
         Rectangle {
+          objectName: "tabMark"
           readonly property Item tab: {
             for (var i = 0; i < filters.children.length; i++) if (filters.children[i].selected === true) return filters.children[i]
             return null
           }
           visible: tab !== null
           x: filters.x + (tab ? tab.x : 0)
-          y: filters.y + filters.height + Style.space(1)
+          y: filters.y + filters.height - height
           width: tab ? tab.width : 0
           height: Style.space(3)
-          color: root.colors.focus
+          color: root.colors.accent
         }
+        // The filter box is one of the row's controls: the tabs' height, top edge and border.
         FilterField {
           id: search
+          objectName: "filterBox"
           anchors.right: parent.right
-          anchors.verticalCenter: parent.verticalCenter
+          anchors.top: filters.top
+          height: filters.height
           width: activeFocus || text !== "" ? Style.space(150) : Style.space(90)
           text: root.query
           foreground: root.colors.text
           dim: root.colors.textDim
-          border: root.colors.textFaint
-          accent: root.colors.accent
+          border: root.colors.edge
+          accent: root.colors.focus
           fontFamily: root.fontFamily
           fontSize: Typo.caption
           radius: Style.cornerRadius
@@ -726,9 +777,15 @@ Item {
         }
         readonly property bool isLine: modelData.kind === "idle-line"
         readonly property bool isSection: modelData.kind === "section"
-        // Status section (Inbox/Active) or machine/project group (All): shell section-header style.
+        // The two things a cell draws, for the list's edges: its heading (if it starts a group or is
+        // a section) and its row. Tops and heights are within the cell.
+        readonly property bool hasHeading: newGroup || isSection
+        readonly property bool hasRow: !isSection
+        readonly property real rowTop: rowBox.y
+        readonly property real rowHeight: rowBox.height
+        // Status section (Needs you/Working in Active) or machine/project group (All): shell section-header style.
         Item {
-          visible: cell.newGroup || cell.isSection
+          visible: cell.hasHeading
           width: parent.width
           height: caption.implicitHeight + (cell.index > 0 ? Style.space(10) : Style.space(2))
           SectionCaption {
@@ -743,6 +800,7 @@ Item {
           }
         }
         Loader {
+          id: rowBox
           visible: !cell.isSection
           active: !cell.isSection
           width: parent.width
@@ -767,12 +825,8 @@ Item {
             colors: root.colors
             now: root.now
             selected: cell.index === root.cursor
+            expanded: root.expanded[cell.modelData.key] === true
             reduceMotion: root.reduceMotion
-            showMachine: root.multiMachine && root.filter !== "all"
-            machineLabel: {
-              var e = root.service ? root.service.environment(cell.modelData.envId) : null
-              return e ? e.label : ""
-            }
             fontFamily: root.fontFamily
             monoFamily: root.monoFamily
             opacity: cell.modelData.stale ? 0.55 : 1
@@ -807,80 +861,145 @@ Item {
       displaced: Transition { NumberAnimation { properties: "y"; duration: 160; easing.type: Easing.OutCubic } }
     }
 
-    // Scrolled lists keep their place. One heading stays pinned at the top: the group (All) or
-    // section (Active) of the row just under it. When the next group's own heading reaches the top,
-    // the pinned one gives way to it, so two headings never stack. At the bottom, a solid strip says
-    // when more is below (no fade over rows), and the selection is kept clear of both.
+    // The edges of a scrolled list. No row is ever drawn in part: a strip at each edge says there is
+    // more that way ("more above ↑", "more below ↓"), and each strip's cover reaches as far as the
+    // first row or heading that is whole, so whatever would be cut by the edge is not shown at all.
+    // The top strip also keeps the heading of the rows under it in view: the group (All) or section
+    // (Active) of the first whole row, unless that row's own heading is right there. Keyboard moves
+    // land with the top row whole (see snapTop), so the cover there is usually just the strip.
+    // The selection is kept clear of both strips.
     Item {
+      id: edge
+      readonly property real stripHeight: stickyCaption.implicitHeight + Style.space(10)
+      readonly property real belowHeight: Style.space(22)
+      readonly property bool scrolled: list.visible && list.contentY - list.originY >= 2
+      readonly property bool more: list.visible && list.contentY + list.height < list.contentHeight + list.originY - 2
+      // { top: the top cover's height, bottom: the bottom cover's, first: the index of the first
+      //   cell with something whole, firstIsHeading: that something is its heading }
+      readonly property var covers: {
+        var out = { top: scrolled ? stripHeight : 0, bottom: more ? belowHeight : 0, first: -1, firstIsHeading: false }
+        // (Read so this runs again when the rows change under an unmoved view.)
+        var count = list.count, tall = list.contentHeight
+        if (scrolled) {
+          var top = list.contentY + stripHeight
+          var i = list.indexAt(1, top)
+          if (i < 0) i = list.indexAt(1, top + list.spacing + 1)
+          for (var n = 0; i >= 0 && i < count && n < 8; i++, n++) {
+            var c = list.itemAtIndex(i)
+            if (!c) break
+            if (c.hasHeading && c.y >= top - 0.5) { out.first = i; out.firstIsHeading = true; out.top = c.y - list.contentY; break }
+            if (c.hasRow && c.y + c.rowTop >= top - 0.5) { out.first = i; out.top = c.y + c.rowTop - list.contentY; break }
+          }
+        }
+        if (more) {
+          var bottom = list.contentY + list.height - belowHeight
+          var j = list.indexAt(1, bottom - 1)
+          if (j < 0) j = list.indexAt(1, bottom - list.spacing - 2)
+          for (var m = 0; j >= 0 && m < 8; j--, m++) {
+            var d = list.itemAtIndex(j)
+            if (!d) break
+            if (d.hasRow && d.y + d.rowTop + d.rowHeight <= bottom + 0.5) { out.bottom = list.contentY + list.height - (d.y + d.rowTop + d.rowHeight); break }
+          }
+        }
+        return out
+      }
+      // The heading for the first whole row: its section, or its machine and project.
+      readonly property var heading: {
+        if (!scrolled || covers.first < 0 || covers.firstIsHeading) return null
+        for (var k = Math.min(covers.first, root.visible_.length - 1); k >= 0; k--) {
+          var it = root.visible_[k]
+          if (it.kind === "section") return { label: it.label, count: it.count }
+          if (root.filter === "all" && !it.parentId) return { label: Store.groupKey(it, root.environments), count: -1 }
+        }
+        return null
+      }
+      // After a keyboard move: scroll on a little so the top row is whole right under the strip,
+      // not cut by it. (At the very end of the list there is nowhere to scroll to; the cover hides
+      // the cut row instead.)
+      function snapTop() {
+        if (list.contentY - list.originY < 2) return
+        var top = list.contentY + stripHeight
+        var i = list.indexAt(1, top)
+        if (i < 0) i = list.indexAt(1, top + list.spacing + 1)
+        for (var n = 0; i >= 0 && i < list.count && n < 8; i++, n++) {
+          var c = list.itemAtIndex(i)
+          if (!c) return
+          var at = c.hasHeading && c.y >= top - 0.5 ? c.y : c.hasRow && c.y + c.rowTop >= top - 0.5 ? c.y + c.rowTop : -1
+          if (at < 0) continue
+          var maxY = list.originY + Math.max(0, list.contentHeight - list.height)
+          if (at - top > 0.5) list.contentY = Math.min(maxY, list.contentY + (at - top))
+          return
+        }
+      }
+
       x: list.x
       y: list.y
       width: list.width - listBar.inset
-      height: sticky.stripHeight
-      clip: true
-      visible: sticky.heading !== null
+      height: list.height
+      visible: list.visible
+
       Rectangle {
         id: sticky
-        readonly property real stripHeight: stickyCaption.implicitHeight + Style.space(10)
-        // The row just under the strip, and the group or section it belongs to.
-        readonly property int under: list.visible && list.contentY - list.originY >= 2 ? list.indexAt(Style.space(20), list.contentY + stripHeight) : -1
-        readonly property var heading: {
-          if (under < 0) return null
-          var cell = list.itemAtIndex(under)
-          // That row starts its own group and its heading is on screen: pin nothing over it.
-          if (cell && (cell.newGroup || cell.isSection) && cell.y >= list.contentY - 1) return null
-          for (var k = under; k >= 0 && k < root.visible_.length; k--) {
-            var it = root.visible_[k]
-            if (it.kind === "section") return { label: it.label, count: it.count }
-            if (root.filter === "all" && !it.parentId) return { label: Store.groupKey(it, root.environments), count: -1 }
-          }
-          return null
-        }
-        // The next group's heading pushes this one up and out as it arrives, so two never stack.
-        readonly property real push: {
-          if (under < 0) return 0
-          for (var n = under + 1; n < Math.min(root.visible_.length, under + 6); n++) {
-            var next = list.itemAtIndex(n)
-            if (!next || !(next.newGroup || next.isSection)) continue
-            var gap = next.y - (list.contentY + stripHeight)
-            return gap < stripHeight ? Math.max(0, stripHeight - Math.max(0, gap)) : 0
-          }
-          return 0
-        }
-        y: -push
+        objectName: "moreAbove"
+        // For tests and the selection's margins.
+        readonly property real stripHeight: edge.stripHeight
+        readonly property var heading: edge.heading
+        visible: edge.scrolled
         width: parent.width
-        height: stripHeight
+        height: edge.covers.top
         color: root.colors.background
-        SectionCaption {
-          id: stickyCaption
-          x: Style.space(4)
-          anchors.verticalCenter: parent.verticalCenter
-          label: sticky.heading ? sticky.heading.label : " "
-          count: sticky.heading ? sticky.heading.count : -1
-          foreground: root.colors.text
-          countColor: root.colors.textFaint
-          fontFamily: root.fontFamily
+        Item {
+          width: parent.width
+          height: edge.stripHeight
+          SectionCaption {
+            id: stickyCaption
+            x: Style.space(4)
+            anchors.verticalCenter: parent.verticalCenter
+            label: edge.heading ? edge.heading.label : " "
+            count: edge.heading ? edge.heading.count : -1
+            foreground: root.colors.text
+            countColor: root.colors.textFaint
+            fontFamily: root.fontFamily
+          }
+          Text {
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(4)
+            anchors.verticalCenter: parent.verticalCenter
+            text: "more above ↑"
+            textFormat: Text.PlainText
+            color: root.colors.textDim
+            font.family: root.fontFamily
+            font.pixelSize: Typo.caption
+          }
+          Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: root.colors.line }
         }
-        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: root.colors.line }
       }
-    }
-    Rectangle {
-      id: moreBelow
-      visible: list.visible && list.contentY + list.height < list.contentHeight + list.originY - 2
-      x: list.x
-      y: list.y + list.height - height
-      width: list.width - listBar.inset
-      height: Style.space(22)
-      color: root.colors.background
-      Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: root.colors.line }
-      Text {
-        anchors.right: parent.right
-        anchors.rightMargin: Style.space(4)
-        anchors.verticalCenter: parent.verticalCenter
-        text: "more below ↓"
-        textFormat: Text.PlainText
-        color: root.colors.textDim
-        font.family: root.fontFamily
-        font.pixelSize: Typo.caption
+      Rectangle {
+        id: moreBelow
+        objectName: "moreBelow"
+        // The strip itself; the cover above it may be taller.
+        readonly property real stripHeight: edge.belowHeight
+        visible: edge.more
+        y: parent.height - height
+        width: parent.width
+        height: edge.covers.bottom
+        color: root.colors.background
+        Item {
+          anchors.bottom: parent.bottom
+          width: parent.width
+          height: edge.belowHeight
+          Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: root.colors.line }
+          Text {
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(4)
+            anchors.verticalCenter: parent.verticalCenter
+            text: "more below ↓"
+            textFormat: Text.PlainText
+            color: root.colors.textDim
+            font.family: root.fontFamily
+            font.pixelSize: Typo.caption
+          }
+        }
       }
     }
 

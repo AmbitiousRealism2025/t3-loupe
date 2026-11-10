@@ -9,6 +9,8 @@ Rectangle {
   property var colors: ({})
   property string fontFamily: Style.font.family
   property string monoFamily: "monospace"
+  // Name the key that opens T3 after the next step (where no action row shows it).
+  property bool keyHint: false
 
   signal actionRequested(string action)
 
@@ -92,16 +94,19 @@ Rectangle {
       }
     }
 
-    KeyAction {
+    // The next step, as a sentence in full-strength ink. No keycap beside it: with "o" there,
+    // "Restore the folder…" read as something the key would do, and o only opens T3. Where no
+    // action row shows that key (keyHint: the dropdown's expanded card), the step names it.
+    Text {
       visible: root.callout !== null && root.callout.next !== ""
       width: parent.width
-      wraps: true
-      key: "o"
-      text: root.callout ? root.callout.next : ""
-      colors: root.colors
-      fontFamily: root.fontFamily
-      monoFamily: root.monoFamily
-      onClicked: root.actionRequested("focus")
+      text: root.callout ? "→ " + root.callout.next + (root.keyHint ? "  (o opens T3)" : "") : ""
+      textFormat: Text.PlainText
+      color: root.colors.text
+      font.family: root.fontFamily
+      font.pixelSize: Typo.caption
+      font.weight: Font.Medium
+      wrapMode: Text.Wrap
     }
   }
 }

@@ -88,9 +88,6 @@ Panel {
     : !known ? "T3 Loupe: not connected to T3"
     : (tally.needs ? tally.needs + (tally.needs === 1 ? " thread needs" : " threads need") + " you" : "Nothing needs you")
       + " · " + tally.working + " working · " + tally.done + " done"
-  // The badge takes the colour of the most pressing kind waiting (failed, then an answer, then a
-  // plan), as the panel's header count does.
-  readonly property string needsRole: service ? Store.needsRole(service.rows) : "attention"
 
   WidgetButton {
     id: button
@@ -199,10 +196,13 @@ Panel {
         y: root.vertical ? glyphRow.offset(badge) : (glyphRow.height - height) / 2
         height: Math.round(ring.diameter * 0.78)
         width: Math.max(height, badgeText.implicitWidth + Style.space(9))
-        // Filled pill while anything needs you: the one number in the bar that asks for a look, in the
-        // needs-you colour (ink-strength, 4.5:1 on the bar), the numeral in the bar's own background.
-        radius: height / 2
-        color: root.theme ? root.theme.bar[root.needsRole + "Ink"] : root.ink
+        // Filled pill while anything needs you: the one number in the bar that asks for a look. It is
+        // the bar's own ink, the numeral in the bar's background: the threads it counts are of
+        // several kinds (an answer, a plan, a failure), each with its colour on the ring beside it,
+        // and a badge in any one of those colours, failure red say, misnamed the rest. The panel's
+        // header shows the same badge. Its corners follow the shell's, square in a square theme.
+        radius: Math.min(height / 2, Math.max(Style.space(2), Style.cornerRadius))
+        color: root.theme ? root.theme.bar.text : root.ink
         Text {
           id: badgeText
           anchors.centerIn: parent

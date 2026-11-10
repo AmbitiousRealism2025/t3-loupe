@@ -5,14 +5,16 @@ import "../lib/Store.js" as Store
 
 // Provider usage limits beside their heading, as one grid: a row per provider, a column per kind
 // of window, the same columns for every row.
-//   LIMITS USED  Claude  5-hour ▭ 38%                          weekly ▭ 61%   weekly · Fable ▭ 4%
-//                Codex   5-hour ▮ limit reached, resets in 47m  weekly ▭ 82%
+//   LIMITS USED  Claude  5-hour ▭ 38%    weekly ▭ 61%   weekly · Fable ▭ 4%
+//                Codex   5-hour ▮ full   weekly ▭ 82%   5-hour resets in 47m
 // The heading says which way the numbers count: they are the share of each limit used.
 // Each column holds one kind of window (its label, meter and value) and is as wide as its widest
 // entry on any row, so "weekly" starts at the same x for every provider and the meters line up. A
-// provider without that kind leaves the cell empty. If the band is too narrow for every column,
-// the last ones move to a second line of each provider's row, at the same column for all (see
-// Store.usageLines). Ink meters; a spent window has a full meter and says so in words.
+// provider without that kind leaves the cell empty. A cell's value is short, a percentage or
+// "full", so no row's words push another row's windows apart; when a spent or nearly spent window
+// resets is said once, after its row. If the band is too narrow for every column, the last ones
+// move to a second line of each provider's row, at the same column for all (Store.usageLines).
+// Ink meters; a spent window's is full.
 // Providers that report no usage are left out.
 Row {
   id: root
@@ -107,7 +109,7 @@ Row {
     }
     Text {
       anchors.verticalCenter: parent.verticalCenter
-      text: parent.win ? Store.windowValue(parent.win, root.now, root.compact) : ""
+      text: parent.win ? Store.windowValue(parent.win) : ""
       textFormat: Text.PlainText
       color: parent.win && parent.win.usedPercent >= 90 ? root.colors.text : root.colors.textDim
       font.family: root.fontFamily
@@ -188,7 +190,24 @@ Row {
             id: block
             required property var modelData
             width: blocks.width
-            height: Math.max(root.rowTall, lineColumn.implicitHeight)
+            height: Math.max(root.rowTall, lineColumn.implicitHeight, note.visible ? (note.place.line + 1) * root.rowTall + note.place.line * root.rowGap : 0)
+            // When a spent or nearly spent window resets ("5-hour resets in 47m"): after the row's
+            // windows, starting on the grid where the next column would, or on a line of its own
+            // if there is no room. It is not in the window's cell, where it would widen a column
+            // every provider shares.
+            Text {
+              id: note
+              objectName: "block:" + block.modelData.name + ":note"
+              readonly property var place: Store.usageNotePlace(block.modelData, root.lines, root.columnWidths, root.itemGap, block.width - lineColumn.x, implicitWidth)
+              visible: text !== ""
+              x: lineColumn.x + place.x
+              y: place.line * (root.rowTall + root.rowGap) + (root.rowTall - height) / 2
+              text: Store.usageNote(block.modelData, root.grid.columns, root.now, root.compact)
+              textFormat: Text.PlainText
+              color: root.colors.text
+              font.family: root.fontFamily
+              font.pixelSize: Typo.caption
+            }
             Item {
               height: root.rowTall
               width: nameText.implicitWidth

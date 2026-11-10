@@ -75,6 +75,10 @@ for (const name of themes) {
       // Graphics that carry meaning (rails, glyphs, tracks, pending steps, past runs, borders) hold 3:1.
       for (const role of ["attention", "warning", "accent", "success", "ask", "edge"]) assert.ok(Palette.contrast(p[role], surface) >= 3, `${role} mark on ${name}: ${ratio(p[role], surface)}`);
     }
+    // What is running is ink, in every theme: the accent means "selected" and a hue "needs you".
+    assert.equal(p.working, p.text, "working marks are the text ink");
+    assert.equal(p.workingInk, p.text);
+    assert.equal(Palette.stateColor(p, "working"), p.text);
     // On an ordinary row the secondary tiers keep more: 7:1 and 6:1.
     assert.ok(Palette.contrast(p.textDim, p.surface) >= 7, `dim text on a row: ${ratio(p.textDim, p.surface)}`);
     assert.ok(Palette.contrast(p.textFaint, p.surface) >= 6, `faint text on a row: ${ratio(p.textFaint, p.surface)}`);
@@ -130,16 +134,18 @@ test("a theme whose red is not red still gets a red for needs-you and an amber f
 const MATTE_BLACK = { background: "#121212", foreground: "#bebebe", accent: "#e68e0d", urgent: "#D35F5F",
   colors: { red: "#D35F5F", yellow: "#b91c1c", orange: "#c63d3d", green: "#FFC107", cyan: "#bebebe", blue: "#e68e0d", magenta: "#D35F5F", bright_magenta: "#B91C1C" } };
 
-test("an amber-accent theme: selection and done are ink, amber is left to plans and working", () => {
+test("an amber-accent theme: selection, working and done are ink, amber is left to plans", () => {
   const p = Palette.derive(MATTE_BLACK);
   const grey = (c) => Palette.hsl(c).s < 0.05;
   assert.ok(grey(p.surfaceSelected), `selected fill ${p.surfaceSelected} has no hue`);
   assert.ok(grey(p.focus), `selection ring ${p.focus} is ink, not the amber accent`);
   assert.equal(p.focusNeutral, true);
   assert.ok(grey(p.success) && grey(p.successInk), `done ${p.success} is ink: the theme's green is an amber yellow`);
-  // The accent still marks what is working, and amber what is a plan.
-  assert.ok(Palette.sameHue(p.accent, "#e68e0d", 10), `working stays the accent: ${p.accent}`);
+  // Amber is left to plans: what is working is ink too, so an orange spinner can't pass for one.
+  assert.ok(grey(p.working), `working ${p.working} is ink`);
   assert.ok(Palette.hsl(p.warning).h >= 22 && Palette.hsl(p.warning).h <= 62, `plan stays amber: ${p.warning}`);
+  // The accent is still the theme's, for the one place it marks: the current view's tab.
+  assert.ok(Palette.sameHue(p.accent, "#e68e0d", 10), `the accent stays the theme's: ${p.accent}`);
   // With the fill neutral the state words keep their own colour: the red is a red, not a pink.
   assert.ok(Palette.hsl(p.attentionInk).s > 0.5, `failed reads as red: ${p.attentionInk}`);
 });

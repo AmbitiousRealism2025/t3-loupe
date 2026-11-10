@@ -34,7 +34,8 @@ Item {
   readonly property var activity: Store.currentActivity(row)
   readonly property real indent: child ? Style.space(22) : 0
 
-  readonly property string elapsedText: Format.elapsed(row, now, Store.BUSY[row.state] === true)
+  // The time with the word that says what kind of time it is, as on the two-pane rows.
+  readonly property string elapsedText: Format.rowTime(row, now, Store.BUSY[row.state] === true)
 
   readonly property string metaText: {
     var parts = []
@@ -163,7 +164,7 @@ Item {
           id: actIcon
           anchors.verticalCenter: parent.verticalCenter
           name: root.activity ? root.activity.icon : "zap"
-          color: root.activity && root.activity.status === "running" ? root.colors.accentInk : root.colors.textDim
+          color: root.activity && root.activity.status === "running" ? root.colors.workingInk : root.colors.textDim
           size: Math.round(Typo.caption * 1.25)
         }
         ElidedText {
