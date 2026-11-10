@@ -2,9 +2,9 @@
 
 **See which [T3 Code](https://t3.codes) agent needs you, from your [Omarchy](https://omarchy.org) bar.** A live, read-only view of every T3 thread across your machines: what's waiting on you, what's working, and how close you are to your usage limits.
 
-![The two-pane window: threads grouped by status on the left, the selected thread's live detail on the right](https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/screens/2.5.10/two-pane.png)
+![The two-pane window: threads grouped by status on the left, the selected thread's live detail on the right](https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/screens/2.6.0/two-pane.png)
 
-![T3 Loupe in the bar](https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/screens/2.5.10/bar.png)
+![T3 Loupe in the bar](https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/screens/2.6.0/bar.png)
 
 ## Quick start
 
@@ -35,7 +35,7 @@ Remove the file, or set `"demo": false`, to go back to live data.
 
 ## What it shows
 
-- **Who needs you, first.** Threads waiting on an approval, a question or a plan review sit under **Needs you**, coloured by kind. A filled badge on the ring counts them.
+- **Who needs you, first.** Threads waiting on an approval, a question or a plan review sit under **Needs you**, coloured by kind. In the bar, a badge beside the ring counts them: **6 need you**.
 - **The approval text itself.** The exact command, file change or question, with the choices the provider offered. You answer in T3: Loupe is read-only.
 - **What each agent is doing now,** with the icons T3's timeline uses, plus plan progress, runs, context use and cost, subagents and the pull request.
 - **Failures named by cause,** such as "sign-in rejected" or "folder missing", with the next step.
@@ -46,7 +46,7 @@ Remove the file, or set `"demo": false`, to go back to live data.
 
 | A pending approval, with the full command | The compact dropdown (press <code>f</code>) |
 |:---:|:---:|
-| ![Pending command approval with the full command text](https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/screens/2.5.10/two-pane-approval.png) | ![The compact dropdown under the bar](https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/screens/2.5.10/dropdown.png) |
+| ![Pending command approval with the full command text](https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/screens/2.6.0/two-pane-approval.png) | ![The compact dropdown under the bar](https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/screens/2.6.0/dropdown.png) |
 
 <sub>Screenshots: built-in demo feed, Omarchy's <b>Matte Black</b> theme. Loupe takes its colours from whatever theme is active.</sub>
 
@@ -89,8 +89,8 @@ Sessions last 30 days, and T3 doesn't issue refresh tokens. T3 Loupe warns you t
 | **Click** the name or the ring | open or close the panel |
 | **Middle-click** | reconnect now |
 | `j` / `k`, `↑` / `↓` | select a thread; the two-pane detail follows |
-| `Enter` or `Space` | show all of a thread's subagents (two-pane) or expand its card (dropdown); on **Idle (n)**, fold or unfold |
-| `1` `2` `3` `4`, `h` / `l` | **Inbox** (needs you) · **Active** · **Done** (finished, newest first) · **All** (grouped by machine and project) |
+| `Enter` or `Space` | show all of a thread's subagents (two-pane) or expand its card (dropdown); on a folded group, fold or unfold |
+| `1` `2` `3` `4`, `h` / `l` | **Needs you** · **Active** (needs you plus working) · **Done** (finished, newest first) · **All** (grouped by machine and project) |
 | `g` | jump to the first thread that needs you |
 | `/` | filter by text: `Backspace` deletes, `Ctrl+W` and `Ctrl+U` clear a word or the line, `Enter` keeps the filter, `Esc` clears it. Pasting isn't supported |
 | `d` / `u` | page the two-pane detail down / up |
@@ -121,7 +121,7 @@ Set these with `omarchy bar set ambitiousrealism.t3-loupe <key> <value>`. Move t
 
 | Key | Values | Default |
 |---|---|---|
-| `display` | `label`: "T3 Loupe" + ring · `ring`: the ring alone · `ring-count`: the active count beside the ring. The needs-you badge shows in all three | `label` |
+| `display` | `label`: "T3 Loupe" + ring, and "need you" after the badge · `ring`: the ring alone · `ring-count`: the active count beside the ring. The needs-you badge shows in all three | `label` |
 | `reduceMotion` | `true` stops the spin and pulse | `false` |
 | `presentation` | `centered`: two-pane floating window · `dropdown`: compact panel under the bar | `centered` |
 | `panelWidth` | `420` – `900` (dropdown width) | `540` |

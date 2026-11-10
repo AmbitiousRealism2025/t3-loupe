@@ -410,3 +410,20 @@ Contributed in #5. Checked before merging:
 - `npm test`: 103 pass, the contributor's 2 new tests included, after merging main (2.5.10) into the branch. Only the version and changelog conflicted.
 - Live, from the merged branch: `status` shows both machines live, with the same counts as 2.5.10. On this account none of the 73 settled threads failed, so the bug the contributor saw (17 settled threads under Needs you on 427 threads) doesn't occur here; their before and after figures are in the PR.
 - `omarchy plugin validate` passes on a clean export.
+
+## Second UI overhaul — v2.6.0 (2026-11-09)
+
+**How it was reviewed:**
+- **Baseline of 2.5.11:** eight judges scored the same 15 screenshots on the same eight categories as the 2.5.7 review: four lenses (visual, interaction, accessibility, first-time user), each judged once by Fable 5.2 high and once by Sol 6.1 high. Overall mean 6.94. Shots use the demo feed in Matte Black, with three in Catppuccin Latte.
+- **Three rounds:** a Fable 5.2 high fix agent made each round's changes; the eight judges scored each round blind, with fresh judges, against the same frozen brief. Fable's and Sol's means were tracked separately each round, since Fable also wrote the fixes. Fable's judges were the harsher on colour and Sol's on layout, with no sign of Fable favouring its own work.
+- **Result:** 6.94, 7.36, 7.50, 7.53. The climb stopped after round 3 under its stop rule (two rounds in a row gaining less than 0.2). Theme fit and states are at 8, hierarchy and colour near it; layout ended lowest at 6.62.
+- **Capture fixes on the way:** the window now changes height, so each shot is cut at the window's own border; the dropdown moves with the bar widget's width, so it is cropped to its own border. A first scoring of round 3 used a dropdown shot cut off at the left edge; it was re-cropped and round 3 re-judged.
+
+**Verified:**
+- `npm test`: 112 pass.
+- Live, in Omarchy with Matte Black and Catppuccin Latte: every round's commit ran in the installed plugin and was photographed from the demo feed; Sean's live usage footer (three Claude windows, two Codex) was checked against the shared-column layout.
+- `omarchy plugin validate` passes on a clean export. `git diff --check` is clean.
+
+**Not verified:**
+- The window's height change while moving between threads was seen only in stills.
+- Themes other than Matte Black and Catppuccin Latte: covered by the palette tests only.

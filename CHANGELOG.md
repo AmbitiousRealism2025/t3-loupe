@@ -2,6 +2,36 @@
 
 What changed in each version. [`VALIDATION.md`](VALIDATION.md) records how each one was verified.
 
+## 2.6.0 — 2026-11-09
+
+A second UI overhaul, from a review panel of Fable 5.2 and Sol 6.1 judges. Over three rounds the overall review score went from 6.9 to 7.5 out of 10. No new network, process, file or text-input access; copying a re-pair command uses the existing copy route.
+
+- **Selection doesn't hide state.** The selected row is drawn with an outline in neutral ink, so its coloured status text keeps its contrast, and selection never borrows a state colour.
+- **Colours mean one thing each.**
+  - Working is plain ink: spinners, the current plan step and the run in progress no longer use the theme accent, so on warm themes they can't be mistaken for "Plan ready".
+  - Background work that is still running is neutral, not failure red.
+  - The needs-you count is an ink pill in the header and the bar, not red.
+- **The bar says what it counts:** `T3 Loupe ◔ [6] need you` in the `label` display, only while something needs you.
+- **Rows read at a glance.**
+  - Each title gets its own line, semi-bold, and wraps rather than being cut.
+  - The second line has the state and reason on the left and a time that says its kind on the right: `waiting 2m`, `running 23m`, `4m ago`, `resets in 47m`.
+  - The machine name moved off two-pane rows; it is in the All view's headings, the detail pane and the dropdown.
+  - Rows are never drawn cut in half at the list's edges, and `more above ↑` pairs with `more below ↓`.
+- **The window fits its content.** The two-pane window is as tall as what it shows, up to its old height, so a short thread no longer leaves half the window empty. Its top edge stays put.
+- **One name for what needs you.** The first tab is "Needs you", and the header reads `6 NEED YOU + 7 WORKING`.
+- **The hand-off to T3:** every next step ("→ Decide in T3: …") has `[o] open T3` right under it.
+- **The footer is one grid.**
+  - Each kind of usage window (5-hour, weekly, weekly · Fable) has a column shared by every provider.
+  - A spent window reads `full`, with its reset time under its meter.
+  - The key legend is grouped by purpose and lines up with the usage rows, with the size control beside `+/- size`.
+- **Keys you can see:**
+  - `d`/`u` page the detail pane, and the "more below" strip shows `d`.
+  - Folded groups show `↵ unfold` / `↵ fold`.
+  - Threads with subagents show their count and a chevron.
+  - On the offline screen, digit keys copy the re-pair commands.
+- **Contrast:** the facts grid's lines are held to 3:1, and the expiring-pairing note gets an hourglass.
+- New tests for the shared usage columns at every text size, the palette roles and the row layout (112 pass).
+
 ## 2.5.11 — 2026-11-09
 
 Settled threads stay out of Needs you. Contributed by [@farseenmanekhan1232](https://github.com/farseenmanekhan1232) in [#5](https://github.com/AmbitiousRealism2025/t3-loupe/pull/5).
