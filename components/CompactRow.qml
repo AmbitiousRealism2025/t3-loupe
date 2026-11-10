@@ -32,6 +32,11 @@ Item {
 
   readonly property bool child: row.parentId !== ""
   readonly property color glyphColor: colors[Store.stateRole(row.state)] || colors.textDim
+  // The glyph itself is a line icon, held to more than the rail and the wash that share its hue.
+  readonly property color glyphInk: colors[Store.stateRole(row.state) + "Glyph"] || glyphColor
+  // What the row is drawn on when the pointer is not on it.
+  readonly property color restFill: selected ? (washed ? Palette.wash(colors.surfaceSelected, glyphColor) : colors.surfaceSelected)
+    : washed ? Palette.wash(colors.surface, glyphColor) : child ? colors.background : colors.surface
   readonly property bool needsYou: Store.ATTENTION[row.state] === true
   readonly property color wordInk: Store.inkRole(row.state) ? colors[Store.inkRole(row.state)] : colors.textDim
   readonly property var activity: Store.currentActivity(row)
@@ -131,10 +136,12 @@ Item {
 
     StateGlyph {
       id: glyph
+      objectName: "stateGlyph"
       anchors.verticalCenter: parent.verticalCenter
       icon: Store.stateIcon(root.row)
       threadState: root.row.state
-      color: root.glyphColor
+      color: root.glyphInk
+      breathTo: Palette.breathFloor(root.glyphInk, root.restFill)
       size: Math.round(Typo.body * (root.child ? 0.95 : 1.1))
       reduceMotion: root.reduceMotion
     }

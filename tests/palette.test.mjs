@@ -82,11 +82,64 @@ for (const name of themes) {
     // On an ordinary row the secondary tiers keep more: 7:1 and 6:1.
     assert.ok(Palette.contrast(p.textDim, p.surface) >= 7, `dim text on a row: ${ratio(p.textDim, p.surface)}`);
     assert.ok(Palette.contrast(p.textFaint, p.surface) >= 6, `faint text on a row: ${ratio(p.textFaint, p.surface)}`);
-    // The callouts and the request card in the detail pane: a state colour at 9% over the panel.
-    for (const role of ["attention", "warning", "ask"]) {
-      const card = Palette.mix(bg, p[role], 0.09);
-      assert.ok(Palette.contrast(p[role + "Ink"], card) >= 4.5, `${role} ink on its callout: ${ratio(p[role + "Ink"], card)}`);
-      assert.ok(Palette.contrast(p.textDim, card) >= 4.5, `dim text on the ${role} callout: ${ratio(p.textDim, card)}`);
+    // Coloured words and icons, measured on what they are really drawn on. A row is the panel (a
+    // subagent's), an ordinary row or a selected one, and an answer's row is washed. The detail
+    // leads with a tinted block (a callout, a request's card): the state's own mark at a few
+    // percent over the panel in the two-pane window, or over the open card's fill in the dropdown,
+    // and an answer's card is a washed one.
+    const plain = [["the panel", bg], ["a row", p.surface], ["the selected row", sel]];
+    const washedRows = [["a washed row", washed], ["the washed selected row", washedSel]];
+    const blocks = {
+      ask: { shares: [Palette.BLOCK, Palette.BLOCK_QUIET], under: [["the panel", bg]].concat(washedRows) },
+      attention: { shares: [Palette.BLOCK], under: plain },
+      warning: { shares: [Palette.BLOCK], under: plain },
+      success: { shares: [Palette.BLOCK_QUIET], under: plain },
+    };
+    for (const [role, block] of Object.entries(blocks)) {
+      const inkOf = p[role + "Ink"], glyph = p[role + "Glyph"];
+      assert.match(glyph, /^#[0-9a-f]{6}$/, `${role} glyph`);
+      // On every row: words at text contrast with a margin, the line icon a 3:1 mark. In a light
+      // theme the words hold 7:1 (6:1 on a selected row) and the icon text's 4.5:1: a dark stroke
+      // on a light tint of its own hue is where these read faintest.
+      for (const [where, surface] of plain.concat(washedRows)) {
+        const isSelected = surface === sel || surface === washedSel;
+        const wordFloor = p.light ? (isSelected ? 6 : 7) : 5.5, iconFloor = p.light ? 4.5 : 3;
+        assert.ok(Palette.contrast(inkOf, surface) >= wordFloor, `${role} words on ${where}: ${ratio(inkOf, surface)} (floor ${wordFloor})`);
+        assert.ok(Palette.contrast(glyph, surface) >= iconFloor, `${role} icon on ${where}: ${ratio(glyph, surface)} (floor ${iconFloor})`);
+      }
+      // On its blocks: words, and the neutral text beside them, at 4.5:1 or more. In the two-pane
+      // window (over the panel) a light theme keeps the words at 7:1.
+      for (const share of block.shares) for (const [where, under] of block.under) {
+        const quiet = share === Palette.BLOCK_QUIET;
+        const fill = Palette.blockFill(under, p[role], quiet);
+        const on = `the ${role} ${quiet ? "calm block" : "block"} over ${where}`;
+        assert.equal(fill, Palette.mix(under, p[role], share), "a block's fill is its mark at the block's share");
+        assert.ok(Palette.contrast(inkOf, fill) >= (p.light && under === bg ? 7 : 4.5), `${role} words on ${on}: ${ratio(inkOf, fill)}`);
+        for (const tier of ["text", "textDim"]) assert.ok(Palette.contrast(p[tier], fill) >= 4.5, `${tier} on ${on}: ${ratio(p[tier], fill)}`);
+        // A calm block's icon is the glyph (a loud block's is drawn in the ink, checked above).
+        if (quiet) assert.ok(Palette.contrast(glyph, fill) >= 3, `${role} icon on ${on}: ${ratio(glyph, fill)}`);
+      }
+      // The glyph and the words stay the state's own hue: darker or lighter, never another colour.
+      if (Palette.hsl(p[role]).s > 0.25) {
+        assert.ok(Palette.hueGap(glyph, p[role]) < 12, `${role} icon ${glyph} keeps the hue of ${p[role]}`);
+        if (p.light) assert.ok(Palette.hueGap(inkOf, p[role]) < 12, `${role} words ${inkOf} keep the hue of ${p[role]}`);
+      }
+      // In a dark theme the icon is the mark itself, or a step from it where a calm block asks more.
+      if (!p.light) assert.ok(Palette.distance(glyph, p[role]) < 0.1, `${role} icon ${glyph} is the mark ${p[role]}`);
+      // In a light theme the words are a colour, not a grey: at least the mark's chroma, as far as
+      // their lightness allows any.
+      if (p.light && Palette.chroma(p[role]) > 0.2) {
+        const room = 1 - Math.abs(2 * Palette.hsl(inkOf).l - 1);
+        assert.ok(Palette.chroma(inkOf) >= Math.min(Palette.chroma(p[role]), room) - 0.03, `${role} words ${inkOf} keep their colour: chroma ${Palette.chroma(inkOf).toFixed(2)} vs ${Palette.chroma(p[role]).toFixed(2)}`);
+      }
+    }
+    // The two glyphs that breathe (a request's, on a washed row; a plan's, on a plain one) never
+    // fade below a 3:1 mark on the row they are on, and never below the deepest breath.
+    for (const [role, surfaces] of [["ask", washedRows], ["warning", plain]]) for (const [where, surface] of surfaces) {
+      const faintest = Palette.breathFloor(p[role + "Glyph"], surface);
+      assert.ok(faintest >= Palette.BREATH_DEEPEST && faintest <= 1, `${role} breath on ${where}: ${faintest}`);
+      const faded = Palette.mix(surface, p[role + "Glyph"], faintest);
+      assert.ok(Palette.contrast(faded, surface) >= 3, `${role} icon at its faintest (${faintest}) on ${where}: ${ratio(faded, surface)}`);
     }
     // The selection ring is text-strength on its own fill and on the panel, in every theme.
     for (const surface of [bg, p.surface, sel, washedSel]) assert.ok(Palette.contrast(p.focus, surface) >= 4.5, `selection ring on ${surface}: ${ratio(p.focus, surface)}`);
@@ -172,4 +225,47 @@ test("a monochrome theme stays monochrome: lightness, not hue, separates its sta
 test("survives a theme that only has the base tokens", () => {
   const p = Palette.derive({ background: "#101010", foreground: "#eeeeee", accent: "#3399ff", urgent: "#ff4455", colors: {} });
   for (const role of ["success", "warning", "info", "subagent"]) assert.match(p[role], /^#[0-9a-f]{6}$/);
+});
+
+// Catppuccin Latte, the light theme in the screenshots. Its magenta is a pastel pink: mixed toward
+// black for contrast it came out a dusty plum, the faintest words on their own lavender row.
+const LATTE = { background: "#eff1f5", foreground: "#4c4f69", accent: "#1e66f5", urgent: "#d20f39",
+  colors: { red: "#d20f39", yellow: "#df8e1d", orange: "#d84e2b", green: "#40a02b", cyan: "#179299", blue: "#1e66f5", magenta: "#ea76cb" } };
+
+test("a light theme's state words and icons are deepened, not greyed, and its marks are left alone", () => {
+  const p = Palette.derive(LATTE);
+  const washed = Palette.wash(p.surface, p.ask);
+  // The request's words on their own washed row: 7:1, and as much colour as the theme's pink has.
+  assert.ok(Palette.contrast(p.askInk, washed) >= 7, `ask words on the washed row: ${Palette.contrast(p.askInk, washed).toFixed(2)}`);
+  assert.ok(Palette.chroma(p.askInk) >= Palette.chroma("#ea76cb") - 0.03, `ask words keep the pink's chroma: ${Palette.chroma(p.askInk).toFixed(2)}`);
+  assert.ok(Palette.hsl(p.askInk).s > 0.6, `a vivid magenta, not a plum: ${p.askInk}`);
+  // Its icon is text-strength on that row; the done check too, on an ordinary one.
+  assert.ok(Palette.contrast(p.askGlyph, washed) >= 4.5, `ask icon: ${Palette.contrast(p.askGlyph, washed).toFixed(2)}`);
+  assert.ok(Palette.contrast(p.successGlyph, p.surface) >= 4.5, `done check: ${Palette.contrast(p.successGlyph, p.surface).toFixed(2)}`);
+  // Rails, ring segments and the wash keep the theme's own marks.
+  assert.equal(p.attention, "#d20f39");
+  assert.ok(Palette.contrast(p.ask, washed) >= 3 && Palette.contrast(p.ask, washed) < 4.5, "the rail is still the 3:1 mark");
+  assert.notEqual(p.askGlyph, p.ask);
+});
+
+test("a dark theme's state words are unchanged, and its icons are its marks", () => {
+  const p = Palette.derive(MATTE_BLACK);
+  assert.equal(p.askGlyph, p.ask);
+  assert.equal(p.warningGlyph, p.warning);
+  assert.equal(p.attentionGlyph, p.attention);
+  // Words: still the mark mixed lighter to 5.5:1 on the washed selected row, no further.
+  for (const role of ["ask", "warning", "attention"]) {
+    const on = Palette.contrast(p[role + "Ink"], p.surfaceSelectedWash);
+    assert.ok(on >= 5.5 && on < 6.2, `${role} words on the washed selected row: ${on.toFixed(2)}`);
+  }
+});
+
+test("a breath stops where the glyph would stop being a 3:1 mark", () => {
+  // Plenty of contrast: the deepest breath. None to spare: no breath at all.
+  assert.equal(Palette.breathFloor("#ffffff", "#000000"), Palette.BREATH_DEEPEST);
+  assert.equal(Palette.breathFloor("#959595", "#ffffff"), 1, "a mark at 3:1 has nothing to give");
+  const mid = Palette.breathFloor("#6b6b6b", "#ffffff");
+  assert.ok(mid > Palette.BREATH_DEEPEST && mid < 1, String(mid));
+  assert.ok(Palette.contrast(Palette.mix("#ffffff", "#6b6b6b", mid), "#ffffff") >= 3);
+  assert.equal(Palette.breathFloor(undefined, "#ffffff"), 1, "no colour yet: no breath");
 });

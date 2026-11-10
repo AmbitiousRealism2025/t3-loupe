@@ -211,6 +211,69 @@ TestCase {
 
   // Healthy background work is not dressed as a failure: its callout is neutral in every theme,
   // while a failure's is the failure colour. (On Matte Black the old "subagent" hue came out red.)
+  // A row's glyph is a line icon in the state's colour, on a row that may be tinted with that same
+  // colour. It is the palette's glyph for the state (in a light theme, text-strength; in a dark
+  // one, the mark), it holds on the row's own fill selected or not, and where it breathes it never
+  // fades below a 3:1 mark on that fill. A failure's glyph does not breathe.
+  function test_stateGlyphsHoldOnTheirOwnRows() {
+    var themes = [{ name: "matte black", c: tc.matteBlack }, { name: "latte", c: tc.latte }, { name: "blue clouds", c: tc.colors }]
+    var states = [row({ state: "input", rawStatus: "running", pendingKind: "command", pendingSince: now - 120000 }),
+      row({ state: "plan", completedAt: now - 240000 }),
+      row({ state: "failed", rawStatus: "failed", errorClass: "provider_error", error: "502", completedAt: now - 660000 }),
+      row({ state: "review", completedAt: now - 60000 })]
+    var kinds = [{ c: rowC, name: "row" }, { c: cardC, name: "card" }]
+    for (var t = 0; t < themes.length; t++) for (var k = 0; k < kinds.length; k++) for (var s = 0; s < states.length; s++) for (var sel = 0; sel < 2; sel++) {
+      var colors = themes[t].c, state = states[s].state
+      var where = themes[t].name + ", " + kinds[k].name + ", " + state + (sel ? ", selected" : "")
+      var item = createTemporaryObject(kinds[k].c, tc, { row: states[s], colors: colors, selected: sel === 1 })
+      var glyph = named(item, "stateGlyph")[0], fill = named(item, "fill")[0]
+      var role = Store.stateRole(state)
+      compare(String(glyph.color), String(Qt.color(colors[role + "Glyph"])), where + ": the palette's glyph for the state")
+      var want = sel ? (state === "input" ? colors.surfaceSelectedWash : colors.surfaceSelected) : state === "input" ? Palette.wash(colors.surface, colors.ask) : colors.surface
+      tryCompare(fill, "color", Qt.color(want), 1000, where + ": the fill it sits on")
+      compare(String(item.restFill), String(fill.color), where + ": the breath is measured on that fill")
+      var floor = colors.light ? 4.5 : 3
+      var ratio = Palette.contrast(String(glyph.color), String(fill.color))
+      verify(ratio >= floor, where + ": the glyph is " + ratio.toFixed(2) + ":1 on its row (floor " + floor + ")")
+      if (state === "input" || state === "plan") {
+        compare(glyph.breathTo, Palette.breathFloor(String(glyph.color), String(fill.color)), where)
+        verify(glyph.breathTo >= Palette.BREATH_DEEPEST && glyph.breathTo <= 1, where + ": breath " + glyph.breathTo)
+        var faded = Palette.mix(String(fill.color), String(glyph.color), glyph.breathTo)
+        verify(Palette.contrast(faded, String(fill.color)) >= 3, where + ": at its faintest (" + glyph.breathTo + ") the glyph is " + Palette.contrast(faded, String(fill.color)).toFixed(2) + ":1")
+        compare(glyph.breathing, glyph.breathTo < 0.97, where + ": it breathes only where it has contrast to spare")
+      } else {
+        verify(!glyph.breathing, where + ": does not breathe")
+      }
+    }
+    // With reduced motion nothing breathes.
+    var still = createTemporaryObject(rowC, tc, { row: states[0], reduceMotion: true })
+    verify(!named(still, "stateGlyph")[0].breathing)
+  }
+
+  // A block's icon holds on the block's own fill: a loud block's (a failure, a plan) is drawn in
+  // the state's ink, a calm one's (done, an answer with no text yet) in the state's glyph, and
+  // the fill is the state's mark at the palette's share.
+  function test_blockIconsHoldOnTheirOwnFill() {
+    var themes = [{ name: "matte black", c: tc.matteBlack }, { name: "latte", c: tc.latte }]
+    var cases = [{ r: row({ state: "failed", rawStatus: "failed", errorClass: "provider_error", error: "502", completedAt: now - 660000 }), role: "attention", loud: true },
+      { r: row({ state: "plan", completedAt: now - 240000, lastRunMs: 360000 }), role: "warning", loud: true },
+      { r: row({ state: "review", completedAt: now - 60000 }), role: "success", loud: false },
+      { r: row({ state: "input", rawStatus: "running", pendingKind: "command", pendingSince: now - 120000 }), role: "ask", loud: false }]
+    for (var t = 0; t < themes.length; t++) for (var c = 0; c < cases.length; c++) {
+      var colors = themes[t].c, role = cases[c].role
+      var where = themes[t].name + ", " + cases[c].r.state
+      var block = createTemporaryObject(calloutC, tc, { callout: Store.statusCallout(cases[c].r, now, false), colors: colors })
+      var icon = named(block, "calloutIcon")[0]
+      compare(String(icon.color), String(Qt.color(cases[c].loud ? colors[role + "Ink"] : colors[role + "Glyph"])), where + ": the icon's colour")
+      // The block is translucent: over the panel it comes to the palette's fill.
+      var fill = Palette.blockFill(colors.background, colors[role], !cases[c].loud)
+      fuzzyCompare(block.color.a, cases[c].loud ? Palette.BLOCK : Palette.BLOCK_QUIET, 0.004, where + ": the block's share of its mark")
+      verify(Palette.contrast(String(icon.color), fill) >= (cases[c].loud ? 4.5 : 3), where + ": the icon is " + Palette.contrast(String(icon.color), fill).toFixed(2) + ":1 on the block")
+      var head = textItem(block, block.callout.headline)
+      verify(Palette.contrast(String(head.color), fill) >= 4.5, where + ": the headline is " + Palette.contrast(String(head.color), fill).toFixed(2) + ":1 on the block")
+    }
+  }
+
   function test_backgroundWorkIsNotDrawnAsAFailure() {
     var themes = [tc.colors, tc.matteBlack, tc.latte]
     var bg = row({ state: "background", activeSince: now - 9 * 60000, background: { subagents: 2, commands: 0, monitors: 0, other: 0 } })

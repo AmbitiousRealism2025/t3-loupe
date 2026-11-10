@@ -27,6 +27,11 @@ Item {
   readonly property bool child: row.parentId !== ""
   // Colour budget: the glyph carries the state hue; words stay ink except the alarm states.
   readonly property color tone: colors[Store.stateRole(row.state)] || colors.textDim
+  // The glyph is a line icon, held to more than the rail and the wash that share its hue.
+  readonly property color glyphInk: colors[Store.stateRole(row.state) + "Glyph"] || tone
+  // What the card is drawn on when the pointer is not on it.
+  readonly property color restFill: selected ? (row.state === "input" ? Palette.wash(colors.surfaceSelected, tone) : colors.surfaceSelected)
+    : row.state === "input" ? Palette.wash(colors.surface, tone) : child ? colors.background : colors.surface
   readonly property bool alarm: Store.isAlarm(row.state)
   readonly property bool needsYou: Store.ATTENTION[row.state] === true
   readonly property color wordInk: Store.inkRole(row.state) ? colors[Store.inkRole(row.state)] : colors.textDim
@@ -100,11 +105,13 @@ Item {
 
         StateGlyph {
           id: glyph
+          objectName: "stateGlyph"
           anchors.verticalCenter: title.lineCount > 1 ? undefined : parent.verticalCenter
           y: title.lineCount > 1 ? Style.space(1) : 0
           icon: Store.stateIcon(root.row)
           threadState: root.row.state
-          color: root.tone
+          color: root.glyphInk
+          breathTo: Palette.breathFloor(root.glyphInk, root.restFill)
           size: Math.round(Typo.body * (root.child ? 1.0 : 1.15))
           reduceMotion: root.reduceMotion
         }

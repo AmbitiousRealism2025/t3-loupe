@@ -191,7 +191,8 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             icon: root.hasRow ? Store.stateIcon(root.row) : "circle-dot"
             threadState: root.hasRow ? root.row.state : "idle"
-            color: root.hasRow ? (root.colors[Store.stateRole(root.row.state)] || root.colors.textDim) : root.colors.textDim
+            color: root.hasRow ? (root.colors[Store.stateRole(root.row.state) + "Glyph"] || root.colors[Store.stateRole(root.row.state)] || root.colors.textDim) : root.colors.textDim
+            breathTo: Palette.breathFloor(color, root.colors.background)
             size: Math.round(Typo.body * 1.05)
             reduceMotion: root.reduceMotion
           }

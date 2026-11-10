@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import "../lib/Palette.js" as Palette
 
 // The block a thread's detail leads with: what state it is in, why, the provider's own words when
 // there are any, and the one thing to do next. Content comes from Store.statusCallout.
@@ -19,13 +20,17 @@ Rectangle {
 
   readonly property color mark: callout ? (colors[callout.tone] || colors.textFaint) : "transparent"
   readonly property color ink: callout ? (colors[callout.tone + "Ink"] || colors.text) : colors.text
+  // A calm block's icon: a line icon in the state's colour, held on this fill (the palette's glyph).
+  readonly property color glyph: callout ? (colors[callout.tone + "Glyph"] || mark) : "transparent"
   // Red and amber lead in their own ink; calmer states lead in plain text.
   readonly property bool loud: callout !== null && (callout.tone === "attention" || callout.tone === "warning")
 
   visible: callout !== null
   implicitHeight: callout ? body.implicitHeight + Style.space(20) : 0
   radius: Style.cornerRadius
-  color: callout ? Qt.rgba(mark.r, mark.g, mark.b, loud ? 0.09 : 0.05) : "transparent"
+  // The state's mark at a few percent over whatever is under the block (Palette.BLOCK); the
+  // palette holds this state's ink and glyph on that fill, over the panel and over a card.
+  color: callout ? Qt.rgba(mark.r, mark.g, mark.b, loud ? Palette.BLOCK : Palette.BLOCK_QUIET) : "transparent"
 
   Rectangle { width: Style.space(3); height: parent.height; color: root.mark }
 
@@ -41,9 +46,10 @@ Rectangle {
       height: Math.max(icon.height, headline.implicitHeight)
       LucideIcon {
         id: icon
+        objectName: "calloutIcon"
         y: Math.max(0, (Math.min(headline.implicitHeight, headline.font.pixelSize * 1.5) - height) / 2)
         name: root.callout ? root.callout.icon : "circle-dot"
-        color: root.loud ? root.ink : root.mark
+        color: root.loud ? root.ink : root.glyph
         size: Math.round(Typo.body * 1.1)
       }
       Text {

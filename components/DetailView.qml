@@ -114,7 +114,7 @@ Column {
       width: root.width
       height: pend.implicitHeight + Style.space(18)
       radius: Style.cornerRadius
-      color: Palette.alpha(root.colors.ask, 0.09)
+      color: Palette.alpha(root.colors.ask, Palette.BLOCK)
 
       Rectangle { width: Style.space(3); height: parent.height; color: root.colors.ask }
 
@@ -522,7 +522,7 @@ Column {
           y: Math.max(0, (Typo.caption * 1.4 - height) / 2)
           icon: parent.live ? "loader-circle" : parent.st === "completed" ? "circle-check" : parent.st === "failed" ? "circle-x" : "circle-dot"
           threadState: parent.live ? "working" : "idle"
-          color: parent.live ? root.colors.working : parent.st === "failed" ? root.colors.attention : root.colors.textFaint
+          color: parent.live ? root.colors.working : parent.st === "failed" ? (root.colors.attentionGlyph || root.colors.attention) : root.colors.textFaint
           size: Math.round(Typo.body * 1.0)
         }
         Text {
