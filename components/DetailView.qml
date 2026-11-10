@@ -16,6 +16,8 @@ Column {
   property var colors: ({})
   property double now: Date.now()
   property bool paneMode: false
+  // How copying this thread's title just ended: "" | "ok" | "failed".
+  property string copyState: ""
   property string fontFamily: Style.font.family
   property string monoFamily: "monospace"
 
@@ -71,25 +73,24 @@ Column {
     elide: Text.ElideRight
   }
 
-  // What to do next, as a sentence in full-strength ink. In the two-pane detail it carries no
-  // keycap: with "o" beside it, "Restore the folder…" read as something the key would do, and o
-  // only opens T3. The action row above has that key, once. The dropdown's expanded card has no
-  // such row, so there the step ends by naming the key.
-  component NextStep: Text {
+  // What to do next, as a sentence in full-strength ink; the keys that carry it out follow it
+  // (ThreadActions), so the hand-off to T3 is one piece: what to do there, and the key that gets
+  // you there.
+  component NextStep: BalancedText {
     property string step: ""
-    text: "→ " + step + (root.paneMode ? "" : "  (o opens T3)")
-    textFormat: Text.PlainText
+    text: "→ " + step
     color: root.colors.text
     font.family: root.fontFamily
     font.pixelSize: Typo.caption
     font.weight: Font.Medium
-    wrapMode: Text.Wrap
   }
 
   StatusCallout {
     width: root.width
     callout: root.lead ? root.callout : null
-    keyHint: !root.paneMode
+    row: root.row
+    copyState: root.copyState
+    secondary: root.paneMode
     colors: root.colors
     fontFamily: root.fontFamily
     monoFamily: root.monoFamily
@@ -107,6 +108,7 @@ Column {
     model: root.lead && root.detail ? root.detail.pending : []
     Rectangle {
       required property var modelData
+      required property int index
       width: root.width
       height: pend.implicitHeight + Style.space(18)
       radius: Style.cornerRadius
@@ -217,6 +219,19 @@ Column {
         NextStep {
           width: parent.width
           step: modelData.kind === "user_input" ? "Answer in T3: Loupe only shows the question" : "Decide in T3: Loupe only shows the request"
+        }
+        // The keys for it, once, under the last request.
+        ThreadActions {
+          visible: index === (root.detail ? root.detail.pending.length : 0) - 1
+          width: parent.width
+          margin: 0
+          row: root.row
+          colors: root.colors
+          fontFamily: root.fontFamily
+          monoFamily: root.monoFamily
+          copyState: root.copyState
+          secondary: root.paneMode
+          onActionRequested: function(action) { root.actionRequested(action) }
         }
       }
     }
@@ -342,10 +357,12 @@ Column {
           }
         }
       }
-      Note {
+      BalancedText {
         width: parent.width
         text: root.todo ? root.todo.done + " of " + root.todo.total + " steps done" + (root.todo.current ? "  ·  now: " + root.todo.current : "") : ""
-        wrapMode: Text.Wrap
+        color: root.colors.textFaint
+        font.family: root.fontFamily
+        font.pixelSize: Typo.caption
       }
     }
 
@@ -360,17 +377,36 @@ Column {
         label: "Runs"
         count: parent.summary.chart ? root.runs.length : -1
       }
-      Note {
-        visible: parent.summary.chart
-        width: parent.width
-        text: "One bar per run, its height the run's length"
-        wrapMode: Text.Wrap
-      }
+      // The chart and its figures side by side: the bars are only as wide as the runs there are,
+      // so the figures take the room beside them instead of sitting under a mostly empty plot.
+      // If there are so many runs that the figures don't fit beside them, they go underneath.
       Item {
+        id: runsRow
         visible: parent.summary.chart
         width: parent.width
+        readonly property real gap: Style.space(22)
+        readonly property bool beside: chart.width + gap + Style.space(190) <= width
+        height: beside ? Math.max(chart.height, figures.implicitHeight) : chart.height + Style.space(6) + figures.implicitHeight
+        Column {
+          id: figures
+          objectName: "runFigures"
+          x: runsRow.beside ? chart.width + runsRow.gap : 0
+          y: runsRow.beside ? Math.max(0, chart.height - implicitHeight) : chart.height + Style.space(6)
+          width: runsRow.width - x
+          spacing: Style.space(2)
+          Repeater {
+            model: runsRow.parent.summary.chart ? runsRow.parent.summary.text.split("  ·  ") : []
+            Note { required property string modelData; width: figures.width; text: modelData; color: root.colors.textDim }
+          }
+          Note { width: figures.width; text: "one bar per run; its height is the run's length"; wrapMode: Text.Wrap }
+        }
+      Item {
+        id: chart
+        objectName: "runChart"
+        width: bars.width
         height: Style.space(52)
         Row {
+          id: bars
           anchors.bottom: baseline.top
           spacing: Style.space(3)
           Repeater {
@@ -410,9 +446,12 @@ Column {
             }
           }
         }
-        Rectangle { id: baseline; anchors.bottom: parent.bottom; width: parent.width; height: 1; color: root.colors.line }
+        Rectangle { id: baseline; anchors.bottom: parent.bottom; width: parent.width; height: 1; color: root.colors.edge }
       }
+      }
+      // Too few runs for a chart: the sentence says it all.
       Note {
+        visible: !parent.summary.chart
         width: parent.width
         text: parent.summary.text
         wrapMode: Text.Wrap
@@ -504,7 +543,8 @@ Column {
   Row {
     visible: !root.paneMode
     spacing: Style.space(6)
-    ActionButton { text: "Focus T3"; onClicked: root.actionRequested("focus") }
+    // (A card that leads with a callout or a request already ends that block with "o open T3".)
+    ActionButton { visible: !root.hasLead; text: "Focus T3"; onClicked: root.actionRequested("focus") }
     ActionButton {
       visible: root.row.pr !== null && root.row.pr !== undefined && root.row.pr.url !== ""
       text: "Open PR"

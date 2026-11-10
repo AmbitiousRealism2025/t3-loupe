@@ -16,6 +16,7 @@ PanelWindow {
   // Wider as the text grows, so a size bump adds legibility rather than truncation.
   property real cardWidth: Style.space(820 + Math.max(0, Typo.bump) * 56)
   property real maxHeightRatio: 0.84
+  property bool reduceMotion: false
   default property alias contentData: slot.data
   readonly property alias card: card
   readonly property real padding: Style.spacing.popupPadding + Style.space(6)
@@ -53,9 +54,16 @@ PanelWindow {
 
   Rectangle {
     id: card
-    anchors.centerIn: parent
+    // As tall as its content, up to a share of the screen. Its top is where the top of the
+    // tallest card would be, whatever its own height, so when the content grows or shrinks (a
+    // longer detail, another view) the rows stay where they are and only the card's foot moves.
+    readonly property real tallest: win.height * (win.maxHeightRatio + Math.max(0, Typo.bump) * 0.02)
+    anchors.horizontalCenter: parent.horizontalCenter
+    y: Math.round((win.height - tallest) / 2)
     width: Math.min(win.cardWidth, win.width - Style.gapsOut * 4)
-    height: Math.min(win.height * (win.maxHeightRatio + Math.max(0, Typo.bump) * 0.02), slot.implicitContentHeight + win.padding * 2)
+    height: Math.min(tallest, slot.implicitContentHeight + win.padding * 2)
+    // The foot glides to its new place; with reduced motion it is simply there.
+    Behavior on height { enabled: win.open && !win.reduceMotion; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
     radius: Style.cornerRadius
     color: win.colors.background || Omarchy.Color.popups.background
     // A quiet hairline; the dimmed backdrop already separates the card.

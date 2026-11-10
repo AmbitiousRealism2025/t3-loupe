@@ -109,7 +109,7 @@ Item {
           color: root.row.state === "idle" || root.row.state === "stopped" ? root.colors.textDim : root.colors.text
           font.family: root.fontFamily
           font.pixelSize: root.child ? Typo.caption : Typo.body
-          font.weight: root.child ? Font.Normal : Font.Medium
+          font.weight: root.child ? Font.Normal : Font.DemiBold
           wrapMode: Text.Wrap
           maximumLineCount: root.expanded ? 3 : 2
           elide: Text.ElideRight

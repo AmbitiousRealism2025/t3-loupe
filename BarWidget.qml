@@ -112,7 +112,7 @@ Panel {
       id: glyphRow
       anchors.centerIn: parent
       readonly property real gap: Style.space(5)
-      readonly property var parts: [label, ring, countText, badge].filter(function(p) { return p.visible })
+      readonly property var parts: [label, ring, countText, badge, badgeWords].filter(function(p) { return p.visible })
       implicitWidth: {
         if (root.vertical) return Math.max.apply(null, parts.map(function(p) { return p.width }))
         var w = 0
@@ -215,6 +215,23 @@ Panel {
           renderType: Text.NativeRendering
         }
       }
+
+      // What the badge counts, in words, in the bar's own type: "6 need you". A bare number in a
+      // bar says nothing to someone who hasn't been told. Only in the "label" display, which is the
+      // one with room for words, and only while something needs you, so the widget is this much
+      // wider just when it is asking for a look.
+      Text {
+        id: badgeWords
+        visible: badge.visible && root.display === "label" && !root.vertical
+        x: glyphRow.offset(badgeWords)
+        anchors.verticalCenter: parent.verticalCenter
+        text: root.tally.needs === 1 ? "needs you" : "need you"
+        textFormat: Text.PlainText
+        color: root.ink
+        font.family: button.fontFamily
+        font.pixelSize: button.fontSize
+        renderType: Text.NativeRendering
+      }
     }
   }
 
@@ -264,6 +281,7 @@ Panel {
       owner: root
       screen: root.screenObj
       colors: root.theme ? root.theme.popup : ({})
+      reduceMotion: root.reduceMotion
       onDismissRequested: root.close()
       onOpenChanged: if (open) Qt.callLater(function() { floatContent.keyCatcher.forceActiveFocus() })
 

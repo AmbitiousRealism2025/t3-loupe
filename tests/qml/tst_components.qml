@@ -97,8 +97,16 @@ TestCase {
     verify(has(d, /^T3 offers: Allow once, Allow for session or Decline$/), texts(d).join(" | "))
     verify(has(d, /^→ Decide in T3: Loupe only shows the request$/))
     verify(!has(d, /^Allow once$/), "no option is drawn on its own like a button")
-    // The pane's action row has the key that opens T3; the request doesn't repeat it as a keycap.
-    compare(texts(d).filter(function(t) { return t === "o" }).length, 0, "no keycap beside the next step")
+    // The hand-off is one piece: the step, and right under it the key that gets you to T3,
+    // labelled for what the key does. Once.
+    compare(texts(d).filter(function(t) { return t === "o" }).length, 1, "one keycap for T3")
+    var step = textItem(d, "→ Decide in T3: Loupe only shows the request"), open = textItem(d, "open T3")
+    verify(open !== null, texts(d).join(" | "))
+    var gap = open.mapToItem(d, 0, 0).y - step.mapToItem(d, 0, step.height).y
+    verify(gap >= 0 && gap < 30, "the key sits right under the step (" + gap + ")")
+    // It is the block's main action: full ink, where copying the title is dim.
+    compare(String(open.color), String(Qt.color(tc.colors.text)))
+    compare(String(textItem(d, "copy title").color), String(Qt.color(tc.colors.textDim)))
     verify(!has(d, /^Waiting for your answer$/), "the loaded request replaces the callout")
   }
 
@@ -270,10 +278,12 @@ TestCase {
                 row({ key: "e:i", id: "i", state: "idle", completedAt: now - 7200000 })]
     var p = createTemporaryObject(panelC, tc, { service: svc })
     p.opened = true
-    // The header spells out how the Active tab's number is made, and the rest adds up to All.
+    // The header says what needs you and what is working, and nothing the tabs under it say: the
+    // plus joins the two into the Active tab's number.
     // The needs-you count is on an ink pill, in no kind's colour: one of the two is a failure, the
     // other a request, and red (or violet) for both would misname one of them.
-    verify(has(p, /^NEED YOU \+ 2 WORKING = 4 ACTIVE  ·  2 DONE$/), texts(p).join(" | "))
+    verify(has(p, /^NEED YOU \+ 2 WORKING$/), texts(p).join(" | "))
+    verify(!texts(p).some(function(t) { return /\d+ (ACTIVE|DONE|STOPPED)/.test(t) }), "no tab's count is repeated in the header")
     var pill = named(p, "needPill")[0]
     verify(pill.visible)
     compare(texts(pill), ["2"])
@@ -310,26 +320,83 @@ TestCase {
     return out
   }
 
-  // A header too narrow for the sum drops "= N ACTIVE" and keeps the plus; it never cuts a count.
-  function test_headerCountsDropTheSumBeforeTheyElide() {
+  // The header's count line is short enough to fit the dropdown whole, and says so with nothing waiting.
+  function test_headerCountsFitAndSayWhenNothingWaits() {
     var svc = createTemporaryObject(serviceC, tc)
     svc.environments = [liveEnv("e", "laptop")]
     svc.rows = [row({ key: "e:a", id: "a", state: "input", pendingKind: "command", rawStatus: "running" }),
                 row({ key: "e:c", id: "c", state: "working", rawStatus: "running", activeSince: now - 60000 }),
                 row({ key: "e:e", id: "e", state: "review", completedAt: now - 60000 })]
-    var wide = createTemporaryObject(dropdownC, tc, { service: svc, width: 540 })
-    wide.opened = true
-    verify(has(wide, /^NEEDS YOU \+ 1 WORKING = 2 ACTIVE  ·  1 DONE$/), texts(wide).join(" | "))
-    var narrow = createTemporaryObject(dropdownC, tc, { service: svc, width: 400 })
-    narrow.opened = true
-    wait(0)
-    verify(has(narrow, /^NEEDS YOU \+ 1 WORKING  ·  1 DONE$/), texts(narrow).join(" | "))
-    var line = textItem(narrow, null, /^<font.*NEEDS.*YOU/)
-    verify(line !== null && line.implicitWidth <= line.width + 0.5, "the shorter line fits whole")
+    var widths = [540, 400]
+    for (var i = 0; i < widths.length; i++) {
+      var p = createTemporaryObject(dropdownC, tc, { service: svc, width: widths[i] })
+      p.opened = true
+      wait(0)
+      verify(has(p, /^NEEDS YOU \+ 1 WORKING$/), texts(p).join(" | "))
+      var line = textItem(p, null, /^<font.*NEEDS.*YOU/)
+      verify(line !== null && line.implicitWidth <= line.width + 0.5, "the line fits whole at " + widths[i])
+    }
     // Nothing waiting: no pill, and nothing to add up.
+    var calm = createTemporaryObject(dropdownC, tc, { service: svc, width: 540 })
+    calm.opened = true
     svc.rows = [svc.rows[1], svc.rows[2]]
-    tryVerify(function() { return has(wide, /^NOTHING NEEDS YOU  ·  1 WORKING  ·  1 DONE$/) })
-    verify(!named(wide, "needPill")[0].visible)
+    tryVerify(function() { return has(calm, /^NOTHING NEEDS YOU  ·  1 WORKING$/) })
+    verify(!named(calm, "needPill")[0].visible)
+  }
+
+  // The two-pane window is as tall as what it shows: a view of a few threads asks for a short
+  // card, not a full-height one with its lower half empty; a long list asks for more than any card
+  // can give (the window caps it). It is never shorter than the selected thread's detail needs,
+  // and while a thread's detail is still on its way the card keeps the height it had.
+  function test_windowHeightFollowsItsContent() {
+    var svc = createTemporaryObject(serviceC, tc)
+    svc.environments = [liveEnv("e", "laptop")]
+    var few = [row({ key: "e:a", id: "a", state: "plan", completedAt: now - 240000, lastRunMs: 360000 }),
+               row({ key: "e:b", id: "b", state: "failed", rawStatus: "failed", error: "502", errorClass: "provider_error", completedAt: now - 660000 })]
+    svc.rows = few
+    svc.details = { "e:a": { activity: [], pending: [], runs: [], context: null, subagents: [], todo: null },
+                    "e:b": { activity: [], pending: [], runs: [], context: null, subagents: [], todo: null } }
+    var long = { pending: [], runs: [], context: null, subagents: [], todo: null,
+      activity: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].map(function(i) { return { icon: "terminal", label: "step " + i, status: "completed", at: now - i * 60000 } }) }
+    svc.details = { "e:a": svc.details["e:a"], "e:b": long }
+    var p = createTemporaryObject(panelC, tc, { service: svc, height: 760 })
+    p.opened = true
+    p.setFilter("all")
+    tryCompare(p, "selectedKey", "e:a")
+    wait(50)
+    var short = p.implicitHeight
+    verify(short < 520, "two threads ask for a short card: " + short)
+    // Everything it shows fits in that height: the list and the selected thread's detail.
+    verify(p.bodyHeight >= p.listView.contentHeight - 0.5, "the list fits: " + p.bodyHeight + " vs " + p.listView.contentHeight)
+    verify(p.bodyHeight >= p.detailItem.naturalHeight - 0.5, "the detail fits: " + p.bodyHeight + " vs " + p.detailItem.naturalHeight)
+    p.height = short
+    wait(50)
+    verify(!p.detailItem.scrollable, "so at its own height the detail doesn't scroll")
+    verify(!has(p, /more below/), "and nothing is cut: " + texts(p).join(" | "))
+    // A thread with a long detail makes it taller.
+    p.moveCursor(1)
+    tryCompare(p, "selectedKey", "e:b")
+    tryVerify(function() { return p.implicitHeight > short + 100 }, 1000, "a longer detail asks for more: " + p.implicitHeight + " vs " + short)
+    var tall = p.implicitHeight
+    // Moving on to a thread whose detail hasn't arrived: the card holds its height instead of
+    // dropping to the loading line and growing back.
+    svc.rows = few.concat([row({ key: "e:c", id: "c", state: "working", rawStatus: "running", activeSince: now - 60000 })])
+    wait(0)
+    compare(p.implicitHeight, tall, "one more row in a short list changes nothing: the detail is the taller")
+    p.moveCursor(1)
+    tryCompare(p, "selectedKey", "e:c")
+    verify(p.detailItem.loading)
+    compare(p.implicitHeight, tall, "held while the detail loads")
+    // When it arrives, the card takes the height that detail needs.
+    svc.details = { "e:a": svc.details["e:a"], "e:b": long, "e:c": { activity: [], pending: [], runs: [], context: null, subagents: [], todo: null } }
+    tryVerify(function() { return !p.detailItem.loading && p.implicitHeight < tall - 100 }, 1000, "and released when it has: " + p.implicitHeight)
+    // A long list asks for more than a short one, with the same thread selected.
+    var before = p.implicitHeight
+    svc.rows = svc.rows.concat(manyRows())
+    tryVerify(function() { return p.implicitHeight > before + 200 }, 1000, "a long list asks for more: " + p.implicitHeight + " vs " + before)
+    // The dropdown is unchanged: its height has always followed its list.
+    var d = createTemporaryObject(dropdownC, tc, { service: svc })
+    verify(d.implicitHeight > 0)
   }
 
   function test_panelDisconnectedReplacesTheEmptyList() {
@@ -477,26 +544,147 @@ TestCase {
       row({ state: "limited", rawStatus: "failed", errorClass: "usage_limit", error: "Usage limit reached.", usageResetAt: now + 47 * 60000, project: "docs" }),
       row({ state: "idle", completedAt: now - 3600000, project: "omarchy" })
     ]
-    var at = {}
+    // Two places, one for each kind of thread: under where it runs for a thread with nothing to
+    // hand off, and at the end of the block that says what to do for one that has. Within a kind
+    // they never move, whatever the state's words are and whether or not there is a PR.
+    var at = { lead: {}, plain: {} }
     for (var i = 0; i < threads.length; i++) {
       var p = createTemporaryObject(paneC, tc, { row: threads[i], machineLabel: "laptop" })
       waitForRendering(p)
       var open = textItem(p, "open T3"), copy = textItem(p, "copy title")
       verify(open !== null && copy !== null, threads[i].state)
-      at[Math.round(open.mapToItem(p, 0, 0).x) + "," + Math.round(copy.mapToItem(p, 0, 0).x)] = true
+      compare(texts(p).filter(function(t) { return t === "open T3" }).length, 1, threads[i].state + ": the T3 key appears once")
       compare(open.mapToItem(p, 0, 0).y, copy.mapToItem(p, 0, 0).y, "one line")
+      verify(open.mapToItem(p, 0, 0).x < copy.mapToItem(p, 0, 0).x, "T3 first")
       if (threads[i].pr) verify(textItem(p, "open PR").mapToItem(p, 0, 0).x > copy.mapToItem(p, 0, 0).x, "the PR action comes after the two every thread has")
       // A thread whose callout already names the state doesn't say it a second time above it.
       var leads = { input: /^Waiting for your answer$/, failed: /^The provider failed during the run$/, limited: /^Paused by a provider usage limit$/ }
       var stateLine = { input: /^Run command\? \d/, failed: /^Failed 11m ago$/, limited: /^Usage limit resets in 47m$/ }
+      var spot = Math.round(open.mapToItem(p, 0, 0).x) + "," + Math.round(copy.mapToItem(p, 0, 0).x)
       if (leads[threads[i].state]) {
-        verify(has(p, leads[threads[i].state]), texts(p).join(" | "))
+        var headline = textItem(p, null, leads[threads[i].state])
+        verify(headline !== null, texts(p).join(" | "))
         verify(!has(p, stateLine[threads[i].state]), "the state line would repeat the callout: " + texts(p).join(" | "))
+        verify(open.mapToItem(p, 0, 0).y > headline.mapToItem(p, 0, 0).y, threads[i].state + ": the keys end the block that says what to do")
+        at.lead[spot] = true
       } else {
         verify(has(p, /^(Working|Idle) /), "a thread with no callout keeps its state line: " + texts(p).join(" | "))
+        at.plain[spot] = true
       }
     }
-    compare(Object.keys(at).length, 1, "open and copy start at the same x on every thread: " + Object.keys(at).join(" / "))
+    compare(Object.keys(at.lead).length, 1, "in a callout, open and copy start at the same x on every thread: " + Object.keys(at.lead).join(" / "))
+    compare(Object.keys(at.plain).length, 1, "under the header too: " + Object.keys(at.plain).join(" / "))
+  }
+
+  // Weight says what to read first: a thread's title is heavier than anything else on its row, and
+  // a subagent's lighter than its parent's.
+  function test_rowTitleOutweighsTheRestOfItsRow() {
+    var kinds = [{ c: rowC, name: "row" }, { c: cardC, name: "card" }]
+    for (var k = 0; k < kinds.length; k++) {
+      var item = createTemporaryObject(kinds[k].c, tc, { row: row({ title: "Design a robust plugin", state: "working", rawStatus: "running", activeSince: now - 60000, project: "t3-loupe",
+        activity: [{ icon: "eye", label: "Read Bar.qml", status: "running", at: now }] }) })
+      var title = textItem(item, "Design a robust plugin")
+      verify(title.font.weight >= Font.DemiBold, kinds[k].name + ": the title is heavy (" + title.font.weight + ")")
+      var others = []
+      function walk(it) {
+        if (!it || it.visible === false || it.opacity === 0) return
+        if (it.font !== undefined && typeof it.text === "string" && it.text !== "" && it !== title) others.push(it)
+        var kids = it.children || []
+        for (var i = 0; i < kids.length; i++) walk(kids[i])
+      }
+      walk(item)
+      verify(others.length >= 2, kinds[k].name)
+      for (var o = 0; o < others.length; o++) {
+        verify(others[o].font.weight < title.font.weight, kinds[k].name + ": '" + others[o].text + "' is lighter than the title")
+        verify(others[o].font.pixelSize <= title.font.pixelSize, kinds[k].name + ": and no larger")
+      }
+    }
+    var sub = createTemporaryObject(rowC, tc, { row: row({ parentId: "t", key: "e:s", id: "s", title: "Survey the UI kit", state: "working", rawStatus: "running", activeSince: now - 60000 }) })
+    verify(textItem(sub, "Survey the UI kit").font.weight < Font.DemiBold, "a subagent's title is a step lighter")
+  }
+
+  // The run chart is as wide as its runs, with its figures beside it: not a few bars at the left of
+  // an empty plot with the figures underneath.
+  function test_runChartHasItsFiguresBesideIt() {
+    var r = row({ state: "working", rawStatus: "running", activeSince: now - 23 * 60000 })
+    var runs = [5, 12, 3, 22, 9, 31, 14].map(function(m, i) { return { ordinal: i + 1, status: i === 3 ? "failed" : "completed", startedAt: now - (200 - i * 25) * 60000, completedAt: now, durationMs: m * 60000 } })
+      .concat([{ ordinal: 8, status: "running", startedAt: now - 23 * 60000, completedAt: null, durationMs: null }])
+    var d = createTemporaryObject(detailC, tc, { row: r, detail: { activity: [], pending: [], runs: runs, context: null, subagents: [], todo: null } })
+    var chart = named(d, "runChart")[0], figures = named(d, "runFigures")[0]
+    var bars = named(d, "runBar")
+    compare(bars.length, 8)
+    verify(chart.width <= bars[7].mapToItem(chart, bars[7].width, 0).x + 0.5, "the chart ends with its last bar: " + chart.width)
+    verify(figures.mapToItem(d, 0, 0).x >= chart.mapToItem(d, chart.width, 0).x, "the figures start to the right of the bars")
+    verify(figures.mapToItem(d, 0, 0).y < chart.mapToItem(d, 0, chart.height).y, "on the chart's own rows, not under it")
+    // Each figure on its own line, so they read as a list.
+    verify(has(d, /^current 23m 00s$/) && has(d, /^longest 31m 00s$/) && has(d, /^run 4 failed$/), texts(d).join(" | "))
+    // So many runs that the figures can't fit beside them: they go under the bars, whole.
+    var many = []
+    for (var i = 0; i < 34; i++) many.push({ ordinal: i + 1, status: "completed", startedAt: now - 1000000, completedAt: now, durationMs: (i + 1) * 60000 })
+    var wide = createTemporaryObject(detailC, tc, { row: r, detail: { activity: [], pending: [], runs: many, context: null, subagents: [], todo: null } })
+    var wideChart = named(wide, "runChart")[0], under = named(wide, "runFigures")[0]
+    verify(under.mapToItem(wide, 0, 0).y >= wideChart.mapToItem(wide, 0, wideChart.height).y, "under a chart too wide to sit beside")
+    verify(has(wide, /^longest 34m 00s$/))
+  }
+
+  // What you can press Enter on says so on its own row: a fold line carries "↵ unfold" or "↵ fold"
+  // whether or not the cursor is on it, in full ink when it is.
+  Component { id: foldC; IdleLine { width: 420; colors: tc.colors; count: 1; label: "Done" } }
+  function test_foldLinesNameTheirKey() {
+    var line = createTemporaryObject(foldC, tc)
+    var hint = textItem(line, "↵ unfold")
+    verify(hint !== null, texts(line).join(" | "))
+    compare(String(hint.color), String(Qt.color(tc.colors.textFaint)))
+    line.selected = true
+    compare(String(hint.color), String(Qt.color(tc.colors.text)), "full ink under the cursor")
+    line.open = true
+    verify(textItem(line, "↵ fold") !== null)
+    compare(Store.enterVerb({ kind: "idle-line", open: true }, true, false), "fold", "the legend says the same word")
+  }
+
+  // The lines of the facts grid mark off figures, like the tabs' and the meters' outlines: they
+  // hold 3:1 against the panel in the themes the screenshots use.
+  function test_factsGridLinesHoldThreeToOne() {
+    var themes = [tc.colors, tc.matteBlack, tc.latte]
+    var r = row({ state: "working", rawStatus: "running", activeSince: now - 60000, childCount: 3, activeChildren: 2 })
+    for (var t = 0; t < themes.length; t++) {
+      var p = createTemporaryObject(paneC, tc, { row: r, colors: themes[t], detail: { activity: [], pending: [], runs: [], subagents: [], todo: null, context: { used: 1000, max: 4000, cost: 1, currency: "USD" } } })
+      var grid = named(p, "factsGrid")[0]
+      verify(grid.visible)
+      verify(Palette.contrast(String(grid.color), themes[t].background) >= 3, "grid lines " + grid.color + " on " + themes[t].background + ": " + Palette.contrast(String(grid.color), themes[t].background).toFixed(2))
+    }
+  }
+
+  // A sentence that wraps is broken so its lines are about even: no word is left alone on the
+  // last line. It takes no more lines than plain wrapping would, and one line stays one line.
+  Component { id: balancedC; BalancedText { font.family: "monospace"; font.pixelSize: 10 } }
+  Component { id: plainTextC; Text { textFormat: Text.PlainText; wrapMode: Text.Wrap; font.family: "monospace"; font.pixelSize: 10 } }
+  function test_wrappedSentencesLeaveNoOrphan() {
+    var sentences = ["→ Retry the thread in T3; if it fails again, check the provider", "→ Restore the folder at that path, then retry the thread in T3",
+      "6 of 9 steps done  ·  now: Polish the panel and verify every theme", "→ T3 resumes it after the reset if auto-resume is on; otherwise retry it in T3"]
+    var orphansBefore = 0
+    for (var s = 0; s < sentences.length; s++) {
+      var one = createTemporaryObject(balancedC, tc, { text: sentences[s], width: 2000 })
+      compare(one.lineCount, 1)
+      var full = one.implicitWidth
+      // Widths at which plain wrapping strands the last word or two.
+      for (var cut = 6; cut <= 60; cut += 6) {
+        var width = full - cut
+        var plain = createTemporaryObject(plainTextC, tc, { text: sentences[s], width: width })
+        var b = createTemporaryObject(balancedC, tc, { text: sentences[s], width: width })
+        var where = "'" + sentences[s].slice(0, 24) + "…' at " + Math.round(width)
+        compare(b.lineCount, plain.lineCount, where + ": no more lines than plain wrapping")
+        verify(b.contentWidth <= width + 0.5, where + ": inside its width")
+        verify(b.height >= plain.height - 0.5 && b.height <= plain.height + 0.5, where + ": as tall as its lines")
+        if (plain.lineCount === 2) {
+          var lastPlain = full - plain.contentWidth
+          if (lastPlain < full * 0.2) orphansBefore++
+          // Two lines of about the same length: the longer is well short of the full width.
+          verify(b.contentWidth <= full * 0.75, where + ": the lines are balanced (longest " + Math.round(b.contentWidth) + " of " + Math.round(full) + ")")
+        }
+      }
+    }
+    verify(orphansBefore > 0, "the test met widths where plain wrapping leaves an orphan")
   }
 
   // A detail longer than the pane says so and names the keys that page it; they work, and the
@@ -846,7 +1034,12 @@ TestCase {
     compare(Math.round(mark.mapToItem(p, 0, 0).x), Math.round(current.mapToItem(p, 0, 0).x))
     compare(mark.width, current.width)
     compare(Math.round(mark.mapToItem(p, 0, mark.height).y), Math.round(current.mapToItem(p, 0, current.height).y), "the mark is the tab's own bottom edge, not a line under it")
-    compare(String(mark.color), String(Qt.color(tc.matteBlack.accent)), "in the theme's accent")
+    // "Where you are" is one colour in a theme: the tab's mark is the selection ring's. On a
+    // theme whose accent is plan amber that is ink, so nothing under the tabs passes for a plan.
+    compare(String(mark.color), String(Qt.color(tc.matteBlack.focus)), "the selection ring's colour")
+    verify(Palette.hsl(String(mark.color)).s < 0.05, "ink on matte black, not the amber accent: " + mark.color)
+    var cell = p.listView.itemAtIndex(p.cursor)
+    compare(String(named(cell, "fill")[0].border.color), String(mark.color), "the same as the selected row's ring")
     // A pairing about to lapse is told from the healthy machine beside it by shape, not colour.
     compare(named(p, "machineExpiring").filter(function(x) { return x.visible }).length, 1, "one machine is expiring")
     verify(has(p, /^pairing expires in 2d$/))
@@ -1057,7 +1250,7 @@ TestCase {
             var x = items[0].mapToItem(strip, items[0].width, 0).x
             verify(y >= top - 1 && y < bottom - 1, where + ": " + providers[q].name + " window " + k + " at y " + y + " is outside its band " + top + "–" + bottom)
             verify(x <= width + 0.5, where + ": window " + k + " runs past the edge")
-            labels.push(items[0].children[0].text)
+            labels.push(named(items[0], "usageLabel")[0].text)
           }
           var distinct = {}
           for (var d = 0; d < labels.length; d++) distinct[labels[d]] = true
@@ -1090,7 +1283,7 @@ TestCase {
     verify(has(strip, /^LIMITS USED$/))
     verify(has(strip, /^95%$/) && has(strip, /^full$/), texts(strip).join(" | "))
     compare(String(textItem(strip, "full").color), String(Qt.color(tc.colors.text)))
-    verify(has(strip, /^5-hour resets in 47m$/) && has(strip, /^5-hour resets in 1h$/), texts(strip).join(" | "))
+    verify(has(strip, /^resets in 47m$/) && has(strip, /^resets in 1h$/), texts(strip).join(" | "))
     verify(!texts(strip).some(function(t) { return /%.*resets|limit reached/.test(t) }), "no sentence in a cell: " + texts(strip).join(" | "))
     // The meters are long enough to read a share from, and drawn whole: an outline as long as the
     // limit, filled as far as the use, so 0% still shows how long 100% would be. A spent window's is full.
@@ -1114,19 +1307,22 @@ TestCase {
     for (var j = 0; j < 3; j++) compare(y("block:Claude:" + j), y("block:Claude:name"), "Claude window " + j + " on Claude's row")
     compare(x("block:Codex:0"), x("block:Claude:0"), "first windows start in one column")
     compare(x("block:Claude:1"), x("block:Codex:1"), "weekly starts at the same x on both rows")
-    // Each row's note is on that row, after its windows: Codex's where the third column starts.
-    compare(y("block:Codex:note"), y("block:Codex:name"), "Codex's reset is on Codex's row")
-    compare(y("block:Claude:note"), y("block:Claude:name"), "Claude's on Claude's")
-    compare(x("block:Codex:note"), x("block:Claude:2"), "Codex has no third window: its note starts on that column")
-    verify(x("block:Claude:note") > x("block:Claude:2"), "Claude's follows its third")
+    // Each reset line is in its own window's cell, under that window, on its provider's row.
+    var codexReset = named(shown(strip, "block:Codex:0")[0], "usageReset")[0], claudeReset = named(shown(strip, "block:Claude:0")[0], "usageReset")[0]
+    verify(codexReset.visible && claudeReset.visible)
+    verify(codexReset.mapToItem(strip, 0, 0).y < y("block:Claude:name"), "Codex's reset is above Claude's row, with Codex")
+    verify(claudeReset.mapToItem(strip, 0, 0).y > y("block:Claude:name"), "Claude's is under Claude's first line")
   }
 
   // Where a cell's parts start, in the strip's coordinates: its label, its meter and its value.
   function cellParts(strip, cell) {
-    var label = cell.children[0], meter = named(cell, "meter")[0], value = cell.children[cell.children.length - 1]
+    var label = named(cell, "usageLabel")[0], meter = named(cell, "meter")[0], value = named(cell, "usageValue")[0], reset = named(cell, "usageReset")[0]
     return { kind: cell.kind, x: Math.round(cell.mapToItem(strip, 0, 0).x), y: Math.round(cell.mapToItem(strip, 0, 0).y), label: label.text,
-      meterX: Math.round(meter.mapToItem(strip, 0, 0).x), meterWidth: meter.width, valueX: Math.round(value.mapToItem(strip, 0, 0).x),
-      right: cell.mapToItem(strip, cell.width, 0).x }
+      meterX: Math.round(meter.mapToItem(strip, 0, 0).x), meterWidth: meter.width, valueX: Math.round(value.mapToItem(strip, 0, 0).x), value: value.text,
+      // The cell's first line ends with its value; a reset line under the meter may run further.
+      right: value.mapToItem(strip, value.width, 0).x,
+      reset: reset.visible ? reset.text : "", resetX: Math.round(reset.mapToItem(strip, 0, 0).x), resetY: reset.mapToItem(strip, 0, 0).y,
+      resetRight: reset.visible ? reset.mapToItem(strip, reset.width, 0).x : 0, meterBottom: meter.mapToItem(strip, 0, meter.height).y }
   }
 
   // Usage is one grid: each kind of window has its own column, the same for every provider row.
@@ -1167,14 +1363,22 @@ TestCase {
         // A spent window fits the column's ordinary width: "full" is no wider than a percentage, so
         // Claude's weekly is not pushed away from its 5-hour by Codex's row.
         verify(Math.abs(codex[0].right - claude[0].right) <= claude[0].valueX - claude[0].meterX, where + ": the spent cell is about as wide as the other (" + Math.round(codex[0].right) + " vs " + Math.round(claude[0].right) + ")")
-        verify(claude[1].x >= Math.max(codex[0].right, claude[0].right), where + ": the next column starts after the widest entry of this one")
-        verify(claude[1].x - Math.max(codex[0].right, claude[0].right) <= strip.itemGap + 1, where + ": and only a column's gap after it (" + (claude[1].x - Math.max(codex[0].right, claude[0].right)) + ")")
-        // When Codex's spent window resets is said once, after its row, naming the window.
-        var note = shown(strip, "block:Codex:note")[0]
-        compare(note.text, L.compact ? "5h resets 47m" : "5-hour resets in 47m", where)
-        verify(note.mapToItem(strip, 0, 0).x >= codex[1].right || note.mapToItem(strip, 0, 0).y > codex[1].y, where + ": the note follows Codex's windows, or sits under them")
-        verify(note.mapToItem(strip, note.implicitWidth, 0).x <= strip.width + 0.5, where + ": and fits the band")
-        compare(shown(strip, "block:Claude:note").length, 0, where + ": Claude has nothing near its limit, so no note")
+        var widest = Math.max(codex[0].right, claude[0].right, codex[0].resetRight)
+        verify(claude[1].x >= widest, where + ": the next column starts after the widest entry of this one")
+        verify(claude[1].x - widest <= strip.itemGap + 2, where + ": and only a column's gap after it (" + (claude[1].x - widest) + ")")
+        // That widest entry is no wider than a cell and a few characters: a sentence used to be here.
+        var cellWide = Math.max(claude[0].right, codex[0].right) - claude[0].x
+        verify(widest - claude[0].x <= cellWide + 3 * Typo.caption, where + ": the column is about one cell wide (" + Math.round(widest - claude[0].x) + " vs " + Math.round(cellWide) + ")")
+        // When Codex's spent window resets is said under that window's own meter, so "full" is
+        // followed by what it means, and it stays inside the column.
+        compare(codex[0].value, "full", where)
+        compare(codex[0].reset, "resets in 47m", where)
+        verify(codex[0].resetX === codex[0].meterX || codex[0].resetX === codex[0].x, where + ": it starts under the meter, or under the label where the cell is too narrow for that")
+        if (!L.compact && bumps[b] === 0) compare(codex[0].resetX, codex[0].meterX, where + ": under the meter in the window at the shell's own text size")
+        verify(codex[0].resetY >= codex[0].meterBottom - 0.5, where + ": below it")
+        verify(codex[0].resetRight <= claude[1].x, where + ": and ends before the next column (" + Math.round(codex[0].resetRight) + " vs " + claude[1].x + ")")
+        compare(codex[1].reset, "", where + ": a window with room left adds nothing")
+        claude.forEach(function(c) { compare(c.reset, "", where + ": Claude has nothing near its limit") })
         // The kind only Claude has keeps a column of its own, clear of weekly on either row.
         verify(claude[2].x >= Math.max(claude[1].right, codex[1].right) || claude[2].y > claude[1].y, where + ": 'weekly · Fable' has its own column")
         var lengths = {}

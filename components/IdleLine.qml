@@ -55,13 +55,14 @@ Item {
     }
   }
 
-  // What the line does, in the legend's words, so it reads as something to open and not as a
-  // heading; with the cursor on it, the key that does it.
+  // What the line does and the key that does it, in the legend's words ("↵ unfold"), so it reads
+  // as something to open and not as a heading. The key is always there, dim until the cursor is
+  // on the line: j and k reach it like any row.
   Text {
     anchors.right: parent.right
     anchors.rightMargin: Style.space(10)
     anchors.verticalCenter: parent.verticalCenter
-    text: (root.selected ? "↵ " : "") + (root.open ? "fold" : "unfold")
+    text: "↵ " + (root.open ? "fold" : "unfold")
     textFormat: Text.PlainText
     color: root.selected ? root.colors.text : root.colors.textFaint
     font.family: root.fontFamily

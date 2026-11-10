@@ -77,9 +77,21 @@ Item {
     return false
   }
 
-  // Fixed chrome height + list content: lets KeyboardPanel fit the card to content.
-  // Two-pane takes the full card height so the panes don't jump as the selection changes.
-  implicitHeight: centered ? Style.space(2400)
+  // Chrome + what there is to show + footer: the card is as tall as its content, up to the limit
+  // its window sets. In the two-pane window that is the taller of the list and the selected
+  // thread's detail, so a view of six threads no longer leaves the lower half of both panes empty
+  // above a dense footer; a long list or a long detail still takes the full height and scrolls.
+  // The card's top stays put (see CenteredWindow), so as the selection changes only its foot moves.
+  readonly property real bodyFloor: Style.space(visible_.length === 0 ? 40 : 150)
+  readonly property real bodySettled: Math.max(bodyFloor, list.contentHeight, detailPane.item ? detailPane.item.naturalHeight : 0)
+  // A thread whose detail hasn't arrived yet is short for a moment: the card keeps the height it
+  // had, and takes the new one when the detail is there, in one step instead of two.
+  readonly property bool bodyPending: detailPane.item !== null && detailPane.item.loading
+  property real bodyHeld: 0
+  onBodySettledChanged: if (!bodyPending) bodyHeld = bodySettled
+  onBodyPendingChanged: if (!bodyPending) bodyHeld = bodySettled
+  readonly property real bodyHeight: disconnected ? 0 : bodyPending ? Math.max(bodySettled, bodyHeld) : bodySettled
+  implicitHeight: centered ? chrome.implicitHeight + Style.space(10) + bodyHeight + Style.space(8) + footer.implicitHeight
     : chrome.implicitHeight + Style.space(10) + Math.min(list.contentHeight, Style.space(900)) + Style.space(8) + footer.implicitHeight
 
   // Two-pane selection: the thread shown on the right. Always the item under the cursor.
@@ -464,9 +476,9 @@ Item {
           // and its words in full ink; the rest dimmer. No hue: the six that need you are of three
           // kinds with three colours, and the count in any one of them (it used to be the worst
           // kind's, so usually failure red) said something untrue about the others. The ring beside
-          // it shows the kinds. With something waiting the line spells out the Active tab's number
-          // ("6 NEED YOU + 7 WORKING = 13 ACTIVE"), and the parts after it add up to All. If the sum
-          // doesn't fit the line, it goes and the "+" stays.
+          // it shows the kinds. The line has those two counts and no more: every other count is on
+          // its tab, one line down, and saying them twice made both harder to read. The "+" says the
+          // two add up, to the Active tab's number.
           Item {
             id: countsLine
             width: parent.width
@@ -495,7 +507,7 @@ Item {
                 font.bold: true
               }
             }
-            function styled(sum) {
+            function styled() {
               function tint(color, words) { return "<font color=\"" + color + "\">" + words + "</font>" }
               var alarm = root.colors.attentionInk
               if (!root.service) return "SERVICE NOT LOADED"
@@ -506,7 +518,7 @@ Item {
               var quiet = root.colors.textFaint
               if (root.disconnected) return tint(alarm, "NOT CONNECTED") + sep + Format.plural(root.link.total, "MACHINE", "MACHINES")
               var tones = { needs: root.colors.text, strong: root.colors.textDim, quiet: quiet }
-              var parts = Store.headerCounts(root.tally, sum)
+              var parts = Store.headerCounts(root.tally)
               var out = ""
               for (var i = 0; i < parts.length; i++) {
                 if (i > 0) out += parts[i].join ? tint(quiet, "&nbsp;" + parts[i].join + "&nbsp;") : sep
@@ -516,20 +528,12 @@ Item {
               if (root.link.connected !== root.link.total) out += sep + tint(alarm, root.link.connected + " OF " + root.link.total + " MACHINES CONNECTED")
               return out
             }
-            // The line with the sum spelled out, measured to see whether it fits.
-            Text {
-              id: countsFull
-              visible: false
-              text: countsLine.styled(true)
-              textFormat: Text.StyledText
-              font: counts.font
-            }
             Text {
               id: counts
               x: countsLine.textX
               anchors.verticalCenter: parent.verticalCenter
               width: parent.width - x
-              text: countsFull.implicitWidth <= width ? countsFull.text : countsLine.styled(false)
+              text: countsLine.styled()
               textFormat: Text.StyledText
               color: root.colors.textDim
               font.family: root.fontFamily
@@ -577,7 +581,8 @@ Item {
           // everywhere, and each count is the header's.
           options: [
             { value: "attention", label: "   " + Store.VIEW_LABEL.attention + "  " + root.needCount, tooltip: "1" },
-            { value: "active", label: "   " + Store.VIEW_LABEL.active + "  " + root.activeCount, tooltip: "2" },
+            // The Active tab's hover says how its number is made; the Active view's sections show it.
+            { value: "active", label: "   " + Store.VIEW_LABEL.active + "  " + root.activeCount, tooltip: "2 · " + Store.activeSum(root.tally) },
             { value: "done", label: "   " + Store.VIEW_LABEL.done + "  " + root.doneCount, tooltip: "3" },
             { value: "all", label: "   " + Store.VIEW_LABEL.all + "  " + root.allCount, tooltip: "4" }
           ]
@@ -644,8 +649,10 @@ Item {
           }
         }
         // The current view: the shell's selected fill and bold, and one mark of ours, the tab's
-        // bottom edge in the theme's accent (the fill alone is faint). The accent is the theme's
-        // own colour for "where you are"; nothing else in the panel uses it but the selection ring.
+        // bottom edge (the fill alone is faint). It is the selection ring's colour, so "where you
+        // are" is one colour in a theme, on the tabs and in the list: the accent where the accent is
+        // clear of the needs-you hues, ink where it is not (an amber accent under the tabs read as
+        // one more "plan ready").
         Rectangle {
           objectName: "tabMark"
           readonly property Item tab: {
@@ -657,7 +664,7 @@ Item {
           y: filters.y + filters.height - height
           width: tab ? tab.width : 0
           height: Style.space(3)
-          color: root.colors.accent
+          color: root.colors.focus
         }
         // The filter box is one of the row's controls: the tabs' height, top edge and border.
         FilterField {

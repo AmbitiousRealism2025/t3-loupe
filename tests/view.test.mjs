@@ -355,30 +355,26 @@ test("usage windows are named from T3's label, qualifiers kept, every label dist
   assert.match(Store.USAGE_HEADING, /\bUSED\b/);
 });
 
-test("when a spent or nearly spent window resets is said after its row, not in its cell", () => {
+test("a spent or nearly spent window says when it resets, under its own meter", () => {
   const now = 10_000_000;
-  const w = (label, durationMins, usedPercent, resetsIn) => ({ label, durationMins, usedPercent, resetsAt: resetsIn ? now + resetsIn : 0 });
-  const claude = { name: "Claude", windows: [w("Session", 300, 38, 140 * 60_000), w("Weekly", 10080, 61, 3 * 86400_000), w("Weekly · Fable", 10080, 4, 3 * 86400_000)] };
-  const codex = { name: "Codex", windows: [w("Session", 300, 100, 47 * 60_000), w("Weekly", 10080, 82, 5 * 86400_000)] };
-  const grid = Store.usageGrid([claude, codex], false);
-  assert.equal(Store.usageNote(grid.rows[0], grid.columns, now, false), "", "nothing near its limit: nothing to say");
-  assert.equal(Store.usageNote(grid.rows[1], grid.columns, now, false), "5-hour resets in 47m");
-  const compact = Store.usageGrid([claude, codex], true);
-  assert.equal(Store.usageNote(compact.rows[1], compact.columns, now, true), "5h resets 47m");
-  // Each window at 90% or more is named, by its kind.
-  const both = Store.usageGrid([{ name: "Claude", windows: [w("Session", 300, 95, 3600_000), w("Weekly", 10080, 100, 2 * 86400_000)] }], false);
-  assert.equal(Store.usageNote(both.rows[0], both.columns, now, false), "5-hour resets in 1h  ·  weekly resets in 2d");
-  assert.equal(Store.usageNote(Store.usageGrid([{ name: "X", windows: [w("Session", 300, 100, 0)] }], false).rows[0], ["5-hour"], now, false), "", "no reset time known");
+  // Under the window it is about, so it needs no name; short, so it stays in the window's column.
+  assert.equal(Store.windowReset({ usedPercent: 100, resetsAt: now + 47 * 60_000 }, now), "resets in 47m");
+  assert.equal(Store.windowReset({ usedPercent: 95, resetsAt: now + 3600_000 }, now), "resets in 1h");
+  assert.equal(Store.windowReset({ usedPercent: 90, resetsAt: now + 2 * 86400_000 }, now), "resets in 2d");
+  // A window with room left has nothing to add; nor has one whose reset time isn't known.
+  assert.equal(Store.windowReset({ usedPercent: 89, resetsAt: now + 3600_000 }, now), "");
+  assert.equal(Store.windowReset({ usedPercent: 100, resetsAt: 0 }, now), "");
+  assert.equal(Store.windowReset(null, now), "");
+  for (const mins of [1, 47, 600, 4000, 20000]) assert.ok(Store.windowReset({ usedPercent: 100, resetsAt: now + mins * 60_000 }, now).length <= 14, String(mins));
+});
 
-  // Where it goes: on the grid, where the next column would start, if it fits; else a line below.
-  const lines = Store.usageLines([100, 60, 80], 400, 10);
-  const place = (row, room, noteWidth) => ({ ...Store.usageNotePlace(row, lines, [100, 60, 80], 10, room, noteWidth) });
-  assert.deepEqual(place(grid.rows[1], 400, 120), { line: 0, x: 180 }, "Codex has no third window: its note starts at that column");
-  assert.deepEqual(place(grid.rows[0], 400, 120), { line: 0, x: 270 }, "after a full row, past the last column");
-  assert.deepEqual(place(grid.rows[0], 380, 120), { line: 1, x: 0 }, "no room: a line of its own");
-  const wrapped = Store.usageLines([100, 60, 80], 200, 10);
-  assert.deepEqual({ ...Store.usageNotePlace(grid.rows[1], wrapped, [100, 60, 80], 10, 300, 100) }, { line: 0, x: 180 }, "Codex uses only the first line; the note follows it there");
-  assert.deepEqual({ ...Store.usageNotePlace(grid.rows[0], wrapped, [100, 60, 80], 10, 300, 100) }, { line: 1, x: 90 }, "Claude's follows its second line");
+test("background subagents with no threads of their own say where to look", () => {
+  const now = 10_000_000;
+  const own = Store.statusCallout(r("b", "background", { background: { subagents: 2, commands: 0, monitors: 0, other: 0 }, childCount: 2 }), now, false);
+  assert.equal(own.next, "", "their threads are listed under the row: Enter shows them");
+  const none = Store.statusCallout(r("b", "background", { background: { subagents: 2, commands: 0, monitors: 0, other: 0 }, childCount: 0 }), now, false);
+  assert.match(none.next, /T3 shows what each one is doing/);
+  assert.equal(Store.enterVerb(r("b", "background", { childCount: 0 }), true, false), "", "and Enter is not offered for what it can't do");
 });
 
 test("usage is one grid: a column per kind of window, shared by every provider", () => {
@@ -415,22 +411,26 @@ test("usage columns too wide for the band break at the same column on every row"
   assert.deepEqual(lines([], 100), [[]]);
 });
 
-test("what needs you has one name, and the header spells out how the Active tab's number is made", () => {
+test("what needs you has one name; the header says two counts and leaves the rest to the tabs", () => {
   assert.deepEqual({ ...Store.VIEW_LABEL }, { attention: "Needs you", active: "Active", done: "Done", all: "All" });
-  const line = (t, sum) => Array.from(Store.headerCounts(t, sum), (p, i) => (i ? (p.join ? ` ${p.join} ` : " · ") : "") + p.text).join("");
+  const line = (t) => Array.from(Store.headerCounts(t), (p, i) => (i ? (p.join ? ` ${p.join} ` : " · ") : "") + p.text).join("");
   const rows = [r("in", "input"), r("pl", "plan"), r("f", "failed", { rawStatus: "failed" }), r("lim", "limited", { rawStatus: "failed" }),
     r("w", "working", { rawStatus: "running" }), r("d", "review"), r("s", "stopped", { rawStatus: "interrupted" }), r("i", "idle", { rawStatus: "" })];
   const t = Store.tally(rows);
-  assert.equal(line(t), "3 NEED YOU + 2 WORKING = 5 ACTIVE · 1 DONE · 1 STOPPED · 1 IDLE");
-  // The sum on the line is the Active tab's count, and the parts after it add up to All.
+  // What needs you and what is working, joined by the plus that makes them the Active tab's number.
+  assert.equal(line(t), "3 NEED YOU + 2 WORKING");
   assert.equal(t.needs + t.working, Store.filterCount(rows, "active"));
-  assert.equal(t.active + t.done + t.stopped + t.other, Store.filterCount(rows, "all"));
-  // Where the line has no room for the sum, the plus sign still says the two belong together.
-  assert.equal(line(t, false), "3 NEED YOU + 2 WORKING · 1 DONE · 1 STOPPED · 1 IDLE");
-  assert.equal(line(Store.tally([r("a", "input")])), "1 NEEDS YOU + 0 WORKING = 1 ACTIVE · 0 DONE");
+  // No count the tabs already show is repeated above them.
+  assert.ok(!/ACTIVE|DONE|STOPPED|IDLE|ALL/.test(line(t)), line(t));
+  assert.equal(line(Store.tally([r("a", "input")])), "1 NEEDS YOU + 0 WORKING");
   // Nothing waiting: nothing to add up.
-  assert.equal(line(Store.tally([r("w", "working"), r("d", "review")])), "NOTHING NEEDS YOU · 1 WORKING · 1 DONE");
-  assert.deepEqual(Array.from(Store.headerCounts(t), (p) => p.tone), ["needs", "strong", "quiet", "quiet", "quiet", "quiet"]);
+  assert.equal(line(Store.tally([r("w", "working"), r("d", "review")])), "NOTHING NEEDS YOU · 1 WORKING");
+  assert.deepEqual(Array.from(Store.headerCounts(t), (p) => p.tone), ["needs", "strong"]);
+  // The arithmetic is still said in full where the Active tab is asked about: its hover.
+  assert.equal(Store.activeSum(t), "5 active: 3 need you + 2 working");
+  assert.equal(Store.activeSum(Store.tally([r("a", "input")])), "1 active: 1 needs you + 0 working");
+  // The parts still add up to All, as the tabs' counts do.
+  assert.equal(t.active + t.done + t.stopped + t.other, Store.filterCount(rows, "all"));
 });
 
 test("detail metadata lists whole items", () => {

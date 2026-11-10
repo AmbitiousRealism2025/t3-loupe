@@ -149,6 +149,9 @@ Item {
           color: root.child || root.row.state === "idle" || root.row.state === "stopped" ? root.colors.textDim : root.colors.text
           font.family: root.fontFamily
           font.pixelSize: root.child ? Typo.caption : Typo.bodySmall
+          // A thread's title is the heaviest thing on its row; a subagent's is a step lighter, and
+          // everything on the second line lighter again, so a dense list scans by its titles.
+          font.weight: root.child ? Font.Normal : Font.DemiBold
           wrapMode: Text.Wrap
           maximumLineCount: 2
           elide: Text.ElideRight

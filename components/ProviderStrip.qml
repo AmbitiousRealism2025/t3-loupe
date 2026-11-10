@@ -6,15 +6,17 @@ import "../lib/Store.js" as Store
 // Provider usage limits beside their heading, as one grid: a row per provider, a column per kind
 // of window, the same columns for every row.
 //   LIMITS USED  Claude  5-hour ▭ 38%    weekly ▭ 61%   weekly · Fable ▭ 4%
-//                Codex   5-hour ▮ full   weekly ▭ 82%   5-hour resets in 47m
+//                Codex   5-hour ▮ full   weekly ▭ 82%
+//                               resets in 47m
 // The heading says which way the numbers count: they are the share of each limit used.
 // Each column holds one kind of window (its label, meter and value) and is as wide as its widest
 // entry on any row, so "weekly" starts at the same x for every provider and the meters line up. A
 // provider without that kind leaves the cell empty. A cell's value is short, a percentage or
-// "full", so no row's words push another row's windows apart; when a spent or nearly spent window
-// resets is said once, after its row. If the band is too narrow for every column, the last ones
-// move to a second line of each provider's row, at the same column for all (Store.usageLines).
-// Ink meters; a spent window's is full.
+// "full", so no row's words push another row's windows apart. A spent or nearly spent window says
+// when it resets on a line of its own under its meter: that is what "full" means for you, and
+// there it belongs to its window without having to name it. If the band is too narrow for every
+// column, the last ones move to a second line of each provider's row, at the same column for all
+// (Store.usageLines). Ink meters; a spent window's is full.
 // Providers that report no usage are left out.
 Row {
   id: root
@@ -86,35 +88,65 @@ Row {
   // One window: its kind, a meter as long as the limit, and how much of it is used. A spent
   // window's meter is full and its words are full-weight ink. No colour: a limit is a wait, not
   // a failure.
-  component UsageCell: Row {
+  component UsageCell: Column {
+    id: usageCell
     property var win: null
     property string label: ""
     readonly property bool spent: win !== null && win.usedPercent >= 100
-    spacing: body.gap
-    Text {
-      anchors.verticalCenter: parent.verticalCenter
-      text: parent.label
-      textFormat: Text.PlainText
-      color: root.colors.textFaint
-      font.family: root.fontFamily
-      font.pixelSize: Typo.caption
+    // When a spent or nearly spent window resets; "" otherwise.
+    readonly property string reset: Store.windowReset(win, root.now)
+    Row {
+      id: firstLine
+      height: root.rowTall
+      spacing: body.gap
+      Text {
+        id: kindText
+        objectName: "usageLabel"
+        anchors.verticalCenter: parent.verticalCenter
+        text: usageCell.label
+        textFormat: Text.PlainText
+        color: root.colors.textFaint
+        font.family: root.fontFamily
+        font.pixelSize: Typo.caption
+      }
+      Meter {
+        anchors.verticalCenter: parent.verticalCenter
+        width: body.meterWidth
+        value: usageCell.win ? usageCell.win.usedPercent / 100 : 0
+        ink: root.colors.text
+        danger: root.colors.text
+        track: root.colors.edge
+      }
+      Text {
+        objectName: "usageValue"
+        anchors.verticalCenter: parent.verticalCenter
+        text: usageCell.win ? Store.windowValue(usageCell.win) : ""
+        textFormat: Text.PlainText
+        color: usageCell.win && usageCell.win.usedPercent >= 90 ? root.colors.text : root.colors.textDim
+        font.family: root.fontFamily
+        font.pixelSize: Typo.caption
+        font.weight: usageCell.spent ? Font.DemiBold : Font.Normal
+      }
     }
-    Meter {
-      anchors.verticalCenter: parent.verticalCenter
-      width: body.meterWidth
-      value: parent.win ? parent.win.usedPercent / 100 : 0
-      ink: root.colors.text
-      danger: root.colors.text
-      track: root.colors.edge
-    }
-    Text {
-      anchors.verticalCenter: parent.verticalCenter
-      text: parent.win ? Store.windowValue(parent.win) : ""
-      textFormat: Text.PlainText
-      color: parent.win && parent.win.usedPercent >= 90 ? root.colors.text : root.colors.textDim
-      font.family: root.fontFamily
-      font.pixelSize: Typo.caption
-      font.weight: parent.spent ? Font.DemiBold : Font.Normal
+    // Under the meter, so it reads as this window's; where that would make the cell wider than
+    // its first line (the dropdown's short labels and meters), under the label instead, so it
+    // still doesn't widen the column. (In an Item as wide as the indent and the words together:
+    // the cell's width, and so its column's, has to count the indent.)
+    Item {
+      visible: usageCell.reset !== ""
+      width: resetText.x + resetText.implicitWidth
+      height: resetText.implicitHeight
+      Text {
+        id: resetText
+        objectName: "usageReset"
+        visible: text !== ""
+        x: kindText.width + body.gap + implicitWidth <= firstLine.width ? kindText.width + body.gap : 0
+        text: usageCell.reset
+        textFormat: Text.PlainText
+        color: root.colors.text
+        font.family: root.fontFamily
+        font.pixelSize: Typo.caption
+      }
     }
   }
 
@@ -190,24 +222,7 @@ Row {
             id: block
             required property var modelData
             width: blocks.width
-            height: Math.max(root.rowTall, lineColumn.implicitHeight, note.visible ? (note.place.line + 1) * root.rowTall + note.place.line * root.rowGap : 0)
-            // When a spent or nearly spent window resets ("5-hour resets in 47m"): after the row's
-            // windows, starting on the grid where the next column would, or on a line of its own
-            // if there is no room. It is not in the window's cell, where it would widen a column
-            // every provider shares.
-            Text {
-              id: note
-              objectName: "block:" + block.modelData.name + ":note"
-              readonly property var place: Store.usageNotePlace(block.modelData, root.lines, root.columnWidths, root.itemGap, block.width - lineColumn.x, implicitWidth)
-              visible: text !== ""
-              x: lineColumn.x + place.x
-              y: place.line * (root.rowTall + root.rowGap) + (root.rowTall - height) / 2
-              text: Store.usageNote(block.modelData, root.grid.columns, root.now, root.compact)
-              textFormat: Text.PlainText
-              color: root.colors.text
-              font.family: root.fontFamily
-              font.pixelSize: Typo.caption
-            }
+            height: Math.max(root.rowTall, lineColumn.implicitHeight)
             Item {
               height: root.rowTall
               width: nameText.implicitWidth
@@ -238,7 +253,15 @@ Row {
                     return false
                   }
                   width: block.width - lineColumn.x
-                  height: root.rowTall
+                  // One row tall, or two where one of this provider's windows here says when it resets.
+                  readonly property bool resets: {
+                    for (var i = 0; i < modelData.length; i++) {
+                      var c = block.modelData.cells[modelData[i].column]
+                      if (c && Store.windowReset(c.window, root.now) !== "") return true
+                    }
+                    return false
+                  }
+                  height: root.rowTall + (resets ? lineProbe.implicitHeight : 0)
                   Repeater {
                     model: line.modelData
                     UsageCell {
@@ -249,7 +272,6 @@ Row {
                       objectName: cell ? "block:" + block.modelData.name + ":" + cell.index : ""
                       visible: cell !== null
                       x: modelData.x
-                      anchors.verticalCenter: parent.verticalCenter
                       win: cell ? cell.window : null
                       label: kind
                     }

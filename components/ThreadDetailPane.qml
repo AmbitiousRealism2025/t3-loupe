@@ -24,39 +24,20 @@ Item {
   // How copying this thread's title just ended: "" | "ok" | "failed". Shown on the copy action.
   property string copyState: ""
 
-  // d / u: a page down or up through a detail longer than the pane.
+  // How tall the detail is on its own, whatever the pane's height: the window sizes itself to it.
+  readonly property real naturalHeight: hasRow ? column.implicitHeight - column.bottomPadding + Style.space(6) : 0
+  // Still waiting for T3 to send this thread's detail: its height is not known yet.
+  readonly property bool loading: hasRow && detail === null && !restView.waited
   // Scrollable: the detail itself (without the room kept for the scroll strip) is taller than the pane.
   readonly property bool scrollable: column.implicitHeight - column.bottomPadding > flick.height + 2
   readonly property bool moreBelow: scrollable && flick.contentY + flick.height < flick.contentHeight - 2
   readonly property bool moreAbove: scrollable && flick.contentY > 2
+  // d / u: a page down or up through a detail longer than the pane.
   function page(direction) {
     var step = Math.max(Style.space(40), flick.height * 0.8)
     var maxY = Math.max(0, flick.contentHeight - flick.height)
     flick.contentY = Math.max(0, Math.min(maxY, flick.contentY + direction * step))
   }
-
-  // The thread's actions, labelled with their keys (o, c and p also work from anywhere in the panel).
-  // Always on a line of their own, from the pane's left edge, so they are in the same place on
-  // every thread; the PR action comes last because not every thread has one.
-  // short: "open" and "copy", for when the line is too narrow for the full labels.
-  component ActionKeys: Row {
-    property bool short: false
-    spacing: Style.space(16)
-    KeyAction { key: "o"; text: parent.short ? "open" : "open T3"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily; onClicked: root.actionRequested("focus") }
-    KeyAction {
-      key: "c"; text: parent.short ? "copy" : "copy title"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily
-      feedback: root.copyState === "ok" ? "✓ copied" : root.copyState === "failed" ? "copy failed" : ""
-      feedbackInk: root.copyState === "failed" ? root.colors.attentionInk : root.colors.text
-      onClicked: root.actionRequested("copy")
-    }
-    KeyAction {
-      visible: root.hasRow && !!root.row.pr && root.row.pr.url !== ""
-      key: "p"; text: parent.short ? "PR" : "open PR"; quiet: true; colors: root.colors; fontFamily: root.fontFamily; monoFamily: root.monoFamily
-      onClicked: root.actionRequested("pr")
-    }
-  }
-  // The space the action row keeps before the pane's edge (and the scrollbar beyond it).
-  readonly property real actionsMargin: Style.space(16)
 
   readonly property bool hasRow: row !== null && row !== undefined
   // A new thread starts at its top; an update to the same thread keeps its place.
@@ -188,17 +169,24 @@ Item {
           readonly property int count: root.hasRow ? Store.metaParts(root.row, root.machineLabel).length : 0
         }
 
-        // The actions: one line, in the same place on every thread. A key label never wraps; if the
-        // full labels don't fit, the short ones do.
+        // The actions, for a thread with nothing to hand off: one line under where it runs. A
+        // thread that needs you, or has anything else to say first, leads with a block that ends in
+        // these same actions (see DetailView), next to the step they carry out, so they are not
+        // drawn here as well.
         Item {
+          visible: !leadView.hasLead
           width: parent.width
           height: actions.implicitHeight + Style.space(2)
-          // Measured, not shown: the full labels' width decides which labels are used.
-          ActionKeys { id: fullActions; opacity: 0; enabled: false; y: -10000 }
-          ActionKeys {
+          ThreadActions {
             id: actions
             anchors.bottom: parent.bottom
-            short: fullActions.implicitWidth + root.actionsMargin > parent.width
+            width: parent.width
+            row: root.row
+            colors: root.colors
+            fontFamily: root.fontFamily
+            monoFamily: root.monoFamily
+            copyState: root.copyState
+            onActionRequested: function(action) { root.actionRequested(action) }
           }
         }
       }
@@ -211,6 +199,7 @@ Item {
         topPadding: 0
         paneMode: true
         part: "lead"
+        copyState: root.copyState
         row: root.hasRow ? root.row : ({})
         detail: root.detail
         colors: root.colors
@@ -222,11 +211,15 @@ Item {
 
       // Facts: a hairline grid of label / value / note cells, as many columns as fit cells about
       // 210 px wide (two in the usual pane), so a value and its note each stay on one line.
+      // The grid's lines are the edge tone (3:1 on the panel), like every other outline that marks
+      // off a control or a figure: the tabs, the keycaps, the meters. They were the faint rule
+      // colour, which measured 1.4:1.
       Rectangle {
+        objectName: "factsGrid"
         visible: root.facts.length > 0
         width: parent.width
         height: factsGrid.implicitHeight + 2
-        color: root.colors.line
+        color: root.colors.edge
         radius: Style.cornerRadius
         Grid {
           id: factsGrid
@@ -290,6 +283,7 @@ Item {
       }
 
       DetailView {
+        id: restView
         width: parent.width
         topPadding: 0
         paneMode: true
