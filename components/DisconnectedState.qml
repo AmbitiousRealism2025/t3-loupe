@@ -12,6 +12,19 @@ Column {
   property double now: Date.now()
   property string fontFamily: Style.font.family
   property string monoFamily: "monospace"
+  // The commands that can be copied, in order: [{ id (machine), text }]. Command n is copied by
+  // the digit key n, shown as a keycap on its block; clicking the keycap does the same.
+  property var commands: []
+  // The panel's last copy: what ("command:<machine id>") and how it ended ("" | "ok" | "failed").
+  property string copyTarget: ""
+  property string copyResult: ""
+
+  signal copyRequested(string id, string text)
+
+  function commandIndex(id) {
+    for (var i = 0; i < commands.length; i++) if (commands[i].id === id) return i
+    return -1
+  }
 
   readonly property bool allExpired: {
     for (var i = 0; i < environments.length; i++)
@@ -62,6 +75,9 @@ Column {
       required property var modelData
       readonly property var step: Store.repairStep(modelData)
       readonly property bool ok: Store.environmentOk(modelData.state)
+      // This machine's place among the copyable commands: its digit key is place + 1.
+      readonly property int place: root.commandIndex(modelData.id)
+      readonly property string copied: root.copyTarget === "command:" + modelData.id ? root.copyResult : ""
       width: root.width
       height: cardBody.implicitHeight + Style.space(22)
       radius: Style.cornerRadius
@@ -116,11 +132,11 @@ Column {
           font.family: root.fontFamily
           font.pixelSize: Typo.caption
         }
-        // The command to run, set as code: it is meant to be read and typed.
+        // The command to run, set as code, with the key that copies it at its right end.
         Rectangle {
           visible: card.step.kind === "command"
           width: parent.width
-          height: cmd.implicitHeight + Style.space(14)
+          height: Math.max(cmd.implicitHeight, copyKey.visible ? copyKey.implicitHeight : 0) + Style.space(14)
           radius: Style.cornerRadius
           color: root.colors.background
           border.width: 1
@@ -128,8 +144,10 @@ Column {
           Text {
             id: cmd
             x: Style.space(10)
-            y: Style.space(7)
-            width: parent.width - Style.space(20)
+            anchors.verticalCenter: parent.verticalCenter
+            // Room is kept for the copy action at its widest ("copy failed"), so the command
+            // doesn't re-wrap while the outcome shows.
+            width: parent.width - Style.space(20) - (copyKey.visible ? copyProbe.implicitWidth + Style.space(52) : 0)
             text: "$ " + card.step.text
             textFormat: Text.PlainText
             color: root.colors.text
@@ -137,6 +155,23 @@ Column {
             font.pixelSize: Typo.caption
             wrapMode: Text.WrapAtWordBoundaryOrAnywhere
           }
+          KeyAction {
+            id: copyKey
+            visible: card.place >= 0
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(10)
+            anchors.verticalCenter: parent.verticalCenter
+            key: String(card.place + 1)
+            text: "copy"
+            feedback: card.copied === "ok" ? "✓ copied" : card.copied === "failed" ? "copy failed" : ""
+            feedbackInk: card.copied === "failed" ? root.colors.attentionInk : root.colors.text
+            quiet: true
+            colors: root.colors
+            fontFamily: root.fontFamily
+            monoFamily: root.monoFamily
+            onClicked: root.copyRequested(card.modelData.id, card.step.text)
+          }
+          Text { id: copyProbe; visible: false; text: "copy failed"; textFormat: Text.PlainText; font.family: root.fontFamily; font.pixelSize: Typo.caption; font.weight: Font.Medium }
         }
         Text {
           visible: card.step.kind === "note"

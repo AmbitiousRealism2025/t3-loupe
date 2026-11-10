@@ -2,6 +2,7 @@ import QtQuick
 import qs.Commons
 import "../lib/Store.js" as Store
 import "../lib/Format.js" as Format
+import "../lib/Palette.js" as Palette
 
 // One thread. Collapsed: state, title, context line, live activity, chips.
 // Expanded: DetailView with pending request text, activity trail, runs, context, subagents.
@@ -33,7 +34,8 @@ Item {
   readonly property var activity: Store.currentActivity(row)
   readonly property real indent: child ? Style.space(22) : 0
 
-  readonly property string elapsedText: Format.elapsed(row, now, Store.BUSY[row.state] === true)
+  // The time with the word that says what kind of time it is, as on the two-pane rows.
+  readonly property string elapsedText: Format.rowTime(row, now, Store.BUSY[row.state] === true)
 
   readonly property string metaText: {
     var parts = []
@@ -48,15 +50,16 @@ Item {
 
   Rectangle {
     id: card
+    objectName: "fill"
     x: root.indent
     width: root.width - root.indent
     height: content.implicitHeight + Style.space(root.child ? 12 : 18)
     radius: Style.cornerRadius
-    // Shell state fills: normal / hover / selected. Rows that need you get a rail in their colour,
-    // and those waiting on your answer a faint wash too; the selected card an accent outline.
-    color: root.selected ? root.colors.surfaceSelected
+    // Normal / hover / selected. Rows that need you get a rail in their colour, and those waiting on
+    // your answer a faint wash too, which they keep while selected; the selected card adds the ring.
+    color: root.selected ? (root.row.state === "input" ? Palette.wash(root.colors.surfaceSelected, root.tone) : root.colors.surfaceSelected)
       : hover.hovered ? Style.hoverFillFor(root.colors.text, root.colors.accent)
-      : root.row.state === "input" ? Qt.tint(root.colors.surface, Qt.rgba(root.tone.r, root.tone.g, root.tone.b, 0.07))
+      : root.row.state === "input" ? Palette.wash(root.colors.surface, root.tone)
       : root.child ? "transparent" : root.colors.surface
     border.width: root.selected ? Style.space(2) : 0
     border.color: root.colors.focus
@@ -106,7 +109,7 @@ Item {
           color: root.row.state === "idle" || root.row.state === "stopped" ? root.colors.textDim : root.colors.text
           font.family: root.fontFamily
           font.pixelSize: root.child ? Typo.caption : Typo.body
-          font.weight: root.child ? Font.Normal : Font.Medium
+          font.weight: root.child ? Font.Normal : Font.DemiBold
           wrapMode: Text.Wrap
           maximumLineCount: root.expanded ? 3 : 2
           elide: Text.ElideRight
@@ -139,11 +142,12 @@ Item {
         }
       }
 
-      // project · branch · model
+      // project · branch · model. It stops short of the state word in the right column, which hangs
+      // down beside it: a long branch name is cut before it can run into "Run command?".
       ElidedText {
         visible: fullText !== "" && !root.child
         x: glyph.width + Style.space(8)
-        width: parent.width - x
+        width: parent.width - x - right.width - Style.space(16)
         fullText: root.metaText
         color: root.colors.textFaint
         font.family: root.fontFamily
@@ -160,7 +164,7 @@ Item {
           id: actIcon
           anchors.verticalCenter: parent.verticalCenter
           name: root.activity ? root.activity.icon : "zap"
-          color: root.activity && root.activity.status === "running" ? root.colors.accentInk : root.colors.textDim
+          color: root.activity && root.activity.status === "running" ? root.colors.workingInk : root.colors.textDim
           size: Math.round(Typo.caption * 1.25)
         }
         ElidedText {

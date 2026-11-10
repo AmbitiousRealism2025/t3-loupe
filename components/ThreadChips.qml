@@ -3,7 +3,8 @@ import qs.Commons
 import "../lib/Format.js" as Format
 import "../lib/Store.js" as Store
 
-// Tags for a thread (dropdown cards): neutral ink; only failures and failing checks use attention.
+// Facts about a thread (dropdown cards), each an icon and a few words: neutral ink; only failures
+// and failing checks use attention. Plain, not boxed: they are facts to read, not buttons.
 Flow {
   id: root
   property var row: ({})
@@ -28,12 +29,12 @@ Flow {
   readonly property bool showPlan: row.plan === true && !child
   readonly property bool anyVisible: showError || showSubs || showTasks || showPr || showCtx || showPlan
 
-  spacing: Style.space(5)
+  spacing: Style.space(16)
 
   component Tag: Chip {
     tone: root.colors.textFaint
     ink: root.colors.textDim
-    outlined: true
+    plain: true
   }
 
   Chip {
@@ -42,7 +43,7 @@ Flow {
     text: root.cause ? root.cause.label : ""
     tone: root.colors.attention
     ink: root.colors.attentionInk
-    outlined: true
+    plain: true
   }
   Tag {
     visible: root.showSubs
@@ -63,7 +64,7 @@ Flow {
       + (p.additions || p.deletions ? "  +" + p.additions + " −" + p.deletions : "")
     tone: failing ? root.colors.attention : root.colors.textFaint
     ink: failing ? root.colors.attentionInk : root.colors.textDim
-    outlined: true
+    plain: true
   }
   Tag {
     visible: root.showCtx

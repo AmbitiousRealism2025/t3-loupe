@@ -63,6 +63,8 @@ Item {
   readonly property var widgets: []
 
   signal focusRequested(string key)
+  // How the last copy ended: true once the text is on the clipboard.
+  signal copied(bool ok)
 
   Theme { id: themeObject }
   Notifier { id: notifier; service: root }
@@ -101,6 +103,8 @@ Item {
       health = "ready"
     } else if (msg.type === "notice") {
       notifier.notice(msg)
+    } else if (msg.type === "copied") {
+      copied(msg.ok === true)
     } else if (msg.type === "detail") {
       var next = {}
       for (var k in details) next[k] = details[k]

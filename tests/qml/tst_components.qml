@@ -94,9 +94,19 @@ TestCase {
       pending: [{ id: "r1", kind: "command", since: now - 120000, prompt: "git push --force-with-lease origin feat/sessions-v2 && pnpm db:migrate --env staging", appName: "",
                   options: ["Allow once", "Allow for session", "Decline"], questions: [] }] }
     var d = createTemporaryObject(detailC, tc, { row: r, detail: detail })
-    verify(has(d, /^Choices in T3:  Allow once  ·  Allow for session  ·  Decline$/), texts(d).join(" | "))
-    verify(has(d, /^Decide in T3/))
+    verify(has(d, /^T3 offers: Allow once, Allow for session or Decline$/), texts(d).join(" | "))
+    verify(has(d, /^→ Decide in T3: Loupe only shows the request$/))
     verify(!has(d, /^Allow once$/), "no option is drawn on its own like a button")
+    // The hand-off is one piece: the step, and right under it the key that gets you to T3,
+    // labelled for what the key does. Once.
+    compare(texts(d).filter(function(t) { return t === "o" }).length, 1, "one keycap for T3")
+    var step = textItem(d, "→ Decide in T3: Loupe only shows the request"), open = textItem(d, "open T3")
+    verify(open !== null, texts(d).join(" | "))
+    var gap = open.mapToItem(d, 0, 0).y - step.mapToItem(d, 0, step.height).y
+    verify(gap >= 0 && gap < 30, "the key sits right under the step (" + gap + ")")
+    // It is the block's main action: full ink, where copying the title is dim.
+    compare(String(open.color), String(Qt.color(tc.colors.text)))
+    compare(String(textItem(d, "copy title").color), String(Qt.color(tc.colors.textDim)))
     verify(!has(d, /^Waiting for your answer$/), "the loaded request replaces the callout")
   }
 
@@ -124,6 +134,104 @@ TestCase {
     compare(c.wordInk, tc.colors.attentionInk)
   }
 
+  // The themes the screenshots use, and one whose hues crowd each other.
+  readonly property var matteBlack: Palette.derive({ background: "#121212", foreground: "#bebebe", accent: "#e68e0d", urgent: "#D35F5F",
+    colors: { red: "#D35F5F", yellow: "#b91c1c", orange: "#c63d3d", green: "#FFC107", cyan: "#bebebe", blue: "#e68e0d", magenta: "#D35F5F", bright_magenta: "#B91C1C" } })
+  readonly property var latte: Palette.derive({ background: "#eff1f5", foreground: "#4c4f69", accent: "#1e66f5", urgent: "#d20f39",
+    colors: { red: "#d20f39", yellow: "#df8e1d", orange: "#d84e2b", green: "#40a02b", cyan: "#179299", blue: "#1e66f5", magenta: "#ea76cb" } })
+
+  // Every visible Text under an item, with the colour it is drawn in.
+  function inks(item) {
+    var out = []
+    function walk(it) {
+      if (!it || it.visible === false || it.opacity === 0) return
+      if (it.font !== undefined && typeof it.text === "string" && it.text !== "") out.push({ text: it.text, color: String(it.color) })
+      var kids = it.children || []
+      for (var i = 0; i < kids.length; i++) walk(kids[i])
+    }
+    walk(item)
+    return out
+  }
+
+  // The selected row, in each layout and theme: its fill takes no hue from the accent or from a
+  // state colour other than the row's own wash, a row waiting on an answer keeps that wash, the
+  // ring is the palette's, and every word on it holds 4.5:1 against the fill it is actually drawn on.
+  function test_selectedRowKeepsItsColoursAndItsContrast() {
+    var themes = [{ name: "blue clouds", c: tc.colors }, { name: "matte black", c: tc.matteBlack }, { name: "latte", c: tc.latte }]
+    var states = [
+      row({ state: "input", rawStatus: "running", pendingKind: "command", pendingSince: now - 120000, activity: [{ icon: "message-circle", label: "Awaiting approval", status: "pending", at: now }] }),
+      row({ state: "failed", rawStatus: "failed", errorClass: "provider_error", error: "502", completedAt: now - 660000 }),
+      row({ state: "plan", completedAt: now - 240000 }),
+      row({ state: "working", rawStatus: "running", activeSince: now - 60000, activity: [{ icon: "eye", label: "Read Bar.qml", status: "running", at: now }] }),
+      row({ state: "limited", rawStatus: "failed", errorClass: "usage_limit", usageResetAt: now + 47 * 60000 }),
+      row({ state: "review", completedAt: now - 480000, lastRunMs: 1140000 }),
+      row({ state: "idle", completedAt: now - 7200000 })
+    ]
+    var kinds = [{ c: rowC, name: "row" }, { c: cardC, name: "card" }]
+    for (var t = 0; t < themes.length; t++) for (var k = 0; k < kinds.length; k++) for (var s = 0; s < states.length; s++) {
+      var colors = themes[t].c
+      var where = themes[t].name + ", " + kinds[k].name + ", " + states[s].state
+      var props = { row: states[s], colors: colors, selected: true }
+      if (kinds[k].name === "card") { props.showMachine = true; props.machineLabel = "build-box" }
+      var item = createTemporaryObject(kinds[k].c, tc, props)
+      var fill = named(item, "fill")[0]
+      verify(fill !== undefined, where)
+      // The fill animates in; wait for it to land.
+      var want = states[s].state === "input" ? colors.surfaceSelectedWash : colors.surfaceSelected
+      tryCompare(fill, "color", Qt.color(want), 1000, where + ": the selected fill")
+      compare(String(fill.border.color), String(Qt.color(colors.focus)), where + ": the ring")
+      verify(fill.border.width >= 2, where + ": the ring is two pixels or more")
+      var words = inks(item)
+      verify(words.length >= 2, where)
+      for (var w = 0; w < words.length; w++) {
+        var ratio = Palette.contrast(words[w].color, String(fill.color))
+        verify(ratio >= 4.5, where + ": '" + words[w].text + "' is " + ratio.toFixed(2) + ":1 on the selected fill")
+      }
+      // Unselected, the same row sits on its ordinary surface and passes there too.
+      item.selected = false
+      tryCompare(fill, "color", Qt.color(states[s].state === "input" ? Palette.wash(colors.surface, colors.ask) : colors.surface), 1000, where + ": the ordinary fill")
+      var plain = inks(item)
+      for (var u = 0; u < plain.length; u++)
+        verify(Palette.contrast(plain[u].color, String(fill.color)) >= 4.5, where + ": '" + plain[u].text + "' on an ordinary row")
+    }
+    // Selection is not a status colour: on a theme whose accent is plan amber, the ring is ink.
+    verify(Palette.hsl(tc.matteBlack.focus).s < 0.05, "matte black's ring: " + tc.matteBlack.focus)
+    verify(Palette.hsl(tc.matteBlack.surfaceSelected).s < 0.05, "matte black's selected fill: " + tc.matteBlack.surfaceSelected)
+  }
+
+  Component { id: cardC; ThreadCard { width: 520; colors: tc.colors; now: tc.now; monoFamily: "monospace" } }
+
+  // Healthy background work is not dressed as a failure: its callout is neutral in every theme,
+  // while a failure's is the failure colour. (On Matte Black the old "subagent" hue came out red.)
+  function test_backgroundWorkIsNotDrawnAsAFailure() {
+    var themes = [tc.colors, tc.matteBlack, tc.latte]
+    var bg = row({ state: "background", activeSince: now - 9 * 60000, background: { subagents: 2, commands: 0, monitors: 0, other: 0 } })
+    var failed = row({ state: "failed", rawStatus: "failed", errorClass: "provider_error", error: "502", completedAt: now - 660000 })
+    for (var t = 0; t < themes.length; t++) {
+      var colors = themes[t]
+      var c = createTemporaryObject(calloutC, tc, { colors: colors, callout: Store.statusCallout(bg, now, false) })
+      verify(has(c, /^The reply is done; background work is still running$/))
+      var f = createTemporaryObject(calloutC, tc, { colors: colors, callout: Store.statusCallout(failed, now, false) })
+      compare(String(f.mark), String(Qt.color(colors.attention)), "a failure's stripe is the failure colour")
+      compare(String(c.mark), String(Qt.color(colors.idle)), "background work's stripe is neutral")
+      verify(Palette.hsl(String(c.mark)).s < 0.2 || Palette.distance(String(c.mark), colors.attention) > 0.3, "and nowhere near the failure red: " + c.mark + " vs " + colors.attention)
+      compare(String(textItem(c, "The reply is done; background work is still running").color), String(Qt.color(colors.text)), "its headline is plain ink")
+    }
+  }
+
+  // In the activity trail, a step waiting on your answer is marked in the answer's colour, as its
+  // row and its request are; red is left to failures.
+  function test_waitingStepIsNotRed() {
+    var colors = tc.matteBlack
+    var r = row({ state: "input", rawStatus: "running", pendingKind: "command", pendingSince: now - 120000 })
+    var d = createTemporaryObject(detailC, tc, { colors: colors, row: r, part: "rest", detail: { pending: [], runs: [], context: null, subagents: [], todo: null,
+      activity: [{ icon: "terminal", label: "pnpm vitest run auth", status: "completed", at: now - 180000 }, { icon: "message-circle", label: "Awaiting approval", status: "pending", at: now - 120000 }] } })
+    var dots = named(d, "liveDot").filter(function(x) { return x.visible })
+    compare(dots.length, 1)
+    compare(String(dots[0].color), String(Qt.color(colors.ask)), "the waiting dot is the answer's violet")
+    verify(Palette.distance(String(dots[0].color), colors.attention) > 0.25, "not the failure red")
+  }
+
   // A stand-in for Service.qml: the state the collector would send, nothing running.
   Component {
     id: serviceC
@@ -140,13 +248,17 @@ TestCase {
       readonly property var textSizes: [0, 2, 4, 6]
       property int textSizeStep: 0
       readonly property string pluginDir: "/nonexistent"
-      readonly property var theme: ({ popup: tc.colors })
+      property var palette: tc.colors
+      readonly property var theme: ({ popup: palette })
       property var requested: []
+      // What the panel sent to the collector, and the collector's word on how a copy ended.
+      property var sent: []
+      signal copied(bool ok)
       function rowByKey(key) { for (var i = 0; i < rows.length; i++) if (rows[i].key === key) return rows[i]; return null }
       function environment(id) { for (var i = 0; i < environments.length; i++) if (environments[i].id === id) return environments[i]; return null }
       function requestDetail(envId, threadId) { requested = requested.concat([envId + ":" + threadId]) }
       function refresh() {}
-      function send(obj) {}
+      function send(obj) { sent = sent.concat([obj]) }
       function stepTextSize(d) {}
       function setTextSize(v) {}
     }
@@ -166,18 +278,125 @@ TestCase {
                 row({ key: "e:i", id: "i", state: "idle", completedAt: now - 7200000 })]
     var p = createTemporaryObject(panelC, tc, { service: svc })
     p.opened = true
-    verify(has(p, /^2 NEED YOU  ·  2 WORKING  ·  2 DONE$/), texts(p).join(" | "))
+    // The header says what needs you and what is working, and nothing the tabs under it say: the
+    // plus joins the two into the Active tab's number.
+    // The needs-you count is on an ink pill, in no kind's colour: one of the two is a failure, the
+    // other a request, and red (or violet) for both would misname one of them.
+    verify(has(p, /^NEED YOU \+ 2 WORKING$/), texts(p).join(" | "))
+    verify(!texts(p).some(function(t) { return /\d+ (ACTIVE|DONE|STOPPED)/.test(t) }), "no tab's count is repeated in the header")
+    var pill = named(p, "needPill")[0]
+    verify(pill.visible)
+    compare(texts(pill), ["2"])
+    compare(String(pill.color), String(Qt.color(tc.colors.text)), "the pill is ink")
+    verify(Palette.contrast(tc.colors.background, String(pill.color)) >= 7, "its number reads on it")
+    verify(Palette.distance(String(pill.color), tc.colors.attention) > 0.15 && Palette.distance(String(pill.color), tc.colors.ask) > 0.15, "not the failure's colour, nor the request's")
     compare(p.needCount, 2)
     compare(p.activeCount, 4)
     compare(p.doneCount, 2)
     compare(p.allCount, 6)
-    // The Inbox lists exactly what the header calls "need you".
+    // The tabs carry the same numbers under the same names: what needs you is "Needs you" on its
+    // tab as in the header, and no tab is called anything else.
+    compare(tabLabels(p), ["Needs you 2", "Active 4", "Done 2", "All 6"])
+    verify(!texts(p).concat(tabLabels(p)).some(function(t) { return /inbox/i.test(t) }), "one name for what needs you")
+    // The view lists exactly what the header calls "need you".
     compare(p.filter, "attention")
     var listed = p.visible_.filter(function(x) { return !x.kind }).map(function(x) { return x.id })
     compare(listed, ["a", "b"])
     // The first thread is selected on open, and its detail requested.
     tryCompare(p, "selectedKey", "e:a")
     verify(!p.disconnected)
+  }
+
+  // The tabs as drawn: each label without its leading key cells, single-spaced.
+  function tabLabels(p) {
+    var out = []
+    function walk(it) {
+      if (!it || it.visible === false) return
+      if (it.selected !== undefined && typeof it.text === "string" && it.modelData !== undefined) out.push(it.text.replace(/\s+/g, " ").trim())
+      var kids = it.children || []
+      for (var i = 0; i < kids.length; i++) walk(kids[i])
+    }
+    walk(p)
+    return out
+  }
+
+  // The header's count line is short enough to fit the dropdown whole, and says so with nothing waiting.
+  function test_headerCountsFitAndSayWhenNothingWaits() {
+    var svc = createTemporaryObject(serviceC, tc)
+    svc.environments = [liveEnv("e", "laptop")]
+    svc.rows = [row({ key: "e:a", id: "a", state: "input", pendingKind: "command", rawStatus: "running" }),
+                row({ key: "e:c", id: "c", state: "working", rawStatus: "running", activeSince: now - 60000 }),
+                row({ key: "e:e", id: "e", state: "review", completedAt: now - 60000 })]
+    var widths = [540, 400]
+    for (var i = 0; i < widths.length; i++) {
+      var p = createTemporaryObject(dropdownC, tc, { service: svc, width: widths[i] })
+      p.opened = true
+      wait(0)
+      verify(has(p, /^NEEDS YOU \+ 1 WORKING$/), texts(p).join(" | "))
+      var line = textItem(p, null, /^<font.*NEEDS.*YOU/)
+      verify(line !== null && line.implicitWidth <= line.width + 0.5, "the line fits whole at " + widths[i])
+    }
+    // Nothing waiting: no pill, and nothing to add up.
+    var calm = createTemporaryObject(dropdownC, tc, { service: svc, width: 540 })
+    calm.opened = true
+    svc.rows = [svc.rows[1], svc.rows[2]]
+    tryVerify(function() { return has(calm, /^NOTHING NEEDS YOU  ·  1 WORKING$/) })
+    verify(!named(calm, "needPill")[0].visible)
+  }
+
+  // The two-pane window is as tall as what it shows: a view of a few threads asks for a short
+  // card, not a full-height one with its lower half empty; a long list asks for more than any card
+  // can give (the window caps it). It is never shorter than the selected thread's detail needs,
+  // and while a thread's detail is still on its way the card keeps the height it had.
+  function test_windowHeightFollowsItsContent() {
+    var svc = createTemporaryObject(serviceC, tc)
+    svc.environments = [liveEnv("e", "laptop")]
+    var few = [row({ key: "e:a", id: "a", state: "plan", completedAt: now - 240000, lastRunMs: 360000 }),
+               row({ key: "e:b", id: "b", state: "failed", rawStatus: "failed", error: "502", errorClass: "provider_error", completedAt: now - 660000 })]
+    svc.rows = few
+    svc.details = { "e:a": { activity: [], pending: [], runs: [], context: null, subagents: [], todo: null },
+                    "e:b": { activity: [], pending: [], runs: [], context: null, subagents: [], todo: null } }
+    var long = { pending: [], runs: [], context: null, subagents: [], todo: null,
+      activity: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].map(function(i) { return { icon: "terminal", label: "step " + i, status: "completed", at: now - i * 60000 } }) }
+    svc.details = { "e:a": svc.details["e:a"], "e:b": long }
+    var p = createTemporaryObject(panelC, tc, { service: svc, height: 760 })
+    p.opened = true
+    p.setFilter("all")
+    tryCompare(p, "selectedKey", "e:a")
+    wait(50)
+    var short = p.implicitHeight
+    verify(short < 520, "two threads ask for a short card: " + short)
+    // Everything it shows fits in that height: the list and the selected thread's detail.
+    verify(p.bodyHeight >= p.listView.contentHeight - 0.5, "the list fits: " + p.bodyHeight + " vs " + p.listView.contentHeight)
+    verify(p.bodyHeight >= p.detailItem.naturalHeight - 0.5, "the detail fits: " + p.bodyHeight + " vs " + p.detailItem.naturalHeight)
+    p.height = short
+    wait(50)
+    verify(!p.detailItem.scrollable, "so at its own height the detail doesn't scroll")
+    verify(!has(p, /more below/), "and nothing is cut: " + texts(p).join(" | "))
+    // A thread with a long detail makes it taller.
+    p.moveCursor(1)
+    tryCompare(p, "selectedKey", "e:b")
+    tryVerify(function() { return p.implicitHeight > short + 100 }, 1000, "a longer detail asks for more: " + p.implicitHeight + " vs " + short)
+    var tall = p.implicitHeight
+    // Moving on to a thread whose detail hasn't arrived: the card holds its height instead of
+    // dropping to the loading line and growing back.
+    svc.rows = few.concat([row({ key: "e:c", id: "c", state: "working", rawStatus: "running", activeSince: now - 60000 })])
+    wait(0)
+    compare(p.implicitHeight, tall, "one more row in a short list changes nothing: the detail is the taller")
+    p.moveCursor(1)
+    tryCompare(p, "selectedKey", "e:c")
+    verify(p.detailItem.loading)
+    compare(p.implicitHeight, tall, "held while the detail loads")
+    // When it arrives, the card takes the height that detail needs.
+    svc.details = { "e:a": svc.details["e:a"], "e:b": long, "e:c": { activity: [], pending: [], runs: [], context: null, subagents: [], todo: null } }
+    tryVerify(function() { return !p.detailItem.loading && p.implicitHeight < tall - 100 }, 1000, "and released when it has: " + p.implicitHeight)
+    // A long list asks for more than a short one, with the same thread selected.
+    var before = p.implicitHeight
+    svc.rows = svc.rows.concat(manyRows())
+    tryVerify(function() { return p.implicitHeight > before + 200 }, 1000, "a long list asks for more: " + p.implicitHeight + " vs " + before)
+    // The dropdown is unchanged: its height has always followed its list.
+    var d = createTemporaryObject(dropdownC, tc, { service: svc })
+    verify(d.implicitHeight > 0)
   }
 
   function test_panelDisconnectedReplacesTheEmptyList() {
@@ -195,7 +414,42 @@ TestCase {
     verify(has(p, /^\$ t3-loupe pair-ssh --ssh-host build-box --label build-box$/))
     verify(!has(p, /No recent threads/))
     verify(!has(p, /Select a thread/))
-    verify(!has(p, /^Inbox/), "no tabs of zeros")
+    compare(tabLabels(p).length, 0, "no tabs of zeros")
+  }
+
+  // Offline, the one useful thing is running the re-pair commands: each has a digit key that copies
+  // it (the digits switch views otherwise, and there are none here), the legend says so, and the
+  // block says "copied" only once the collector reports the clipboard took it.
+  function test_offlineCommandsAreCopiedByKey() {
+    var svc = createTemporaryObject(serviceC, tc)
+    svc.known = false
+    svc.environments = [
+      { id: "a", label: "laptop", sshHost: "", state: "expired", stale: false, url: "http://127.0.0.1:3773", sessionExpiresAt: now - 2 * 86400000, providers: [] },
+      { id: "b", label: "build-box", sshHost: "build-box", state: "expired", stale: false, url: "http://127.0.0.1:46363", sessionExpiresAt: now - 5 * 3600000, providers: [] }
+    ]
+    var p = createTemporaryObject(panelC, tc, { service: svc })
+    p.opened = true
+    tryVerify(function() { return p.disconnected })
+    verify(legendKeys(p).indexOf("1–2 copy command") >= 0, legendKeys(p).join(" | "))
+    compare(texts(p).filter(function(t) { return t === "copy" }).length, 2, "a copy action on each command")
+    p.keyCatcher.textKey("2")
+    compare(svc.sent.length, 1)
+    compare(svc.sent[0].cmd, "copy")
+    compare(svc.sent[0].text, "t3-loupe pair-ssh --ssh-host build-box --label build-box")
+    verify(!has(p, /copied/), "nothing is claimed before the collector answers")
+    svc.copied(true)
+    tryVerify(function() { return has(p, /^✓ copied$/) })
+    compare(texts(p).filter(function(t) { return t === "copy" }).length, 1, "the other command still offers its key")
+    // A failed copy says so, in the failure colour.
+    p.keyCatcher.textKey("1")
+    compare(svc.sent[1].text, "t3-loupe pair-local --label laptop")
+    svc.copied(false)
+    tryVerify(function() { return has(p, /^copy failed$/) })
+    compare(String(textItem(p, "copy failed").color), String(Qt.color(tc.colors.attentionInk)))
+    // A digit past the last command, and the view keys, do nothing here.
+    p.keyCatcher.textKey("3")
+    compare(svc.sent.length, 2)
+    compare(p.filter, "all")
   }
 
   Component { id: dropdownC; Plugin.ThreadsPanel { width: 540; height: 760; centered: false } }
@@ -255,16 +509,216 @@ TestCase {
     var all = texts(p)
     verify(all.indexOf("laptop ·") >= 0 && all.indexOf("claude-opus-5-5") >= 0, all.join(" | "))
     verify(!all.some(function(t) { return /^·/.test(t) }), "no item starts with a separator")
-    verify(has(p, /^open T3$/) && has(p, /^PR$/) && has(p, /^copy title$/), "each action is labelled")
+    verify(has(p, /^open T3$/) && has(p, /^open PR$/) && has(p, /^copy title$/), "each action is labelled")
     verify(has(p, /^#412$/), "the PR number stands alone")
-    verify(has(p, /^checks pending · \+2140 −388 lines$/), texts(p).join(" | "))
+    verify(has(p, /^checks pending · \+2140 −388$/), texts(p).join(" | "))
   }
 
-  function textItem(item, value) {
+  // The PR's checks and size are never cut: in a cell too narrow for one line they wrap onto two.
+  function test_prNoteWrapsInsteadOfBeingCut() {
+    var r = row({ state: "working", rawStatus: "running", activeSince: now - 60000, childCount: 3, activeChildren: 2,
+      pr: { number: 412, title: "x", url: "https://example.invalid/pr/412", state: "open", checks: "pending", draft: false, additions: 2140000, deletions: 1388000, review: "" } })
+    var widths = [640, 440]
+    var lines = {}
+    for (var i = 0; i < widths.length; i++) {
+      var p = createTemporaryObject(paneC, tc, { row: r, width: widths[i] })
+      waitForRendering(p)
+      var note = textItem(p, "checks pending · +2140000 −1388000")
+      verify(note !== null, "the whole note is the text at " + widths[i])
+      verify(!note.truncated, "and none of it is cut at " + widths[i] + " (" + note.lineCount + " lines)")
+      verify(note.contentWidth <= note.width + 0.5, "it stays inside its cell at " + widths[i])
+      lines[widths[i]] = note.lineCount
+    }
+    compare(lines[640], 1)
+    compare(lines[440], 2, "the narrow cell wraps it")
+  }
+
+  // The actions are in one place on every thread: a line of their own from the pane's left edge,
+  // whatever the state's words are and whether or not there is a PR (its action comes last).
+  function test_detailActionsStayInOnePlace() {
+    var pr = { number: 412, title: "x", url: "https://example.invalid/pr/412", state: "open", checks: "pending", draft: false, additions: 1, deletions: 1, review: "" }
+    var threads = [
+      row({ state: "working", rawStatus: "running", activeSince: now - 23 * 60000, project: "t3-loupe", branch: "main", pr: pr }),
+      row({ state: "input", rawStatus: "running", pendingKind: "command", pendingSince: now - 120000, project: "web-app", branch: "feat/sessions-v2" }),
+      row({ state: "failed", rawStatus: "failed", errorClass: "provider_error", error: "502", completedAt: now - 11 * 60000, project: "sdk" }),
+      row({ state: "limited", rawStatus: "failed", errorClass: "usage_limit", error: "Usage limit reached.", usageResetAt: now + 47 * 60000, project: "docs" }),
+      row({ state: "idle", completedAt: now - 3600000, project: "omarchy" })
+    ]
+    // Two places, one for each kind of thread: under where it runs for a thread with nothing to
+    // hand off, and at the end of the block that says what to do for one that has. Within a kind
+    // they never move, whatever the state's words are and whether or not there is a PR.
+    var at = { lead: {}, plain: {} }
+    for (var i = 0; i < threads.length; i++) {
+      var p = createTemporaryObject(paneC, tc, { row: threads[i], machineLabel: "laptop" })
+      waitForRendering(p)
+      var open = textItem(p, "open T3"), copy = textItem(p, "copy title")
+      verify(open !== null && copy !== null, threads[i].state)
+      compare(texts(p).filter(function(t) { return t === "open T3" }).length, 1, threads[i].state + ": the T3 key appears once")
+      compare(open.mapToItem(p, 0, 0).y, copy.mapToItem(p, 0, 0).y, "one line")
+      verify(open.mapToItem(p, 0, 0).x < copy.mapToItem(p, 0, 0).x, "T3 first")
+      if (threads[i].pr) verify(textItem(p, "open PR").mapToItem(p, 0, 0).x > copy.mapToItem(p, 0, 0).x, "the PR action comes after the two every thread has")
+      // A thread whose callout already names the state doesn't say it a second time above it.
+      var leads = { input: /^Waiting for your answer$/, failed: /^The provider failed during the run$/, limited: /^Paused by a provider usage limit$/ }
+      var stateLine = { input: /^Run command\? \d/, failed: /^Failed 11m ago$/, limited: /^Usage limit resets in 47m$/ }
+      var spot = Math.round(open.mapToItem(p, 0, 0).x) + "," + Math.round(copy.mapToItem(p, 0, 0).x)
+      if (leads[threads[i].state]) {
+        var headline = textItem(p, null, leads[threads[i].state])
+        verify(headline !== null, texts(p).join(" | "))
+        verify(!has(p, stateLine[threads[i].state]), "the state line would repeat the callout: " + texts(p).join(" | "))
+        verify(open.mapToItem(p, 0, 0).y > headline.mapToItem(p, 0, 0).y, threads[i].state + ": the keys end the block that says what to do")
+        at.lead[spot] = true
+      } else {
+        verify(has(p, /^(Working|Idle) /), "a thread with no callout keeps its state line: " + texts(p).join(" | "))
+        at.plain[spot] = true
+      }
+    }
+    compare(Object.keys(at.lead).length, 1, "in a callout, open and copy start at the same x on every thread: " + Object.keys(at.lead).join(" / "))
+    compare(Object.keys(at.plain).length, 1, "under the header too: " + Object.keys(at.plain).join(" / "))
+  }
+
+  // Weight says what to read first: a thread's title is heavier than anything else on its row, and
+  // a subagent's lighter than its parent's.
+  function test_rowTitleOutweighsTheRestOfItsRow() {
+    var kinds = [{ c: rowC, name: "row" }, { c: cardC, name: "card" }]
+    for (var k = 0; k < kinds.length; k++) {
+      var item = createTemporaryObject(kinds[k].c, tc, { row: row({ title: "Design a robust plugin", state: "working", rawStatus: "running", activeSince: now - 60000, project: "t3-loupe",
+        activity: [{ icon: "eye", label: "Read Bar.qml", status: "running", at: now }] }) })
+      var title = textItem(item, "Design a robust plugin")
+      verify(title.font.weight >= Font.DemiBold, kinds[k].name + ": the title is heavy (" + title.font.weight + ")")
+      var others = []
+      function walk(it) {
+        if (!it || it.visible === false || it.opacity === 0) return
+        if (it.font !== undefined && typeof it.text === "string" && it.text !== "" && it !== title) others.push(it)
+        var kids = it.children || []
+        for (var i = 0; i < kids.length; i++) walk(kids[i])
+      }
+      walk(item)
+      verify(others.length >= 2, kinds[k].name)
+      for (var o = 0; o < others.length; o++) {
+        verify(others[o].font.weight < title.font.weight, kinds[k].name + ": '" + others[o].text + "' is lighter than the title")
+        verify(others[o].font.pixelSize <= title.font.pixelSize, kinds[k].name + ": and no larger")
+      }
+    }
+    var sub = createTemporaryObject(rowC, tc, { row: row({ parentId: "t", key: "e:s", id: "s", title: "Survey the UI kit", state: "working", rawStatus: "running", activeSince: now - 60000 }) })
+    verify(textItem(sub, "Survey the UI kit").font.weight < Font.DemiBold, "a subagent's title is a step lighter")
+  }
+
+  // The run chart is as wide as its runs, with its figures beside it: not a few bars at the left of
+  // an empty plot with the figures underneath.
+  function test_runChartHasItsFiguresBesideIt() {
+    var r = row({ state: "working", rawStatus: "running", activeSince: now - 23 * 60000 })
+    var runs = [5, 12, 3, 22, 9, 31, 14].map(function(m, i) { return { ordinal: i + 1, status: i === 3 ? "failed" : "completed", startedAt: now - (200 - i * 25) * 60000, completedAt: now, durationMs: m * 60000 } })
+      .concat([{ ordinal: 8, status: "running", startedAt: now - 23 * 60000, completedAt: null, durationMs: null }])
+    var d = createTemporaryObject(detailC, tc, { row: r, detail: { activity: [], pending: [], runs: runs, context: null, subagents: [], todo: null } })
+    var chart = named(d, "runChart")[0], figures = named(d, "runFigures")[0]
+    var bars = named(d, "runBar")
+    compare(bars.length, 8)
+    verify(chart.width <= bars[7].mapToItem(chart, bars[7].width, 0).x + 0.5, "the chart ends with its last bar: " + chart.width)
+    verify(figures.mapToItem(d, 0, 0).x >= chart.mapToItem(d, chart.width, 0).x, "the figures start to the right of the bars")
+    verify(figures.mapToItem(d, 0, 0).y < chart.mapToItem(d, 0, chart.height).y, "on the chart's own rows, not under it")
+    // Each figure on its own line, so they read as a list.
+    verify(has(d, /^current 23m 00s$/) && has(d, /^longest 31m 00s$/) && has(d, /^run 4 failed$/), texts(d).join(" | "))
+    // So many runs that the figures can't fit beside them: they go under the bars, whole.
+    var many = []
+    for (var i = 0; i < 34; i++) many.push({ ordinal: i + 1, status: "completed", startedAt: now - 1000000, completedAt: now, durationMs: (i + 1) * 60000 })
+    var wide = createTemporaryObject(detailC, tc, { row: r, detail: { activity: [], pending: [], runs: many, context: null, subagents: [], todo: null } })
+    var wideChart = named(wide, "runChart")[0], under = named(wide, "runFigures")[0]
+    verify(under.mapToItem(wide, 0, 0).y >= wideChart.mapToItem(wide, 0, wideChart.height).y, "under a chart too wide to sit beside")
+    verify(has(wide, /^longest 34m 00s$/))
+  }
+
+  // What you can press Enter on says so on its own row: a fold line carries "↵ unfold" or "↵ fold"
+  // whether or not the cursor is on it, in full ink when it is.
+  Component { id: foldC; IdleLine { width: 420; colors: tc.colors; count: 1; label: "Done" } }
+  function test_foldLinesNameTheirKey() {
+    var line = createTemporaryObject(foldC, tc)
+    var hint = textItem(line, "↵ unfold")
+    verify(hint !== null, texts(line).join(" | "))
+    compare(String(hint.color), String(Qt.color(tc.colors.textFaint)))
+    line.selected = true
+    compare(String(hint.color), String(Qt.color(tc.colors.text)), "full ink under the cursor")
+    line.open = true
+    verify(textItem(line, "↵ fold") !== null)
+    compare(Store.enterVerb({ kind: "idle-line", open: true }, true, false), "fold", "the legend says the same word")
+  }
+
+  // The lines of the facts grid mark off figures, like the tabs' and the meters' outlines: they
+  // hold 3:1 against the panel in the themes the screenshots use.
+  function test_factsGridLinesHoldThreeToOne() {
+    var themes = [tc.colors, tc.matteBlack, tc.latte]
+    var r = row({ state: "working", rawStatus: "running", activeSince: now - 60000, childCount: 3, activeChildren: 2 })
+    for (var t = 0; t < themes.length; t++) {
+      var p = createTemporaryObject(paneC, tc, { row: r, colors: themes[t], detail: { activity: [], pending: [], runs: [], subagents: [], todo: null, context: { used: 1000, max: 4000, cost: 1, currency: "USD" } } })
+      var grid = named(p, "factsGrid")[0]
+      verify(grid.visible)
+      verify(Palette.contrast(String(grid.color), themes[t].background) >= 3, "grid lines " + grid.color + " on " + themes[t].background + ": " + Palette.contrast(String(grid.color), themes[t].background).toFixed(2))
+    }
+  }
+
+  // A sentence that wraps is broken so its lines are about even: no word is left alone on the
+  // last line. It takes no more lines than plain wrapping would, and one line stays one line.
+  Component { id: balancedC; BalancedText { font.family: "monospace"; font.pixelSize: 10 } }
+  Component { id: plainTextC; Text { textFormat: Text.PlainText; wrapMode: Text.Wrap; font.family: "monospace"; font.pixelSize: 10 } }
+  function test_wrappedSentencesLeaveNoOrphan() {
+    var sentences = ["→ Retry the thread in T3; if it fails again, check the provider", "→ Restore the folder at that path, then retry the thread in T3",
+      "6 of 9 steps done  ·  now: Polish the panel and verify every theme", "→ T3 resumes it after the reset if auto-resume is on; otherwise retry it in T3"]
+    var orphansBefore = 0
+    for (var s = 0; s < sentences.length; s++) {
+      var one = createTemporaryObject(balancedC, tc, { text: sentences[s], width: 2000 })
+      compare(one.lineCount, 1)
+      var full = one.implicitWidth
+      // Widths at which plain wrapping strands the last word or two.
+      for (var cut = 6; cut <= 60; cut += 6) {
+        var width = full - cut
+        var plain = createTemporaryObject(plainTextC, tc, { text: sentences[s], width: width })
+        var b = createTemporaryObject(balancedC, tc, { text: sentences[s], width: width })
+        var where = "'" + sentences[s].slice(0, 24) + "…' at " + Math.round(width)
+        compare(b.lineCount, plain.lineCount, where + ": no more lines than plain wrapping")
+        verify(b.contentWidth <= width + 0.5, where + ": inside its width")
+        verify(b.height >= plain.height - 0.5 && b.height <= plain.height + 0.5, where + ": as tall as its lines")
+        if (plain.lineCount === 2) {
+          var lastPlain = full - plain.contentWidth
+          if (lastPlain < full * 0.2) orphansBefore++
+          // Two lines of about the same length: the longer is well short of the full width.
+          verify(b.contentWidth <= full * 0.75, where + ": the lines are balanced (longest " + Math.round(b.contentWidth) + " of " + Math.round(full) + ")")
+        }
+      }
+    }
+    verify(orphansBefore > 0, "the test met widths where plain wrapping leaves an orphan")
+  }
+
+  // A detail longer than the pane says so and names the keys that page it; they work, and the
+  // strip follows where you are. A detail that fits shows no strip.
+  function test_detailNamesItsPagingKeys() {
+    var r = row({ state: "working", rawStatus: "running", activeSince: now - 60000 })
+    var long = { pending: [], runs: [], context: null, subagents: [], todo: null,
+      activity: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24].map(function(i) { return { icon: "terminal", label: "step " + i, status: "completed", at: now - i * 60000 } }) }
+    var p = createTemporaryObject(paneC, tc, { row: r, detail: long, height: 260 })
+    waitForRendering(p)
+    verify(p.scrollable)
+    verify(has(p, /^more below ↓$/) && textItem(p, "d") !== null, "the strip names the key that pages down: " + texts(p).join(" | "))
+    verify(!has(p, /up ↑$/), "nothing above yet")
+    p.page(1)
+    tryVerify(function() { return has(p, /^up ↑$/) && has(p, /^more below ↓$/) && textItem(p, "u") !== null })
+    for (var i = 0; i < 12; i++) p.page(1)
+    tryVerify(function() { return has(p, /^back up ↑$/) && !has(p, /^more below ↓$/) })
+    // The last line clears the strip.
+    var last = textItem(p, "step 24"), strip = textItem(p, "back up ↑")
+    verify(last.mapToItem(p, 0, last.height).y <= strip.mapToItem(p, 0, 0).y, "the end of the detail is above the strip")
+    // Another thread starts at its top.
+    p.row = row({ key: "e:other", id: "other", state: "working", rawStatus: "running", activeSince: now - 60000 })
+    tryVerify(function() { return !p.moreAbove })
+    var short = createTemporaryObject(paneC, tc, { row: r, detail: { pending: [], runs: [], context: null, subagents: [], todo: null, activity: long.activity.slice(0, 2) } })
+    waitForRendering(short)
+    verify(!short.scrollable && !has(short, /more below|up ↑/), texts(short).join(" | "))
+  }
+
+  // The visible Text whose text is `value` (or, with value null, matches `pattern`).
+  function textItem(item, value, pattern) {
     var found = null
     function walk(it) {
       if (!it || found || it.visible === false || it.opacity === 0) return
-      if (it.text === value && it.font !== undefined) { found = it; return }
+      if (it.font !== undefined && typeof it.text === "string" && (value !== null ? it.text === value : pattern.test(it.text))) { found = it; return }
       var kids = it.children || []
       for (var i = 0; i < kids.length; i++) walk(kids[i])
     }
@@ -279,23 +733,61 @@ TestCase {
     for (var i = 0; i < widths.length; i++) {
       var p = createTemporaryObject(paneC, tc, { row: r, machineLabel: "laptop", width: widths[i] })
       wait(0)
-      var labels = ["open T3", "PR", "copy title"]
+      // The full labels where they fit; the short ones where they don't. Never a broken label.
+      var full = textItem(p, "open T3") !== null
+      var labels = full ? ["open T3", "copy title", "open PR"] : ["open", "copy", "PR"]
+      var y = {}
       for (var j = 0; j < labels.length; j++) {
         var t = textItem(p, labels[j])
-        verify(t !== null && t.visible, labels[j])
+        verify(t !== null && t.visible, labels[j] + " at " + widths[i] + ": " + texts(p).join(" | "))
         compare(t.lineCount, 1, labels[j] + " at " + widths[i])
         verify(t.width >= t.implicitWidth - 0.5, labels[j] + " has its full width at " + widths[i])
+        verify(t.mapToItem(p, t.width, 0).x <= widths[i] + 0.5, labels[j] + " stays inside the pane at " + widths[i])
+        y[t.mapToItem(p, 0, 0).y] = true
       }
+      compare(Object.keys(y).length, 1, "the actions share one line at " + widths[i])
     }
+    verify(textItem(createTemporaryObject(paneC, tc, { row: r, machineLabel: "laptop", width: 520 }), "open T3") !== null, "the usual pane has room for the full labels")
+    verify(textItem(createTemporaryObject(paneC, tc, { row: r, machineLabel: "laptop", width: 200 }), "open") !== null, "a very narrow one uses the short ones")
+  }
+
+  // Copying the title answers: the action says "copied" once the collector reports the clipboard
+  // took it, and says so if it didn't. Its neighbour doesn't move while it does.
+  function test_copyTitleSaysHowItEnded() {
+    var svc = createTemporaryObject(serviceC, tc)
+    svc.environments = [liveEnv("e", "laptop")]
+    svc.rows = [row({ key: "e:c", id: "c", title: "Design a robust plugin", state: "working", rawStatus: "running", activeSince: now - 60000,
+      pr: { number: 412, title: "x", url: "https://example.invalid/pr/412", state: "open", checks: "pending", draft: false, additions: 1, deletions: 1, review: "" } })]
+    var p = createTemporaryObject(panelC, tc, { service: svc })
+    p.opened = true
+    tryCompare(p, "selectedKey", "e:c")
+    var pr = textItem(p.detailItem, "open PR")
+    var prX = pr.mapToItem(p, 0, 0).x
+    p.keyCatcher.textKey("c")
+    compare(svc.sent.filter(function(m) { return m.cmd === "copy" }).length, 1)
+    compare(svc.sent.filter(function(m) { return m.cmd === "copy" })[0].text, "Design a robust plugin")
+    verify(has(p, /^copy title$/), "no claim before the collector answers")
+    svc.copied(true)
+    tryVerify(function() { return has(p.detailItem, /^✓ copied$/) })
+    compare(textItem(p.detailItem, "open PR").mapToItem(p, 0, 0).x, prX, "the next action stays where it was")
+    tryVerify(function() { return has(p.detailItem, /^copy title$/) }, 4000, "and the label comes back")
+    p.keyCatcher.textKey("c")
+    svc.copied(false)
+    tryVerify(function() { return has(p.detailItem, /^copy failed$/) })
+    // A report with no copy asked for is ignored.
+    tryVerify(function() { return has(p.detailItem, /^copy title$/) }, 4000)
+    svc.copied(true)
+    wait(50)
+    verify(!has(p, /copied/))
   }
 
   function test_rowReasonSurvivesAFontChangeAfterCreation() {
     var r = row({ state: "failed", rawStatus: "failed", errorClass: "provider_error", completedAt: now - 60000, project: "a-long-project-name",
       error: '401: {"code":"1000","message":"Authentication Failed"}' })
-    var q = row({ key: "e:q", id: "q", state: "input", rawStatus: "running", pendingKind: "user_input", project: "ingest" })
+    var q = row({ key: "e:q", id: "q", state: "input", rawStatus: "running", pendingKind: "user_input", pendingSince: now - 360000, project: "ingest" })
     var bumps = [0, 2, 4, 6]
     var made = []
-    for (var w = 0; w < 2; w++) made.push(createTemporaryObject(rowC, tc, { row: w ? q : r, width: 340, showMachine: true, machineLabel: "build-box" }))
+    for (var w = 0; w < 2; w++) made.push(createTemporaryObject(rowC, tc, { row: w ? q : r, width: 340 }))
     try {
       for (var i = 0; i < bumps.length; i++) {
         Typo.bump = bumps[i]
@@ -304,10 +796,108 @@ TestCase {
         wait(0)
         verify(has(made[0], /^Failed · sign-in rejected$/), "bump " + bumps[i] + ": " + texts(made[0]).join(" | "))
         verify(has(made[1], /^Question$/), "bump " + bumps[i] + ": " + texts(made[1]).join(" | "))
-        verify(has(made[0], /^build-box$/), "the machine still shows, under the time")
+        // The reason and the time share the second line, and neither is cut.
+        var reason = textItem(made[0], "Failed · sign-in rejected"), time = textItem(made[0], "1m ago")
+        verify(time !== null, "bump " + bumps[i] + ": " + texts(made[0]).join(" | "))
+        verify(reason.mapToItem(made[0], reason.contentWidth, 0).x <= time.mapToItem(made[0], 0, 0).x, "bump " + bumps[i] + ": the reason stops before the time")
+        verify(has(made[1], /^waiting 6m$/), "bump " + bumps[i] + ": " + texts(made[1]).join(" | "))
+        verify(!has(made[0], /a-long-project-name|build-box/), "where it runs is left to the headings and the detail")
       }
     } finally {
       Typo.bump = 0
+    }
+  }
+
+  // The title is what tells one thread from another: it has the whole first line, takes a second
+  // if it needs one, and is cut only beyond that. With the demo's titles at the two-pane list's
+  // real widths, none is cut at any text size.
+  function test_rowTitlesAreShownWhole() {
+    var titles = ["Migrate auth middleware to sessions v2", "Pick a queue backend for the ingest worker", "Plan: split the monorepo build into stages",
+      "Regenerate API client from OpenAPI", "Nightly dependency audit (8AM daily)", "Port notch strip tooltips to the shell API",
+      "Benchmark streaming latency across providers", "Rework onboarding flow for new users", "Write the Postgres 18 migration plan"]
+    var bumps = [0, 2, 4, 6]
+    try {
+      for (var b = 0; b < bumps.length; b++) {
+        Typo.bump = bumps[b]
+        var width = Math.round((820 + bumps[b] * 56) * 0.44) - 14
+        var oneLine = 0
+        for (var i = 0; i < titles.length; i++) {
+          var r = row({ title: titles[i], state: "input", rawStatus: "running", pendingKind: "command", pendingSince: now - 124000 })
+          var item = createTemporaryObject(rowC, tc, { row: r, width: width })
+          var title = named(item, "rowTitle")[0]
+          compare(title.text, titles[i])
+          verify(!title.truncated, "bump " + bumps[b] + ": '" + titles[i] + "' is cut")
+          verify(title.lineCount <= 2)
+          if (title.lineCount === 1) oneLine++
+          // The time is on the second line, with its kind; it takes nothing from the title.
+          var time = named(item, "rowTime")[0]
+          compare(time.text, "waiting 2m")
+          verify(time.mapToItem(item, 0, 0).y >= title.mapToItem(item, 0, title.height).y - 0.5, "bump " + bumps[b] + ": the time is under the title")
+        }
+        verify(oneLine >= titles.length - 2, "bump " + bumps[b] + ": most titles fit one line (" + oneLine + " of " + titles.length + ")")
+      }
+      // A title too long even for two lines is cut there, with the row still in one piece.
+      Typo.bump = 0
+      var long = createTemporaryObject(rowC, tc, { width: 340, row: row({ title: "Investigate why the nightly integration suite times out on the arm64 runners after the base image update last week", state: "working", rawStatus: "running", activeSince: now - 60000 }) })
+      var cut = named(long, "rowTitle")[0]
+      compare(cut.lineCount, 2)
+      verify(cut.truncated)
+      verify(cut.contentWidth <= cut.width + 0.5)
+    } finally {
+      Typo.bump = 0
+    }
+  }
+
+  // A thread with subagents says so on its row, with a marker for the key that lists them: Enter
+  // is not a guess. The marker turns when they are all listed. A thread without any has none.
+  function test_rowWithSubagentsShowsAnExpandMarker() {
+    var parent = row({ state: "working", rawStatus: "running", activeSince: now - 60000, childCount: 3, activeChildren: 2 })
+    var item = createTemporaryObject(rowC, tc, { row: parent })
+    var marker = named(item, "rowChildren")[0]
+    verify(marker.visible)
+    compare(texts(marker), ["3"])
+    var title = named(item, "rowTitle")[0]
+    verify(title.mapToItem(item, title.width, 0).x <= marker.mapToItem(item, 0, 0).x, "the title stops before the marker")
+    var chevron = marker.children[1]
+    compare(chevron.rotation, 0)
+    item.expanded = true
+    compare(chevron.rotation, 90)
+    var lone = createTemporaryObject(rowC, tc, { row: row({ state: "background", background: { subagents: 2, commands: 0, monitors: 0, other: 0 }, activeSince: now - 60000 }) })
+    verify(!named(lone, "rowChildren")[0].visible, "no child threads to list: no marker, as the legend has no Enter")
+    compare(Store.enterVerb(lone.row, true, false), "")
+    compare(Store.enterVerb(parent, true, false), "subagents")
+  }
+
+  // What is running is drawn in ink in every theme: no spinner, live step or current plan step
+  // borrows the accent (which marks selection) or a needs-you hue.
+  function test_workingIsInkNotTheAccent() {
+    var themes = [{ name: "matte black", c: tc.matteBlack }, { name: "latte", c: tc.latte }]
+    var working = row({ state: "working", rawStatus: "running", activeSince: now - 60000, activity: [{ icon: "eye", label: "Read Bar.qml", status: "running", at: now }] })
+    var runs = [{ ordinal: 1, status: "completed", startedAt: now - 3600000, completedAt: now - 3000000, durationMs: 600000 },
+                { ordinal: 2, status: "failed", startedAt: now - 2000000, completedAt: now - 1900000, durationMs: 100000 },
+                { ordinal: 3, status: "running", startedAt: now - 60000, completedAt: null, durationMs: null }]
+    for (var t = 0; t < themes.length; t++) {
+      var colors = themes[t].c, where = themes[t].name
+      var ink = String(Qt.color(colors.text))
+      var item = createTemporaryObject(rowC, tc, { row: working, colors: colors })
+      compare(String(item.glyphColor), ink, where + ": the spinner")
+      var d = createTemporaryObject(detailC, tc, { colors: colors, row: working, detail: { pending: [], runs: runs, context: null,
+        subagents: [{ id: "s", title: "Sub", status: "running", progress: "", model: "m", startedAt: now - 1000, completedAt: null, childThreadId: "" }],
+        todo: { total: 4, done: 2, current: "Polish" }, activity: working.activity } })
+      var steps = named(d, "planStep")
+      compare(String(steps[2].color), ink, where + ": the current plan step")
+      verify(steps[2].height > steps[1].height, where + ": and it is taller than a done one")
+      var bars = named(d, "runBar")
+      compare(String(bars[2].color), ink, where + ": the run in progress")
+      compare(named(bars[2], "currentRunMark")[0].visible, true, where + ": which also carries a mark, not just a colour")
+      compare(named(bars[0], "currentRunMark")[0].visible, false)
+      compare(String(named(d, "liveDot").filter(function(x) { return x.visible })[0].color), ink, where + ": the live dot")
+      // Nothing in a working thread's row or detail is the accent or a needs-you hue, except the
+      // failed run, which is the failure colour because it failed.
+      var hues = [colors.accent, colors.accentInk, colors.warning, colors.warningInk, colors.ask, colors.askInk].map(function(c) { return String(Qt.color(c)) })
+      var used = inks(item).concat(inks(d)).map(function(x) { return x.color })
+      for (var u = 0; u < used.length; u++) verify(hues.indexOf(used[u]) < 0, where + ": a working thread's text is in " + used[u])
+      for (var s = 0; s < steps.length; s++) verify(hues.indexOf(String(steps[s].color)) < 0, where + ": plan step " + s)
     }
   }
 
@@ -344,55 +934,159 @@ TestCase {
     tryVerify(function() { return p.cursor >= 0 })
     var list = p.listView
     verify(list.contentHeight > list.height, "the list scrolls")
+    var sawAbove = false, sawBelow = false, sawHeading = false
+    function check(where) {
+      var cell = list.itemAtIndex(p.cursor)
+      verify(cell !== null, where)
+      var scrolled = list.contentY - list.originY >= 2
+      var more = list.contentY + list.height < list.contentHeight + list.originY - 2
+      var covers = p.edgeCovers
+      // The selection is fully visible, clear of both strips and their covers.
+      verify(cell.y + cell.rowTop >= list.contentY + covers.top - 0.5, where + ": the selected row is under the top cover " + JSON.stringify({ y: cell.y + cell.rowTop, cy: list.contentY, top: covers.top }))
+      verify(cell.y + cell.rowTop + cell.rowHeight <= list.contentY + list.height - covers.bottom + 0.5, where + ": the selected row is under the bottom cover")
+      // "more above" exactly when there is more above, "more below" exactly when there is more below.
+      compare(has(p, /^more above ↑$/), scrolled, where)
+      compare(has(p, /^more below ↓$/), more, where)
+      compare(covers.top >= p.pinnedHeight - 0.5, scrolled, where + ": the top cover is at least its strip")
+      compare(covers.bottom >= p.moreBelowHeight - 0.5, more, where)
+      sawAbove = sawAbove || scrolled
+      sawBelow = sawBelow || more
+      // No row or heading is drawn in part: each one in the list is wholly inside the window
+      // between the covers, or wholly outside it.
+      var top = list.contentY + covers.top, bottom = list.contentY + list.height - covers.bottom
+      for (var i = 0; i < p.visible_.length; i++) {
+        var c = list.itemAtIndex(i)
+        if (!c) continue
+        var boxes = []
+        if (c.hasHeading) boxes.push({ what: "heading", a: c.y, b: c.y + c.rowTop })
+        if (c.hasRow) boxes.push({ what: "row", a: c.y + c.rowTop, b: c.y + c.rowTop + c.rowHeight })
+        for (var n = 0; n < boxes.length; n++) {
+          var inside = boxes[n].a >= top - 0.5 && boxes[n].b <= bottom + 0.5
+          var outside = boxes[n].b <= top + 0.5 || boxes[n].a >= bottom - 0.5
+          verify(inside || outside, where + ": the " + boxes[n].what + " of item " + i + " is cut by an edge " + JSON.stringify({ a: boxes[n].a, b: boxes[n].b, top: top, bottom: bottom }))
+        }
+      }
+      // The pinned heading, when shown, is the group of the first row drawn whole; when that
+      // row's own heading is the first thing drawn, nothing is pinned over it.
+      var heading = p.pinnedHeading
+      if (heading) {
+        sawHeading = true
+        verify(!covers.firstIsHeading, where)
+        var k = covers.first
+        while (k > 0 && p.visible_[k].parentId) k--
+        compare(heading.label, Store.groupKey(p.visible_[k], svc.environments), where)
+      }
+    }
     for (var step = 0; step < 30; step++) {
       p.moveCursor(1)
       wait(20)
-      var cell = list.itemAtIndex(p.cursor)
-      verify(cell !== null)
-      // Fully visible, clear of the pinned heading and of the "more below" strip.
-      var bottomLimit = list.contentY + list.height - (list.contentY + list.height < list.contentHeight + list.originY - 2 ? Style.space(22) : 0)
-      verify(cell.y + cell.height <= bottomLimit + 0.5, "step " + step + ": selected row under the bottom strip " + JSON.stringify({ y: cell.y, h: cell.height, cy: list.contentY, lh: list.height, ch: list.contentHeight, oy: list.originY, cur: p.cursor }))
-      // The pinned heading, when shown, is the group of the rows right under it.
-      var heading = p.pinnedHeading
-      if (heading) {
-        var under = list.indexAt(20, list.contentY + p.pinnedHeight)
-        var k = under
-        while (k > 0 && p.visible_[k].parentId) k--
-        compare(heading.label, Store.groupKey(p.visible_[k], svc.environments), "step " + step)
+      check("down " + step)
+    }
+    for (var up = 0; up < 30; up++) {
+      p.moveCursor(-1)
+      wait(20)
+      check("up " + up)
+    }
+    verify(sawAbove && sawBelow && sawHeading, "the walk met both edges and a pinned heading")
+    // The same holds wherever the wheel leaves the list, not only where the keys do.
+    var maxY = list.originY + list.contentHeight - list.height
+    for (var w = 0; w <= 24; w++) {
+      list.contentY = list.originY + Math.round(maxY * w / 24) + (w % 3)
+      wait(0)
+      var covers = p.edgeCovers
+      var top = list.contentY + covers.top, bottom = list.contentY + list.height - covers.bottom
+      var whole = 0
+      for (var i = 0; i < p.visible_.length; i++) {
+        var c = list.itemAtIndex(i)
+        if (!c || !c.hasRow) continue
+        var a = c.y + c.rowTop, b = a + c.rowHeight
+        if (a >= top - 0.5 && b <= bottom + 0.5) whole++
+        verify((a >= top - 0.5 && b <= bottom + 0.5) || b <= top + 0.5 || a >= bottom - 0.5, "wheel at " + list.contentY + ": row " + i + " is cut by an edge")
       }
+      verify(whole >= 2, "wheel at " + list.contentY + ": the covers leave rows in view (" + whole + ")")
     }
   }
 
-  // The cells actually drawn in the legend, line by line: [{ key, verb, x, width }].
+  // The row of view tabs: the filter box is one of its controls (the tabs' top edge, height and
+  // border tone), and the current view is marked once, by its tab's bottom edge in the theme's accent.
+  function test_filterBoxAndTabMarkSitOnTheTabRow() {
+    var svc = createTemporaryObject(serviceC, tc)
+    svc.palette = tc.matteBlack
+    svc.environments = [liveEnv("e", "laptop"), { id: "f", label: "build-box", sshHost: "build-box", state: "live", stale: false, url: "", sessionExpiresAt: now + 2 * 86400000, providers: [] }]
+    svc.rows = manyRows()
+    var p = createTemporaryObject(panelC, tc, { service: svc })
+    p.opened = true
+    tryVerify(function() { return p.cursor >= 0 })
+    var tabs = []
+    function walk(it) {
+      if (!it || it.visible === false) return
+      if (it.selected !== undefined && it.modelData !== undefined && typeof it.text === "string") tabs.push(it)
+      var kids = it.children || []
+      for (var i = 0; i < kids.length; i++) walk(kids[i])
+    }
+    walk(p)
+    compare(tabs.length, 4)
+    var box = named(p, "filterBox")[0]
+    compare(Math.round(box.mapToItem(p, 0, 0).y), Math.round(tabs[0].mapToItem(p, 0, 0).y), "the filter box starts at the tabs' top edge")
+    compare(box.height, tabs[0].height, "and is as tall as a tab")
+    var mark = named(p, "tabMark")[0]
+    var current = tabs.filter(function(t) { return t.selected })[0]
+    compare(Math.round(mark.mapToItem(p, 0, 0).x), Math.round(current.mapToItem(p, 0, 0).x))
+    compare(mark.width, current.width)
+    compare(Math.round(mark.mapToItem(p, 0, mark.height).y), Math.round(current.mapToItem(p, 0, current.height).y), "the mark is the tab's own bottom edge, not a line under it")
+    // "Where you are" is one colour in a theme: the tab's mark is the selection ring's. On a
+    // theme whose accent is plan amber that is ink, so nothing under the tabs passes for a plan.
+    compare(String(mark.color), String(Qt.color(tc.matteBlack.focus)), "the selection ring's colour")
+    verify(Palette.hsl(String(mark.color)).s < 0.05, "ink on matte black, not the amber accent: " + mark.color)
+    var cell = p.listView.itemAtIndex(p.cursor)
+    compare(String(named(cell, "fill")[0].border.color), String(mark.color), "the same as the selected row's ring")
+    // A pairing about to lapse is told from the healthy machine beside it by shape, not colour.
+    compare(named(p, "machineExpiring").filter(function(x) { return x.visible }).length, 1, "one machine is expiring")
+    verify(has(p, /^pairing expires in 2d$/))
+    compare(String(textItem(p, "pairing expires in 2d").color), String(Qt.color(tc.matteBlack.text)), "full ink, no hue")
+  }
+
+  // The keys the legend is showing, in reading order: "key verb".
+  function legendKeys(p) {
+    var out = []
+    var groups = p.legendShown
+    for (var g = 0; g < groups.length; g++) for (var c = 0; c < groups[g].columns.length; c++) for (var i = 0; i < groups[g].columns[c].length; i++)
+      if (groups[g].columns[c][i].key) out.push(groups[g].columns[c][i].key + " " + groups[g].columns[c][i].verb)
+    return out
+  }
+
+  // The legend as drawn: every cell with where it is in the panel, by group, column and row.
+  // [{ group, column, row, key, verb, x, y, width, right, item }]
   function legendLayout(p) {
-    var lines = []
-    var kids = p.legendItem.children
-    for (var i = 0; i < kids.length; i++) {
-      var line = kids[i]
-      if (line.height === undefined || !line.children || !line.children.length) continue
-      var row = line.children[0]
-      var cells = []
-      for (var j = 0; j < row.children.length; j++) {
-        var cell = row.children[j]
-        if (!cell.visible || cell.cell === undefined) continue
-        cells.push({ key: cell.children[0].text, verb: cell.children[1].text, x: cell.x, width: cell.width, spacing: row.spacing })
+    var cells = []
+    var groups = shown(p.legendItem, "legendGroup:")
+    for (var g = 0; g < groups.length; g++) {
+      var columns = shown(groups[g], "legendColumn")
+      for (var c = 0; c < columns.length; c++) {
+        var inColumn = shown(columns[c], "legendCell")
+        for (var i = 0; i < inColumn.length; i++) {
+          var at = inColumn[i].mapToItem(p, 0, 0)
+          cells.push({ group: groups[g].objectName.replace("legendGroup:", ""), column: c, row: i, key: inColumn[i].shownKey, verb: inColumn[i].shownVerb,
+            x: Math.round(at.x), y: Math.round(at.y), width: inColumn[i].width, right: at.x + inColumn[i].width, item: inColumn[i] })
+        }
       }
-      lines.push(cells)
     }
-    return lines
+    return cells
   }
 
-  // The legend: two lines tall for every selection, keys flowing left with equal gaps (no hole
-  // where a key is absent), never a key without its label, no separators, starting at the same x
-  // and fitting beside the size control. Checked at each text size, at the widths the shell gives
-  // the two-pane window (820 px + 56 per step) and the dropdown (540 + 36).
+  // The footer's key legend: three groups by purpose, their keys in columns that line up down the
+  // two rows; exactly two rows tall for every selection; no key ever moves as the selection moves
+  // (Enter comes and goes at the foot of its own column); every key has its label; it starts under
+  // the usage band's content and fits its band. Checked at each text size, at the widths the shell
+  // gives the two-pane window (820 px + 56 per step) and the dropdown (540 + 36).
   function test_legendHoldsAtEverySizeAndSelection() {
     var svc = createTemporaryObject(serviceC, tc)
-    svc.environments = [liveEnv("e", "laptop")]
+    var meter = { name: "Claude", driver: "claudeAgent", status: "ready", auth: "authenticated", checkedAt: now, windows: windowsOf(3) }
+    svc.environments = [{ id: "e", label: "laptop", sshHost: "", state: "live", stale: false, url: "", sessionExpiresAt: now + 20 * 86400000, providers: [meter] }]
     var rows = manyRows()
     rows.push(row({ key: "e:i1", id: "i1", title: "Idle one", project: "alpha", state: "idle", rawStatus: "completed", completedAt: now - 7200000 }))
     svc.rows = rows
-    var layouts = [{ c: shortPanelC, base: 820, step: 56, name: "panel" }, { c: dropdownC, base: 540, step: 36, name: "dropdown" }]
+    var layouts = [{ c: shortPanelC, base: 820, step: 56, name: "panel", centered: true }, { c: dropdownC, base: 540, step: 36, name: "dropdown", centered: false }]
     var bumps = [0, 2, 4, 6]
     try {
       for (var l = 0; l < layouts.length; l++) {
@@ -403,31 +1097,57 @@ TestCase {
           p.setFilter("all")
           tryVerify(function() { return p.cursor >= 0 })
           var where = layouts[l].name + " at bump " + bumps[b]
-          var heights = {}, starts = {}, enter = {}
+          var heights = {}, enter = {}, places = {}
           for (var i = 0; i < 26; i++) {
             wait(0)
             heights[p.legendHeight] = true
-            starts[p.legendX] = true
-            var lines = legendLayout(p)
-            compare(lines.length, 2, where + ": two lines")
-            for (var n = 0; n < lines.length; n++) {
-              var cells = lines[n]
-              for (var c = 0; c < cells.length; c++) {
-                verify(cells[c].key !== "" && cells[c].verb !== "", where + ": '" + cells[c].key + "' without its label")
-                verify((cells[c].key + cells[c].verb).indexOf("·") < 0, where + ": a separator in the legend")
-                if (c > 0) compare(cells[c].x, cells[c - 1].x + cells[c - 1].width + cells[c].spacing, where + ": a hole before " + cells[c].key)
-                if (cells[c].key === "↵") enter[cells[c].verb] = true
-              }
-              if (!lines[0].some(function(x) { return x.key === "↵" })) enter["(none)"] = true
+            var cells = legendLayout(p)
+            var ys = {}
+            for (var c = 0; c < cells.length; c++) {
+              var cell = cells[c]
+              ys[cell.y] = true
+              if (cell.key === "") { enter["(none)"] = true; continue }
+              verify(cell.verb !== "", where + ": '" + cell.key + "' without its label")
+              verify((cell.key + cell.verb).indexOf("·") < 0, where + ": a separator in the legend")
+              if (cell.key === "↵") { enter[cell.verb] = true; continue }
+              // Every other key is where it was for every other selection.
+              var spot = cell.x + "," + cell.y
+              if (places[cell.key] === undefined) places[cell.key] = spot
+              compare(spot, places[cell.key], where + ": '" + cell.key + " " + cell.verb + "' moved when the selection did")
+              verify(cell.right <= p.width + 0.5, where + ": '" + cell.key + " " + cell.verb + "' runs past the edge at " + Math.round(cell.right) + " of " + p.width)
             }
-            verify(p.legendX + p.legendWidth <= p.width + 0.5 && p.legendWidth <= p.legendRoom + 0.5, where + ": legend " + p.legendWidth + " wider than its room " + p.legendRoom)
+            compare(Object.keys(ys).length, 2, where + ": the keys sit on two rows")
+            // A column's cells share their left edge: that is what makes the rows line up.
+            var edges = {}
+            for (var k = 0; k < cells.length; k++) {
+              var id = cells[k].group + ":" + cells[k].column
+              if (edges[id] === undefined) edges[id] = cells[k].x
+              compare(cells[k].x, edges[id], where + ": column " + id + " is ragged")
+            }
+            verify(p.legendWidth <= p.legendRoom + 0.5, where + ": legend " + p.legendWidth + " wider than its room " + p.legendRoom)
             p.moveCursor(1)
           }
           compare(Object.keys(heights).length, 1, where + ": heights " + Object.keys(heights).join(", "))
-          compare(Object.keys(starts).length, 1, where + ": the legend moved: " + Object.keys(starts).join(", "))
           verify(Object.keys(enter).length >= 2, where + ": the cursor met different Enter actions: " + Object.keys(enter).join(", "))
-          var line = Typo.caption * 1.6
-          verify(p.legendHeight <= 2 * line + Style.space(4), where + ": more than two lines (" + p.legendHeight + ")")
+          verify(p.legendHeight <= 2 * Typo.caption * 1.6 + Style.space(4), where + ": more than two lines (" + p.legendHeight + ")")
+          // The groups, left to right, by purpose.
+          var seen = legendLayout(p)
+          var order = []
+          for (var s = 0; s < seen.length; s++) if (order.indexOf(seen[s].group) < 0) order.push(seen[s].group)
+          compare(order, ["navigate", "act", "window"], where)
+          // The text-size control is inside the cell of its keys, not somewhere else in the footer.
+          var size = seen.filter(function(x) { return x.key === "+/−" })[0]
+          verify(size !== undefined && size.item.cell.slot === "size", where + ": the size keys are in the legend")
+          var bars = textItemAbsent(size.item)
+          verify(bars, where + ": the size control sits beside '+/− size'")
+          // Paging the detail is a key of the two-pane window only, and it is in its legend.
+          compare(legendKeys(p).indexOf("d/u scroll detail") >= 0, layouts[l].centered, where + ": " + legendKeys(p).join(" | "))
+          // Two-pane: the keys start where the usage band's content starts, under one caption column.
+          if (layouts[l].centered) {
+            verify(has(p, /^KEYS$/) && has(p, /^LIMITS USED$/), where + ": both bands are captioned")
+            var name = shown(p, "block:Claude:name")[0]
+            compare(Math.round(p.legendItem.mapToItem(p, 0, 0).x), Math.round(name.mapToItem(p, 0, 0).x), where + ": the two bands' content shares a left edge")
+          }
         }
       }
     } finally {
@@ -435,16 +1155,30 @@ TestCase {
     }
   }
 
-  function test_offlineLegendShowsOnlyWindowKeysOnTop() {
+  // A cell holds a text-size control if something in it is neither a Text nor empty: its bars.
+  function textItemAbsent(cellItem) {
+    var found = false
+    function walk(it) {
+      if (!it || found || it.visible === false) return
+      if (it.sizes !== undefined && it.step !== undefined) { found = true; return }
+      var kids = it.children || []
+      for (var i = 0; i < kids.length; i++) walk(kids[i])
+    }
+    walk(cellItem)
+    return found
+  }
+
+  function test_offlineLegendKeepsOnlyTheKeysThatWork() {
     var svc = createTemporaryObject(serviceC, tc)
     svc.known = false
     svc.environments = [{ id: "a", label: "laptop", sshHost: "", state: "expired", stale: false, url: "http://127.0.0.1:3773", sessionExpiresAt: now - 1000, providers: [] }]
     var p = createTemporaryObject(panelC, tc, { service: svc })
     p.opened = true
     tryVerify(function() { return p.disconnected })
-    var lines = legendLayout(p)
-    compare(lines[0].map(function(c) { return c.key }), ["o", "f", "r", "+/−", "esc"])
-    compare(lines[1].length, 0)
+    compare(legendKeys(p), ["1 copy command", "o open T3", "f layout", "r refresh", "+/− size", "esc close"])
+    var drawn = legendLayout(p).filter(function(c) { return c.key !== "" }).map(function(c) { return c.key + " " + c.verb })
+    compare(drawn, legendKeys(p), "what is drawn is what the legend holds")
+    verify(has(p, /^KEYS$/), "the band keeps its caption with no usage band above it")
   }
 
   Component { id: stripC; ProviderStrip { colors: tc.colors; now: tc.now } }
@@ -516,7 +1250,7 @@ TestCase {
             var x = items[0].mapToItem(strip, items[0].width, 0).x
             verify(y >= top - 1 && y < bottom - 1, where + ": " + providers[q].name + " window " + k + " at y " + y + " is outside its band " + top + "–" + bottom)
             verify(x <= width + 0.5, where + ": window " + k + " runs past the edge")
-            labels.push(items[0].children[0].text)
+            labels.push(named(items[0], "usageLabel")[0].text)
           }
           var distinct = {}
           for (var d = 0; d < labels.length; d++) distinct[labels[d]] = true
@@ -543,16 +1277,152 @@ TestCase {
     waitForRendering(strip)
     wait(20)
     verify(has(strip, /^weekly · Fable$/), texts(strip).join(" | "))
-    verify(has(strip, /^95% resets in 1h$/))
-    verify(has(strip, /^limit reached, resets in 47m$/))
+    // The heading says which way the numbers count. A cell's value is short: a percentage, or
+    // "full" in full-strength ink for a spent window. When the spent and the nearly spent windows
+    // reset is said after each row, naming the window.
+    verify(has(strip, /^LIMITS USED$/))
+    verify(has(strip, /^95%$/) && has(strip, /^full$/), texts(strip).join(" | "))
+    compare(String(textItem(strip, "full").color), String(Qt.color(tc.colors.text)))
+    verify(has(strip, /^resets in 47m$/) && has(strip, /^resets in 1h$/), texts(strip).join(" | "))
+    verify(!texts(strip).some(function(t) { return /%.*resets|limit reached/.test(t) }), "no sentence in a cell: " + texts(strip).join(" | "))
+    // The meters are long enough to read a share from, and drawn whole: an outline as long as the
+    // limit, filled as far as the use, so 0% still shows how long 100% would be. A spent window's is full.
+    var meters = []
+    var cells = shown(strip, "block:").filter(function(c) { return c.kind !== undefined })
+    for (var n = 0; n < cells.length; n++) meters = meters.concat(named(cells[n], "meter"))
+    compare(meters.length, 5, "one meter per window")
+    var spentCell = shown(strip, "block:Codex:0")[0]
+    compare(named(spentCell, "meterFill")[0].width, named(spentCell, "meter")[0].width, "the spent window's meter is full")
+    for (var m = 0; m < meters.length; m++) {
+      verify(meters[m].width >= 56, "meter " + m + " is " + meters[m].width + " px long")
+      var track = named(meters[m], "meterTrack")[0], fill = named(meters[m], "meterFill")[0]
+      compare(track.width, meters[m].width, "the outline runs the meter's full length")
+      verify(Palette.contrast(String(track.border.color), tc.colors.background) >= 3, "the outline is a 3:1 mark")
+      verify(fill.width <= meters[m].width + 0.5)
+    }
     verify(!texts(strip).some(function(t) { return /:$/.test(t) }), "no stray colon after a label")
     function y(name) { return shown(strip, name)[0].mapToItem(strip, 0, 0).y }
     function x(name) { return shown(strip, name)[0].mapToItem(strip, 0, 0).x }
     for (var k = 0; k < 2; k++) compare(y("block:Codex:" + k), y("block:Codex:name"), "Codex window " + k + " on Codex's row")
     for (var j = 0; j < 3; j++) compare(y("block:Claude:" + j), y("block:Claude:name"), "Claude window " + j + " on Claude's row")
     compare(x("block:Codex:0"), x("block:Claude:0"), "first windows start in one column")
-    // Codex's long "limit reached" pushes only Codex's second window, not Claude's.
-    verify(x("block:Claude:1") < x("block:Codex:1"), "Claude's weekly sits right after its own 5-hour window")
+    compare(x("block:Claude:1"), x("block:Codex:1"), "weekly starts at the same x on both rows")
+    // Each reset line is in its own window's cell, under that window, on its provider's row.
+    var codexReset = named(shown(strip, "block:Codex:0")[0], "usageReset")[0], claudeReset = named(shown(strip, "block:Claude:0")[0], "usageReset")[0]
+    verify(codexReset.visible && claudeReset.visible)
+    verify(codexReset.mapToItem(strip, 0, 0).y < y("block:Claude:name"), "Codex's reset is above Claude's row, with Codex")
+    verify(claudeReset.mapToItem(strip, 0, 0).y > y("block:Claude:name"), "Claude's is under Claude's first line")
+  }
+
+  // Where a cell's parts start, in the strip's coordinates: its label, its meter and its value.
+  function cellParts(strip, cell) {
+    var label = named(cell, "usageLabel")[0], meter = named(cell, "meter")[0], value = named(cell, "usageValue")[0], reset = named(cell, "usageReset")[0]
+    return { kind: cell.kind, x: Math.round(cell.mapToItem(strip, 0, 0).x), y: Math.round(cell.mapToItem(strip, 0, 0).y), label: label.text,
+      meterX: Math.round(meter.mapToItem(strip, 0, 0).x), meterWidth: meter.width, valueX: Math.round(value.mapToItem(strip, 0, 0).x), value: value.text,
+      // The cell's first line ends with its value; a reset line under the meter may run further.
+      right: value.mapToItem(strip, value.width, 0).x,
+      reset: reset.visible ? reset.text : "", resetX: Math.round(reset.mapToItem(strip, 0, 0).x), resetY: reset.mapToItem(strip, 0, 0).y,
+      resetRight: reset.visible ? reset.mapToItem(strip, reset.width, 0).x : 0, meterBottom: meter.mapToItem(strip, 0, meter.height).y }
+  }
+
+  // Usage is one grid: each kind of window has its own column, the same for every provider row.
+  // With the demo's accounts (Codex has two windows, one of them spent; Claude has three, with
+  // "weekly · Fable"), in both layouts and at each text size: the same kind of window starts at the
+  // same x on both rows, its meter too, the meters are one length, a kind only one provider has
+  // keeps its own column, and nothing overlaps the column after it.
+  function test_usageWindowsShareColumnsAcrossProviders() {
+    var providers = [
+      { name: "Claude", driver: "claudeAgent", status: "ready", auth: "authenticated", checkedAt: now,
+        windows: [{ label: "Session", kind: "session", usedPercent: 38, resetsAt: now + 140 * 60000, durationMins: 300 }, { label: "Weekly", kind: "weekly", usedPercent: 61, resetsAt: now + 3 * 86400000, durationMins: 10080 },
+                  { label: "Weekly · Fable", kind: "weekly", usedPercent: 4, resetsAt: now + 3 * 86400000, durationMins: 10080 }] },
+      { name: "Codex", driver: "codex", status: "ready", auth: "authenticated", checkedAt: now,
+        windows: [{ label: "Session", kind: "session", usedPercent: 100, resetsAt: now + 47 * 60000, durationMins: 300 }, { label: "Weekly", kind: "weekly", usedPercent: 82, resetsAt: now + 5 * 86400000, durationMins: 10080 }] }
+    ]
+    var layouts = [{ compact: false, base: 820, step: 56, name: "panel", kinds: ["5-hour", "weekly", "weekly · Fable"] },
+                   { compact: true, base: 540, step: 36, name: "dropdown", kinds: ["5h", "week", "week · Fable"] }]
+    var bumps = [0, 2, 4, 6]
+    try {
+      for (var l = 0; l < layouts.length; l++) for (var b = 0; b < bumps.length; b++) {
+        Typo.bump = bumps[b]
+        var L = layouts[l]
+        var where = L.name + " at bump " + bumps[b]
+        var strip = createTemporaryObject(stripC, tc, { compact: L.compact, width: L.base + L.step * bumps[b] - 24 })
+        strip.environments = [{ id: "e", label: "laptop", state: "live", providers: providers }]
+        waitForRendering(strip)
+        wait(20)
+        var claude = [0, 1, 2].map(function(i) { return cellParts(strip, shown(strip, "block:Claude:" + i)[0]) })
+        var codex = [0, 1].map(function(i) { return cellParts(strip, shown(strip, "block:Codex:" + i)[0]) })
+        compare(claude.map(function(c) { return c.kind }), L.kinds, where + ": Claude's windows, each in its kind's column")
+        compare(codex.map(function(c) { return c.kind }), L.kinds.slice(0, 2), where + ": Codex's")
+        for (var k = 0; k < 2; k++) {
+          compare(codex[k].label, claude[k].label, where)
+          compare(codex[k].x, claude[k].x, where + ": '" + claude[k].kind + "' starts at the same x on both rows")
+          compare(codex[k].meterX, claude[k].meterX, where + ": so does its meter")
+          compare(codex[k].valueX, claude[k].valueX, where + ": and its value")
+        }
+        // A spent window fits the column's ordinary width: "full" is no wider than a percentage, so
+        // Claude's weekly is not pushed away from its 5-hour by Codex's row.
+        verify(Math.abs(codex[0].right - claude[0].right) <= claude[0].valueX - claude[0].meterX, where + ": the spent cell is about as wide as the other (" + Math.round(codex[0].right) + " vs " + Math.round(claude[0].right) + ")")
+        var widest = Math.max(codex[0].right, claude[0].right, codex[0].resetRight)
+        verify(claude[1].x >= widest, where + ": the next column starts after the widest entry of this one")
+        verify(claude[1].x - widest <= strip.itemGap + 2, where + ": and only a column's gap after it (" + (claude[1].x - widest) + ")")
+        // That widest entry is no wider than a cell and a few characters: a sentence used to be here.
+        var cellWide = Math.max(claude[0].right, codex[0].right) - claude[0].x
+        verify(widest - claude[0].x <= cellWide + 3 * Typo.caption, where + ": the column is about one cell wide (" + Math.round(widest - claude[0].x) + " vs " + Math.round(cellWide) + ")")
+        // When Codex's spent window resets is said under that window's own meter, so "full" is
+        // followed by what it means, and it stays inside the column.
+        compare(codex[0].value, "full", where)
+        compare(codex[0].reset, "resets in 47m", where)
+        verify(codex[0].resetX === codex[0].meterX || codex[0].resetX === codex[0].x, where + ": it starts under the meter, or under the label where the cell is too narrow for that")
+        if (!L.compact && bumps[b] === 0) compare(codex[0].resetX, codex[0].meterX, where + ": under the meter in the window at the shell's own text size")
+        verify(codex[0].resetY >= codex[0].meterBottom - 0.5, where + ": below it")
+        verify(codex[0].resetRight <= claude[1].x, where + ": and ends before the next column (" + Math.round(codex[0].resetRight) + " vs " + claude[1].x + ")")
+        compare(codex[1].reset, "", where + ": a window with room left adds nothing")
+        claude.forEach(function(c) { compare(c.reset, "", where + ": Claude has nothing near its limit") })
+        // The kind only Claude has keeps a column of its own, clear of weekly on either row.
+        verify(claude[2].x >= Math.max(claude[1].right, codex[1].right) || claude[2].y > claude[1].y, where + ": 'weekly · Fable' has its own column")
+        var lengths = {}
+        claude.concat(codex).forEach(function(c) { lengths[c.meterWidth] = true })
+        compare(Object.keys(lengths).length, 1, where + ": every meter is one length: " + Object.keys(lengths).join(", "))
+        // On one line where there is room for it (the usual sizes); nothing runs past the band.
+        claude.concat(codex).forEach(function(c) { verify(c.right <= strip.width + 0.5, where + ": '" + c.kind + "' runs past the edge") })
+        if (!L.compact && bumps[b] <= 2) compare(claude[2].y, claude[0].y, where + ": all three columns fit one line")
+        compare(codex[0].y, codex[1].y, where + ": Codex's two share a line")
+        // Provider rows are a row apart, and each provider's name leads its row.
+        verify(codex[0].y > claude[0].y, where)
+        compare(Math.round(shown(strip, "block:Codex:name")[0].mapToItem(strip, 0, 0).x), Math.round(shown(strip, "block:Claude:name")[0].mapToItem(strip, 0, 0).x), where + ": names share a column")
+      }
+    } finally {
+      Typo.bump = 0
+    }
+  }
+
+  // A band too narrow for every column breaks at the same column on every row, so the kinds still
+  // line up; a provider with nothing on the second line stays one line tall.
+  function test_usageColumnsWrapTogetherWhenTheBandIsNarrow() {
+    var providers = [
+      { name: "Claude", driver: "claudeAgent", status: "ready", auth: "authenticated", checkedAt: now, windows: windowsOf(3) },
+      { name: "Codex", driver: "codex", status: "ready", auth: "authenticated", checkedAt: now, windows: [windowsOf(4)[3], windowsOf(2)[1]] }
+    ]
+    // Wide enough for the first two columns beside the heading and the names, not for the third.
+    var wide = createTemporaryObject(stripC, tc, { width: 2000 })
+    wide.environments = [{ id: "e", label: "laptop", state: "live", providers: providers }]
+    waitForRendering(wide)
+    wait(20)
+    var third = cellParts(wide, shown(wide, "block:Claude:2")[0])
+    var strip = createTemporaryObject(stripC, tc, { width: third.x + 20 })
+    strip.environments = [{ id: "e", label: "laptop", state: "live", providers: providers }]
+    waitForRendering(strip)
+    wait(20)
+    var claude = [0, 1, 2].map(function(i) { return cellParts(strip, shown(strip, "block:Claude:" + i)[0]) })
+    var codex = [0, 1].map(function(i) { return cellParts(strip, shown(strip, "block:Codex:" + i)[0]) })
+    compare(claude[1].y, claude[0].y, "the first two columns still share the first line")
+    verify(claude[2].y > claude[0].y, "the third column moved to a second line: " + JSON.stringify(claude.map(function(c) { return [c.x, c.y] })))
+    compare(claude[1].x, codex[1].x, "weekly still starts at the same x on both rows")
+    compare(claude[0].x, codex[0].x)
+    compare(claude[2].x, claude[0].x, "the wrapped column starts where the first does")
+    verify(codex[0].y > claude[2].y, "Codex's row starts below Claude's second line")
+    claude.concat(codex).forEach(function(c) { verify(c.right <= strip.width + 0.5, "'" + c.kind + "' runs past the edge") })
   }
 
 
@@ -654,7 +1524,7 @@ TestCase {
           verify(copy !== null, cases[c].name + " at bump " + bumps[b] + ": copy action shown")
           var end = copy.mapToItem(p, copy.implicitWidth, 0).x
           verify(end <= p.width - Style.space(14) - Style.space(16) + 0.5, cases[c].name + " at bump " + bumps[b] + ": action row ends at " + Math.round(end) + ", too close to the scrollbar at " + Math.round(p.width - Style.space(14)))
-          if (cases[c].r.pr) verify(textItem(p, "PR") !== null, "three actions, PR included")
+          if (cases[c].r.pr) verify((textItem(p, "open PR") || textItem(p, "PR")) !== null, "three actions, PR included")
         }
         // The list row, from the list's width at this size down to a narrow one (the shell's spacing
         // scale makes the real list narrower against its text than the card's nominal width).

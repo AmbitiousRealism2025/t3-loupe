@@ -16,6 +16,8 @@ Column {
   property var colors: ({})
   property double now: Date.now()
   property bool paneMode: false
+  // How copying this thread's title just ended: "" | "ok" | "failed".
+  property string copyState: ""
   property string fontFamily: Style.font.family
   property string monoFamily: "monospace"
 
@@ -71,9 +73,24 @@ Column {
     elide: Text.ElideRight
   }
 
+  // What to do next, as a sentence in full-strength ink; the keys that carry it out follow it
+  // (ThreadActions), so the hand-off to T3 is one piece: what to do there, and the key that gets
+  // you there.
+  component NextStep: BalancedText {
+    property string step: ""
+    text: "→ " + step
+    color: root.colors.text
+    font.family: root.fontFamily
+    font.pixelSize: Typo.caption
+    font.weight: Font.Medium
+  }
+
   StatusCallout {
     width: root.width
     callout: root.lead ? root.callout : null
+    row: root.row
+    copyState: root.copyState
+    secondary: root.paneMode
     colors: root.colors
     fontFamily: root.fontFamily
     monoFamily: root.monoFamily
@@ -91,6 +108,7 @@ Column {
     model: root.lead && root.detail ? root.detail.pending : []
     Rectangle {
       required property var modelData
+      required property int index
       width: root.width
       height: pend.implicitHeight + Style.space(18)
       radius: Style.cornerRadius
@@ -185,10 +203,12 @@ Column {
           }
         }
 
+        // What T3 will offer, as a sentence: set apart with dots they read as buttons, and Loupe
+        // has none to press.
         Text {
           visible: modelData.options.length > 0
           width: parent.width
-          text: "Choices in T3:  " + modelData.options.join("  ·  ")
+          text: Store.choicesSentence(modelData.options)
           textFormat: Text.PlainText
           color: root.colors.textDim
           font.family: root.fontFamily
@@ -196,15 +216,22 @@ Column {
           wrapMode: Text.Wrap
         }
 
-        KeyAction {
+        NextStep {
           width: parent.width
-          wraps: true
-          key: "o"
-          text: modelData.kind === "user_input" ? "Answer in T3 (Loupe only shows the question)" : "Decide in T3 (Loupe only shows the request)"
+          step: modelData.kind === "user_input" ? "Answer in T3: Loupe only shows the question" : "Decide in T3: Loupe only shows the request"
+        }
+        // The keys for it, once, under the last request.
+        ThreadActions {
+          visible: index === (root.detail ? root.detail.pending.length : 0) - 1
+          width: parent.width
+          margin: 0
+          row: root.row
           colors: root.colors
           fontFamily: root.fontFamily
           monoFamily: root.monoFamily
-          onClicked: root.actionRequested("focus")
+          copyState: root.copyState
+          secondary: root.paneMode
+          onActionRequested: function(action) { root.actionRequested(action) }
         }
       }
     }
@@ -230,13 +257,17 @@ Column {
       Item {
         required property var modelData
         readonly property bool live: modelData.status === "running" || modelData.status === "pending"
+        // A step waiting on your answer is marked in the answer's violet, like its row and its
+        // request above: red is for failures only, and the accent for what is running.
+        readonly property bool asking: modelData.status === "pending" && root.row.state === "input"
         width: root.width
         height: Math.max(aText.implicitHeight, aIcon.height) + Style.space(2)
         LucideIcon {
           id: aIcon
           y: Math.max(0, (Typo.caption * 1.4 - height) / 2)
           name: modelData.icon
-          color: parent.live ? root.colors.accentInk : modelData.status === "failed" ? root.colors.attentionInk : root.colors.textFaint
+          color: parent.asking ? root.colors.askInk : modelData.status === "running" ? root.colors.workingInk
+            : modelData.status === "failed" ? root.colors.attentionInk : parent.live ? root.colors.textDim : root.colors.textFaint
           size: Math.round(Typo.body * 1.05)
         }
         Text {
@@ -272,10 +303,11 @@ Column {
             font.pixelSize: Typo.caption
           }
           Rectangle {
+            objectName: "liveDot"
             visible: parent.parent.live
             anchors.verticalCenter: parent.verticalCenter
             width: Style.space(6); height: width; radius: width / 2
-            color: modelData.status === "pending" ? root.colors.attention : root.colors.accent
+            color: parent.parent.asking ? root.colors.ask : modelData.status === "pending" ? root.colors.edge : root.colors.working
           }
         }
       }
@@ -293,7 +325,7 @@ Column {
     spacing: Style.space(24)
     readonly property real colWidth: width >= Style.space(720) ? (width - spacing) / 2 : width
 
-    // Plan: one segment per step (the step is the unit), current step in accent.
+    // Plan: one segment per step (the step is the unit), the current step in the working ink.
     Column {
       visible: root.todo !== null
       width: parent.colWidth
@@ -314,21 +346,23 @@ Column {
             readonly property bool current: root.todo && index === root.todo.done
             width: (steps.width - steps.spacing * (steps.total - 1)) / Math.max(1, steps.total)
             radius: Style.cornerRadius > 0 ? 1 : 0
-            // Done: solid dim ink. Current: the accent at twice the height, so it stands out by shape
-            // as well as hue. To do: an outline in the 3:1 edge tone, so every step is drawn and the
-            // bar's length is the plan's length.
+            // Done: solid, in the 3:1 edge tone. Current: full ink at twice the height, so it stands
+            // out by shape and by strength, with no hue (a hue is for what needs you). To do: an
+            // outline in the edge tone, so every step is drawn and the bar's length is the plan's.
             height: current ? steps.height : Math.round(steps.height / 2)
             anchors.verticalCenter: parent.verticalCenter
-            color: current ? root.colors.accent : done ? root.colors.textDim : "transparent"
+            color: current ? root.colors.working : done ? root.colors.edge : "transparent"
             border.width: current || done ? 0 : 1
             border.color: root.colors.edge
           }
         }
       }
-      Note {
+      BalancedText {
         width: parent.width
         text: root.todo ? root.todo.done + " of " + root.todo.total + " steps done" + (root.todo.current ? "  ·  now: " + root.todo.current : "") : ""
-        wrapMode: Text.Wrap
+        color: root.colors.textFaint
+        font.family: root.fontFamily
+        font.pixelSize: Typo.caption
       }
     }
 
@@ -338,21 +372,41 @@ Column {
       width: parent.colWidth
       spacing: Style.space(6)
       readonly property var summary: Store.runsSummary(root.runs, root.now)
+      // The count heads the chart; without a chart the sentence below already says how many.
       Caption {
         label: "Runs"
-        count: root.runs.length
+        count: parent.summary.chart ? root.runs.length : -1
       }
-      Note {
-        visible: parent.summary.chart
-        width: parent.width
-        text: "One bar per run, its height the run's length"
-        wrapMode: Text.Wrap
-      }
+      // The chart and its figures side by side: the bars are only as wide as the runs there are,
+      // so the figures take the room beside them instead of sitting under a mostly empty plot.
+      // If there are so many runs that the figures don't fit beside them, they go underneath.
       Item {
+        id: runsRow
         visible: parent.summary.chart
         width: parent.width
+        readonly property real gap: Style.space(22)
+        readonly property bool beside: chart.width + gap + Style.space(190) <= width
+        height: beside ? Math.max(chart.height, figures.implicitHeight) : chart.height + Style.space(6) + figures.implicitHeight
+        Column {
+          id: figures
+          objectName: "runFigures"
+          x: runsRow.beside ? chart.width + runsRow.gap : 0
+          y: runsRow.beside ? Math.max(0, chart.height - implicitHeight) : chart.height + Style.space(6)
+          width: runsRow.width - x
+          spacing: Style.space(2)
+          Repeater {
+            model: runsRow.parent.summary.chart ? runsRow.parent.summary.text.split("  ·  ") : []
+            Note { required property string modelData; width: figures.width; text: modelData; color: root.colors.textDim }
+          }
+          Note { width: figures.width; text: "one bar per run; its height is the run's length"; wrapMode: Text.Wrap }
+        }
+      Item {
+        id: chart
+        objectName: "runChart"
+        width: bars.width
         height: Style.space(52)
         Row {
+          id: bars
           anchors.bottom: baseline.top
           spacing: Style.space(3)
           Repeater {
@@ -367,7 +421,17 @@ Column {
               width: Style.space(9)
               height: Math.max(Style.space(2), Style.space(38) * root.runDuration(modelData) / root.longestRun)
               radius: Style.cornerRadius > 0 ? 1 : 0
-              color: current ? root.colors.accent : failed ? root.colors.attention : root.colors.edge
+              color: current ? root.colors.working : failed ? root.colors.attention : root.colors.edge
+              // The run in progress carries a mark as well as full ink, as the failed one carries its ×.
+              Rectangle {
+                objectName: "currentRunMark"
+                visible: parent.current
+                anchors.bottom: parent.top
+                anchors.bottomMargin: Style.space(3)
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Style.space(5); height: width; radius: width / 2
+                color: root.colors.working
+              }
               Text {
                 visible: parent.failed
                 anchors.bottom: parent.top
@@ -382,9 +446,12 @@ Column {
             }
           }
         }
-        Rectangle { id: baseline; anchors.bottom: parent.bottom; width: parent.width; height: 1; color: root.colors.line }
+        Rectangle { id: baseline; anchors.bottom: parent.bottom; width: parent.width; height: 1; color: root.colors.edge }
       }
+      }
+      // Too few runs for a chart: the sentence says it all.
       Note {
+        visible: !parent.summary.chart
         width: parent.width
         text: parent.summary.text
         wrapMode: Text.Wrap
@@ -434,7 +501,7 @@ Column {
           y: Math.max(0, (Typo.caption * 1.4 - height) / 2)
           icon: parent.live ? "loader-circle" : parent.st === "completed" ? "circle-check" : parent.st === "failed" ? "circle-x" : "circle-dot"
           threadState: parent.live ? "working" : "idle"
-          color: parent.live ? root.colors.accent : parent.st === "failed" ? root.colors.attention : root.colors.textFaint
+          color: parent.live ? root.colors.working : parent.st === "failed" ? root.colors.attention : root.colors.textFaint
           size: Math.round(Typo.body * 1.0)
         }
         Text {
@@ -476,7 +543,8 @@ Column {
   Row {
     visible: !root.paneMode
     spacing: Style.space(6)
-    ActionButton { text: "Focus T3"; onClicked: root.actionRequested("focus") }
+    // (A card that leads with a callout or a request already ends that block with "o open T3".)
+    ActionButton { visible: !root.hasLead; text: "Focus T3"; onClicked: root.actionRequested("focus") }
     ActionButton {
       visible: root.row.pr !== null && root.row.pr !== undefined && root.row.pr.url !== ""
       text: "Open PR"

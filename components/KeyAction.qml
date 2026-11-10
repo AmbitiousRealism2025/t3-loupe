@@ -18,11 +18,16 @@ Item {
   // one line at its natural width and never breaks: its width must not depend on its own width, or
   // the layout can settle on a narrow one and stack the label a letter per line.
   property bool wraps: false
+  // What the action just did ("✓ copied"), shown in place of the label for a moment. The action
+  // keeps the width of its label meanwhile, so nothing beside it moves.
+  property string feedback: ""
+  property color feedbackInk: colors.text
   readonly property color ink: quiet ? colors.textDim : colors.text
+  readonly property real labelWidth: Math.max(label.implicitWidth, rest.implicitWidth)
 
   signal clicked()
 
-  implicitWidth: cap.width + row.spacing + label.implicitWidth
+  implicitWidth: cap.width + row.spacing + (wraps ? label.implicitWidth : labelWidth)
   implicitHeight: row.implicitHeight
 
   Row {
@@ -61,17 +66,19 @@ Item {
     Text {
       id: label
       anchors.verticalCenter: parent.verticalCenter
-      width: root.wraps ? Math.max(0, root.width - cap.width - parent.spacing) : implicitWidth
-      text: root.text
+      width: root.wraps ? Math.max(0, root.width - cap.width - parent.spacing) : root.labelWidth
+      text: root.feedback !== "" ? root.feedback : root.text
       textFormat: Text.PlainText
-      color: root.ink
+      color: root.feedback !== "" ? root.feedbackInk : root.ink
       font.family: root.fontFamily
       font.pixelSize: Typo.caption
       font.weight: Font.Medium
-      font.underline: hover.hovered
+      font.underline: hover.hovered && root.feedback === ""
       wrapMode: root.wraps ? Text.Wrap : Text.NoWrap
     }
   }
+  // The label at rest, measured: it holds the action's width while feedback shows.
+  Text { id: rest; visible: false; text: root.text; textFormat: Text.PlainText; font: label.font }
 
   HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
   TapHandler { onTapped: root.clicked() }

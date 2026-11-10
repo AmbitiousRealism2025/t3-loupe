@@ -9,6 +9,11 @@ Rectangle {
   property var colors: ({})
   property string fontFamily: Style.font.family
   property string monoFamily: "monospace"
+  // The thread, for the actions the block ends with, and how copying its title just ended.
+  property var row: null
+  property string copyState: ""
+  // Offer copy and PR beside "open T3" (the dropdown's expanded card has its own buttons for them).
+  property bool secondary: true
 
   signal actionRequested(string action)
 
@@ -56,15 +61,13 @@ Rectangle {
       }
     }
 
-    Text {
+    BalancedText {
       visible: text !== ""
       width: parent.width
       text: root.callout ? root.callout.body : ""
-      textFormat: Text.PlainText
       color: root.colors.textDim
       font.family: root.fontFamily
       font.pixelSize: Typo.caption
-      wrapMode: Text.Wrap
     }
 
     // The provider's message, verbatim: it is the evidence, so it is never cut short.
@@ -92,16 +95,30 @@ Rectangle {
       }
     }
 
-    KeyAction {
+    // The next step, as a sentence in full-strength ink, and under it the keys that carry it out.
+    // The step is done in T3, so the block ends with the key that brings T3 forward, labelled
+    // for what it does ("open T3"): the sentence says what to do there, the key how to get there.
+    // (A keycap in front of the sentence read as "o restores the folder".)
+    BalancedText {
       visible: root.callout !== null && root.callout.next !== ""
       width: parent.width
-      wraps: true
-      key: "o"
-      text: root.callout ? root.callout.next : ""
+      text: root.callout ? "→ " + root.callout.next : ""
+      color: root.colors.text
+      font.family: root.fontFamily
+      font.pixelSize: Typo.caption
+      font.weight: Font.Medium
+    }
+    ThreadActions {
+      visible: root.callout !== null
+      width: parent.width
+      margin: 0
+      row: root.row
       colors: root.colors
       fontFamily: root.fontFamily
       monoFamily: root.monoFamily
-      onClicked: root.actionRequested("focus")
+      copyState: root.copyState
+      secondary: root.secondary
+      onActionRequested: function(action) { root.actionRequested(action) }
     }
   }
 }

@@ -88,9 +88,6 @@ Panel {
     : !known ? "T3 Loupe: not connected to T3"
     : (tally.needs ? tally.needs + (tally.needs === 1 ? " thread needs" : " threads need") + " you" : "Nothing needs you")
       + " · " + tally.working + " working · " + tally.done + " done"
-  // The badge takes the colour of the most pressing kind waiting (failed, then an answer, then a
-  // plan), as the panel's header count does.
-  readonly property string needsRole: service ? Store.needsRole(service.rows) : "attention"
 
   WidgetButton {
     id: button
@@ -115,7 +112,7 @@ Panel {
       id: glyphRow
       anchors.centerIn: parent
       readonly property real gap: Style.space(5)
-      readonly property var parts: [label, ring, countText, badge].filter(function(p) { return p.visible })
+      readonly property var parts: [label, ring, countText, badge, badgeWords].filter(function(p) { return p.visible })
       implicitWidth: {
         if (root.vertical) return Math.max.apply(null, parts.map(function(p) { return p.width }))
         var w = 0
@@ -199,10 +196,13 @@ Panel {
         y: root.vertical ? glyphRow.offset(badge) : (glyphRow.height - height) / 2
         height: Math.round(ring.diameter * 0.78)
         width: Math.max(height, badgeText.implicitWidth + Style.space(9))
-        // Filled pill while anything needs you: the one number in the bar that asks for a look, in the
-        // needs-you colour (ink-strength, 4.5:1 on the bar), the numeral in the bar's own background.
-        radius: height / 2
-        color: root.theme ? root.theme.bar[root.needsRole + "Ink"] : root.ink
+        // Filled pill while anything needs you: the one number in the bar that asks for a look. It is
+        // the bar's own ink, the numeral in the bar's background: the threads it counts are of
+        // several kinds (an answer, a plan, a failure), each with its colour on the ring beside it,
+        // and a badge in any one of those colours, failure red say, misnamed the rest. The panel's
+        // header shows the same badge. Its corners follow the shell's, square in a square theme.
+        radius: Math.min(height / 2, Math.max(Style.space(2), Style.cornerRadius))
+        color: root.theme ? root.theme.bar.text : root.ink
         Text {
           id: badgeText
           anchors.centerIn: parent
@@ -214,6 +214,23 @@ Panel {
           font.bold: true
           renderType: Text.NativeRendering
         }
+      }
+
+      // What the badge counts, in words, in the bar's own type: "6 need you". A bare number in a
+      // bar says nothing to someone who hasn't been told. Only in the "label" display, which is the
+      // one with room for words, and only while something needs you, so the widget is this much
+      // wider just when it is asking for a look.
+      Text {
+        id: badgeWords
+        visible: badge.visible && root.display === "label" && !root.vertical
+        x: glyphRow.offset(badgeWords)
+        anchors.verticalCenter: parent.verticalCenter
+        text: root.tally.needs === 1 ? "needs you" : "need you"
+        textFormat: Text.PlainText
+        color: root.ink
+        font.family: button.fontFamily
+        font.pixelSize: button.fontSize
+        renderType: Text.NativeRendering
       }
     }
   }
@@ -264,6 +281,7 @@ Panel {
       owner: root
       screen: root.screenObj
       colors: root.theme ? root.theme.popup : ({})
+      reduceMotion: root.reduceMotion
       onDismissRequested: root.close()
       onOpenChanged: if (open) Qt.callLater(function() { floatContent.keyCatcher.forceActiveFocus() })
 
