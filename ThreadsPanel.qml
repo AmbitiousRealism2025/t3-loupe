@@ -36,6 +36,9 @@ Item {
 
   // Floating, centered presentation: more room for the list.
   property bool centered: false
+  // The padding its window keeps around the panel (two-pane window): the detail's scrollbar sits
+  // in it, a little clear of the window's edge. 0 where the host's padding isn't the panel's to use.
+  property real gutter: 0
 
   readonly property var colors: service ? service.theme.popup : ({})
   readonly property var rows: service ? service.rows : []
@@ -54,6 +57,8 @@ Item {
   // Idle folds start collapsed and keep their state while the shell runs.
   property var idleOpen: ({})
   readonly property var visible_: Store.visibleRows(rows, filter, query, expanded, idleOpen)
+  // How many of each thread's subagents are listed under it in this view.
+  readonly property var listedChildren: Store.listedChildren(visible_)
   // Ring: what needs you in the colour of its kind (as in the list), working in ink, the rest in the
   // 3:1 edge tone. No number in it: the header beside it says what is counted.
   readonly property var ringSegs: Store.ringSegments(rows)
@@ -66,6 +71,8 @@ Item {
   readonly property int activeCount: tally.active
   readonly property int doneCount: tally.done
   readonly property int allCount: tally.all
+  // What needs you, by kind (for tests too).
+  readonly property var needKinds: Store.needKinds(rows)
   readonly property var link: Store.connection(environments)
   // Nothing reachable and nothing to show: the disconnected state replaces the list and detail.
   readonly property bool disconnected: link.none && rows.length === 0
@@ -86,7 +93,15 @@ Item {
   readonly property real bodySettled: Math.max(bodyFloor, list.contentHeight, detailPane.item ? detailPane.item.naturalHeight : 0)
   // A thread whose detail hasn't arrived yet is short for a moment: the card keeps the height it
   // had, and takes the new one when the detail is there, in one step instead of two.
-  readonly property bool bodyPending: detailPane.item !== null && detailPane.item.loading
+  // That hold is short: T3 answers within a moment or (for some failed threads) not at all, and a
+  // window held open over an empty pane while "Loading activity…" waited out its four seconds
+  // looked broken. After half a second the card takes the height of what it has.
+  readonly property bool bodyPending: detailPane.item !== null && detailPane.item.loading && !holdOver
+  property bool holdOver: false
+  readonly property bool detailLoading: detailPane.item !== null && detailPane.item.loading
+  onDetailLoadingChanged: { holdOver = false; if (detailLoading) holdTimer.restart(); else holdTimer.stop() }
+  onSelectedKeyChanged: { holdOver = false; if (detailLoading) holdTimer.restart() }
+  Timer { id: holdTimer; interval: 500; onTriggered: root.holdOver = true }
   property real bodyHeld: 0
   onBodySettledChanged: if (!bodyPending) bodyHeld = bodySettled
   onBodyPendingChanged: if (!bodyPending) bodyHeld = bodySettled
@@ -476,71 +491,113 @@ Item {
           // and its words in full ink; the rest dimmer. No hue: the six that need you are of three
           // kinds with three colours, and the count in any one of them (it used to be the worst
           // kind's, so usually failure red) said something untrue about the others. The ring beside
-          // it shows the kinds. The line has those two counts and no more: every other count is on
-          // its tab, one line down, and saying them twice made both harder to read. The "+" says the
+          // it shows the kinds. No tab's count is repeated here: every one of those is on its
+          // tab, one line down, and saying them twice made both harder to read. The "+" says the
           // two add up, to the Active tab's number.
-          Item {
-            id: countsLine
+          // After the two counts, what the first is made of: "2 to answer · 1 plan · 3 failed", each
+          // with the rail its rows carry in the list (solid violet, solid amber, dashed red). It is
+          // the key to the ring's colours and the rows' rails, and it says at a glance whether what
+          // needs you is questions to answer now or failures that have sat for days. Quiet, in
+          // sentence case, so the line still leads with its two counts; where the line is too
+          // narrow for both (the dropdown at large sizes) the kinds go on a line of their own.
+          Flow {
             width: parent.width
-            height: Math.max(counts.implicitHeight, needPill.visible ? needPill.height : 0)
-            // The ordinary line (not an error or a not-connected notice) with something waiting.
-            readonly property bool pilled: !!root.service && root.service.health !== "down" && !root.service.configError
-              && root.environments.length > 0 && !root.disconnected && root.tally.needs > 0
-            readonly property real textX: pilled ? needPill.width + Style.space(7) : 0
-            Rectangle {
-              id: needPill
-              objectName: "needPill"
-              visible: countsLine.pilled
-              anchors.verticalCenter: parent.verticalCenter
-              height: pillText.implicitHeight + Style.space(2)
-              width: Math.max(height, pillText.implicitWidth + Style.space(9))
-              radius: Math.min(height / 2, Math.max(Style.space(2), Style.cornerRadius))
-              color: root.colors.text
+            spacing: Style.space(18)
+            Item {
+              id: countsLine
+              width: Math.min(parent.width, textX + counts.implicitWidth)
+              height: Math.max(counts.implicitHeight, needPill.visible ? needPill.height : 0)
+              // The ordinary line (not an error or a not-connected notice) with something waiting.
+              readonly property bool pilled: !!root.service && root.service.health !== "down" && !root.service.configError
+                && root.environments.length > 0 && !root.disconnected && root.tally.needs > 0
+              readonly property real textX: pilled ? needPill.width + Style.space(7) : 0
+              Rectangle {
+                id: needPill
+                objectName: "needPill"
+                visible: countsLine.pilled
+                anchors.verticalCenter: parent.verticalCenter
+                height: pillText.implicitHeight + Style.space(2)
+                width: Math.max(height, pillText.implicitWidth + Style.space(9))
+                radius: Math.min(height / 2, Math.max(Style.space(2), Style.cornerRadius))
+                color: root.colors.text
+                Text {
+                  id: pillText
+                  anchors.centerIn: parent
+                  text: String(root.tally.needs)
+                  textFormat: Text.PlainText
+                  color: root.colors.background
+                  font.family: root.fontFamily
+                  font.pixelSize: Typo.caption
+                  font.bold: true
+                }
+              }
+              function styled() {
+                function tint(color, words) { return "<font color=\"" + color + "\">" + words + "</font>" }
+                var alarm = root.colors.attentionInk
+                if (!root.service) return "SERVICE NOT LOADED"
+                if (root.service.health === "down") return tint(alarm, "COLLECTOR STOPPED · RESTARTING")
+                if (root.service.configError) return tint(alarm, "PAIRINGS UNREADABLE · " + root.service.configError.toUpperCase())
+                if (!root.environments.length) return "NO T3 MACHINES PAIRED"
+                var sep = "&nbsp;&nbsp;·&nbsp;&nbsp;"
+                var quiet = root.colors.textFaint
+                if (root.disconnected) return tint(alarm, "NOT CONNECTED") + sep + Format.plural(root.link.total, "MACHINE", "MACHINES")
+                var tones = { needs: root.colors.text, strong: root.colors.textDim, quiet: quiet }
+                var parts = Store.headerCounts(root.tally)
+                var out = ""
+                for (var i = 0; i < parts.length; i++) {
+                  if (i > 0) out += parts[i].join ? tint(quiet, "&nbsp;" + parts[i].join + "&nbsp;") : sep
+                  // The needs-you count is on the pill; its words follow it here.
+                  out += tint(tones[parts[i].tone], (parts[i].words || parts[i].text).replace(/ /g, "&nbsp;"))
+                }
+                if (root.link.connected !== root.link.total) out += sep + tint(alarm, root.link.connected + " OF " + root.link.total + " MACHINES CONNECTED")
+                return out
+              }
               Text {
-                id: pillText
-                anchors.centerIn: parent
-                text: String(root.tally.needs)
-                textFormat: Text.PlainText
-                color: root.colors.background
+                id: counts
+                x: countsLine.textX
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - x
+                text: countsLine.styled()
+                textFormat: Text.StyledText
+                color: root.colors.textDim
                 font.family: root.fontFamily
                 font.pixelSize: Typo.caption
                 font.bold: true
+                font.letterSpacing: 1.2
+                elide: Text.ElideRight
               }
             }
-            function styled() {
-              function tint(color, words) { return "<font color=\"" + color + "\">" + words + "</font>" }
-              var alarm = root.colors.attentionInk
-              if (!root.service) return "SERVICE NOT LOADED"
-              if (root.service.health === "down") return tint(alarm, "COLLECTOR STOPPED · RESTARTING")
-              if (root.service.configError) return tint(alarm, "PAIRINGS UNREADABLE · " + root.service.configError.toUpperCase())
-              if (!root.environments.length) return "NO T3 MACHINES PAIRED"
-              var sep = "&nbsp;&nbsp;·&nbsp;&nbsp;"
-              var quiet = root.colors.textFaint
-              if (root.disconnected) return tint(alarm, "NOT CONNECTED") + sep + Format.plural(root.link.total, "MACHINE", "MACHINES")
-              var tones = { needs: root.colors.text, strong: root.colors.textDim, quiet: quiet }
-              var parts = Store.headerCounts(root.tally)
-              var out = ""
-              for (var i = 0; i < parts.length; i++) {
-                if (i > 0) out += parts[i].join ? tint(quiet, "&nbsp;" + parts[i].join + "&nbsp;") : sep
-                // The needs-you count is on the pill; its words follow it here.
-                out += tint(tones[parts[i].tone], (parts[i].words || parts[i].text).replace(/ /g, "&nbsp;"))
+            Row {
+              id: kindsRow
+              objectName: "needKinds"
+              visible: countsLine.pilled && root.needKinds.length > 0
+              height: countsLine.height
+              spacing: Style.space(14)
+              Repeater {
+                model: kindsRow.visible ? root.needKinds : []
+                Row {
+                  required property var modelData
+                  objectName: "needKind"
+                  anchors.verticalCenter: parent.verticalCenter
+                  spacing: Style.space(6)
+                  Rail {
+                    objectName: "needKindRail"
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: kindWords.implicitHeight
+                    color: root.colors[modelData.role] || root.colors.textFaint
+                    dashed: modelData.dashed
+                  }
+                  Text {
+                    id: kindWords
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: modelData.words
+                    textFormat: Text.PlainText
+                    color: root.colors.textDim
+                    font.family: root.fontFamily
+                    font.pixelSize: Typo.caption
+                  }
+                }
               }
-              if (root.link.connected !== root.link.total) out += sep + tint(alarm, root.link.connected + " OF " + root.link.total + " MACHINES CONNECTED")
-              return out
-            }
-            Text {
-              id: counts
-              x: countsLine.textX
-              anchors.verticalCenter: parent.verticalCenter
-              width: parent.width - x
-              text: countsLine.styled()
-              textFormat: Text.StyledText
-              color: root.colors.textDim
-              font.family: root.fontFamily
-              font.pixelSize: Typo.caption
-              font.bold: true
-              font.letterSpacing: 1.2
-              elide: Text.ElideRight
             }
           }
         }
@@ -673,7 +730,9 @@ Item {
           anchors.right: parent.right
           anchors.top: filters.top
           height: filters.height
-          width: activeFocus || text !== "" ? Style.space(150) : Style.space(90)
+          // At rest it is as wide as its "/ filter" needs at this text size, and no narrower than
+          // it was; in use, wide enough for a few words.
+          width: activeFocus || text !== "" ? Math.max(Style.space(150), Typo.caption * 11) : Math.max(Style.space(90), Typo.caption * 5 + Style.space(8) * 2 + 6)
           text: root.query
           foreground: root.colors.text
           dim: root.colors.textDim
@@ -833,6 +892,7 @@ Item {
             now: root.now
             selected: cell.index === root.cursor
             expanded: root.expanded[cell.modelData.key] === true
+            listedChildren: root.listedChildren[cell.modelData.key] || 0
             reduceMotion: root.reduceMotion
             fontFamily: root.fontFamily
             monoFamily: root.monoFamily
@@ -1029,6 +1089,7 @@ Item {
       anchors.leftMargin: Style.space(18)
       anchors.right: parent.right
       sourceComponent: ThreadDetailPane {
+        gutter: Math.max(0, root.gutter - Style.space(5))
         row: root.selectedRow
         detail: root.selectedRow && root.service ? root.service.details[root.selectedRow.key] || null : null
         colors: root.colors
@@ -1091,7 +1152,7 @@ Item {
           y: Math.round((keysBand.rowHeight - implicitHeight) / 2)
           text: "KEYS"
           textFormat: Text.PlainText
-          color: root.colors.textDim
+          color: root.colors.textFaint
           font.family: root.fontFamily
           font.pixelSize: Typo.caption
           font.bold: true
@@ -1118,7 +1179,9 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               text: lc.shownKey
               textFormat: Text.PlainText
-              color: root.colors.text
+              // The legend is reference: its keys a step under the text above it, its verbs a step
+              // under the keys. Both still hold body-text contrast (the palette's dim and faint).
+              color: root.colors.textDim
               font.family: root.fontFamily
               font.pixelSize: Typo.caption
             }
@@ -1127,7 +1190,7 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               text: lc.shownVerb
               textFormat: Text.PlainText
-              color: root.colors.textDim
+              color: root.colors.textFaint
               font.family: root.fontFamily
               font.pixelSize: Typo.caption
             }

@@ -355,7 +355,7 @@ test("usage windows are named from T3's label, qualifiers kept, every label dist
   assert.match(Store.USAGE_HEADING, /\bUSED\b/);
 });
 
-test("a spent or nearly spent window says when it resets, under its own meter", () => {
+test("a spent or nearly spent window says when it resets, beside its own value", () => {
   const now = 10_000_000;
   // Under the window it is about, so it needs no name; short, so it stays in the window's column.
   assert.equal(Store.windowReset({ usedPercent: 100, resetsAt: now + 47 * 60_000 }, now), "resets in 47m");
@@ -373,7 +373,8 @@ test("background subagents with no threads of their own say where to look", () =
   const own = Store.statusCallout(r("b", "background", { background: { subagents: 2, commands: 0, monitors: 0, other: 0 }, childCount: 2 }), now, false);
   assert.equal(own.next, "", "their threads are listed under the row: Enter shows them");
   const none = Store.statusCallout(r("b", "background", { background: { subagents: 2, commands: 0, monitors: 0, other: 0 }, childCount: 0 }), now, false);
-  assert.match(none.next, /T3 shows what each one is doing/);
+  assert.match(none.next, /see each one in T3/);
+  assert.match(none.next, /inside this thread/, "and why there is nothing to list");
   assert.equal(Store.enterVerb(r("b", "background", { childCount: 0 }), true, false), "", "and Enter is not offered for what it can't do");
 });
 
@@ -457,4 +458,58 @@ test("two runs are a sentence too; the chart starts at three", () => {
   const two = [{ ordinal: 1, status: "completed", durationMs: 8 * 60_000 }, { ordinal: 2, status: "running", startedAt: now - 14 * 60_000, durationMs: null }];
   assert.deepEqual({ ...Store.runsSummary(two, now) }, { chart: false, text: "2 runs  ·  current 14m 00s  ·  longest 14m 00s" });
   assert.equal(Store.runsSummary(two.concat([{ ordinal: 3, status: "completed", durationMs: 60_000 }]), now).chart, true);
+});
+
+test("what needs you is broken down by kind, in the list's order, and adds up to the count", () => {
+  const rows = [r("f1", "failed", { rawStatus: "failed" }), r("in1", "input"), r("pl", "plan"), r("in2", "input"), r("f2", "failed", { rawStatus: "failed" }),
+    r("f3", "failed", { rawStatus: "failed" }), r("w", "working", { rawStatus: "running" }), r("kid", "failed", { parentId: "w", rawStatus: "failed" }), r("d", "review")];
+  const kinds = Array.from(Store.needKinds(rows), (k) => ({ ...k }));
+  assert.deepEqual(kinds.map((k) => k.words), ["2 to answer", "1 plan", "3 failed"]);
+  assert.deepEqual(kinds.map((k) => k.role), ["ask", "warning", "attention"], "each in the colour its rows carry");
+  assert.deepEqual(kinds.map((k) => k.dashed), [false, false, true], "and the rail's shape: dashed for a failure");
+  assert.equal(kinds.reduce((n, k) => n + k.count, 0), Store.tally(rows).needs, "the kinds add up to the header's count");
+  // Only the kinds there are; none when nothing needs you.
+  assert.deepEqual(Array.from(Store.needKinds([r("pl", "plan"), r("p2", "plan")]), (k) => k.words), ["2 plans"]);
+  assert.equal(Store.needKinds([r("w", "working"), r("d", "review")]).length, 0);
+});
+
+test("a thread's subagent count is checked against the rows listed under it", () => {
+  const rows = [r("p", "working", { rawStatus: "running", childCount: 3, activeChildren: 2 }), r("k1", "working", { parentId: "p", rawStatus: "running" }),
+    r("k2", "working", { parentId: "p", rawStatus: "running" }), r("k3", "idle", { parentId: "p" }), r("q", "working", { rawStatus: "running" })];
+  const folded = Store.listedChildren(Store.visibleRows(rows, "all", "", {}, {}));
+  assert.equal(folded["e:p"], 2, "only the live ones until Enter");
+  assert.equal(folded["e:q"], undefined);
+  const open = Store.listedChildren(Store.visibleRows(rows, "all", "", { "e:p": true }, {}));
+  assert.equal(open["e:p"], 3);
+});
+
+test("a wrapped sentence fills its lines and never ends on a lone word", () => {
+  // A monospace measure: one unit a character.
+  const wide = (s) => s.length;
+  const lines = (text, room) => Format.wrapSentence(text, room, wide).split("\n");
+  const sentence = "Retry the thread in T3; if it fails again, check the provider";
+  assert.deepEqual(lines(sentence, 200), [sentence], "one line stays one line");
+  // Plain wrapping at 54 would leave "provider" alone; the word before it comes down too.
+  assert.deepEqual(lines(sentence, 54), ["Retry the thread in T3; if it fails again, check", "the provider"]);
+  // Lines are filled, not evened out: the first line runs as far as the room allows.
+  assert.deepEqual(lines(sentence, 40), ["Retry the thread in T3; if it fails", "again, check the provider"]);
+  for (let room = 12; room <= 70; room++) {
+    const out = lines(sentence, room);
+    assert.equal(out.join(" "), sentence, `at ${room}: nothing lost`);
+    for (const line of out) assert.ok(line.length <= room, `at ${room}: '${line}' fits`);
+    if (out.length > 1 && out[out.length - 2].split(" ").length > 2) assert.ok(out[out.length - 1].includes(" "), `at ${room}: no lone last word (${JSON.stringify(out)})`);
+  }
+  // A break never falls after a hyphen.
+  const resume = "T3 resumes it after the reset if auto-resume is on; otherwise retry it in T3";
+  for (let room = 20; room <= 80; room++) for (const line of lines(resume, room)) assert.ok(!/auto-$/.test(line), `at ${room}`);
+  // Double spaces around a separator survive where the line doesn't break there.
+  assert.equal(Format.wrapSentence("6 of 9 steps done  ·  now", 100, wide), "6 of 9 steps done  ·  now");
+  assert.equal(Format.wrapSentence("", 10, wide), "");
+});
+
+test("a plan's block says when it was proposed; its next step says where to read it", () => {
+  const now = 10_000_000;
+  const plan = Store.statusCallout(r("p", "plan", { completedAt: now - 4 * 60_000, lastRunMs: 360_000 }), now, false);
+  assert.equal(plan.body, "Proposed 4m ago after a 6m 00s run");
+  assert.match(plan.next, /Read it in T3/);
 });

@@ -2,6 +2,30 @@
 
 What changed in each version. [`VALIDATION.md`](VALIDATION.md) records how each one was verified.
 
+## 2.6.1 — 2026-11-10
+
+Larger secondary text, a header that says what needs you, and stronger contrast on tinted rows in light themes. From a review round judged by Fable 5.2 and Opus 5.5.
+
+- **Secondary text is one step larger:** row metadata, times, captions, the activity list and the footer, at every text-size setting. Titles and headings are unchanged.
+- **The header says what needs you by kind,** each with the rail its rows carry: `6 NEED YOU + 7 WORKING  ▍2 to answer ▍1 plan ┇3 failed`. It wraps to a second line when narrow.
+- **The detail pane never cuts a line at its scroll edge,** and `d` starts the next page at the first hidden row.
+- **A calmer detail:**
+  - Facts are tiles without outlines.
+  - The plan's "now:" step has its own line.
+  - Plan, Runs and Activity share one gap.
+  - A single fact is a caption and a line, not a lone box.
+  - Callout sentences fill their width without one-word last lines.
+- **The footer:**
+  - In the two-pane window, a spent window's reset sits beside it: `full · resets in 47m`.
+  - The band is a step quieter, and a window at 90% or more stands out in full ink.
+- **Contrast on tinted surfaces:** coloured status text is held to 4.5:1 and icons to 3:1 against the row, selected row or callout fill they actually sit on, in every shipped theme. Light themes get a stronger needs-you wash and darker status inks.
+- **Smaller fixes:**
+  - A subagent count reads "2/3" while only the live ones are listed.
+  - Activity times say "3m ago".
+  - Fold hints show only under the cursor.
+  - A thread whose detail never arrives no longer holds an empty window for seconds.
+- New tests for the larger secondary text, the scroll edges, the header's kinds and tinted-surface contrast across all themes (119 pass).
+
 ## 2.6.0 — 2026-11-09
 
 A second UI overhaul, from a review panel of Fable 5.2 and Sol 6.1 judges. Over three rounds the overall review score went from 6.9 to 7.5 out of 10. No new network, process, file or text-input access; copying a re-pair command uses the existing copy route.

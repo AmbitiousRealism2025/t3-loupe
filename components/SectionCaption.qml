@@ -14,6 +14,10 @@ Row {
   property string fontFamily: Style.font.family
   // When set, the label elides to fit instead of overflowing (e.g. narrow facts cells).
   property real maxWidth: -1
+  // For the detail pane's scroll edge: a caption is shown whole, and never as the last thing above
+  // the edge with none of its section under it.
+  readonly property bool whole: true
+  readonly property bool heading: true
 
   spacing: Style.space(8)
 

@@ -7,7 +7,11 @@ import qs.Commons
 // "textSize" (e.g. 2) and nudged live with +/- in the panel.
 QtObject {
   property real bump: 0
-  readonly property int caption: Math.round(Style.font.caption + bump)
+  // Loupe's secondary text (metadata, times, section captions, the footer) is the shell's
+  // body-small, one step above its caption: most of the panel is secondary text, and at the
+  // shell's caption size it was the smallest type on screen as well as the dimmest. A row's title
+  // is the same size and tells itself apart by weight and ink.
+  readonly property int caption: Math.round(Style.font.bodySmall + bump)
   readonly property int bodySmall: Math.round(Style.font.bodySmall + bump)
   readonly property int body: Math.round(Style.font.body + bump)
   readonly property int subtitle: Math.round(Style.font.subtitle + bump)

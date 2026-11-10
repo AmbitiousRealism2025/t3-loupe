@@ -76,9 +76,11 @@ Column {
   // What to do next, as a sentence in full-strength ink; the keys that carry it out follow it
   // (ThreadActions), so the hand-off to T3 is one piece: what to do there, and the key that gets
   // you there.
-  component NextStep: BalancedText {
+  component NextStep: Sentence {
     property string step: ""
-    text: "→ " + step
+    objectName: "nextStep"
+    lead: "→ "
+    text: step
     color: root.colors.text
     font.family: root.fontFamily
     font.pixelSize: Typo.caption
@@ -112,7 +114,7 @@ Column {
       width: root.width
       height: pend.implicitHeight + Style.space(18)
       radius: Style.cornerRadius
-      color: Palette.alpha(root.colors.ask, 0.09)
+      color: Palette.alpha(root.colors.ask, Palette.BLOCK)
 
       Rectangle { width: Style.space(3); height: parent.height; color: root.colors.ask }
 
@@ -246,7 +248,7 @@ Column {
 
   // Activity trail, newest last — T3's timeline icons. Live steps get a dot and "now".
   // The widest time an activity line shows, for its fixed time column.
-  Text { id: whenProbe; visible: false; text: "waiting"; textFormat: Text.PlainText; font.family: root.fontFamily; font.pixelSize: Typo.caption }
+  Text { id: whenProbe; visible: false; text: "59m ago"; textFormat: Text.PlainText; font.family: root.fontFamily; font.pixelSize: Typo.caption }
 
   component ActivityTrail: Column {
     width: root.width
@@ -256,6 +258,8 @@ Column {
       model: root.detail ? root.detail.activity : []
       Item {
         required property var modelData
+        // A row is shown whole or not at all where the pane's scroll edge falls (ThreadDetailPane).
+        readonly property bool whole: true
         readonly property bool live: modelData.status === "running" || modelData.status === "pending"
         // A step waiting on your answer is marked in the answer's violet, like its row and its
         // request above: red is for failures only, and the accent for what is running.
@@ -286,7 +290,7 @@ Column {
           maximumLineCount: 3
           elide: Text.ElideRight
         }
-        // The time column has a fixed width (room for a dot and "waiting"), so it never shrinks;
+        // The time column has a fixed width (room for a dot and "waiting", or "59m ago"), so it never shrinks;
         // the activity text beside it wraps and elides instead.
         Row {
           id: aWhen
@@ -296,7 +300,8 @@ Column {
           y: Math.max(0, (Typo.caption * 1.4 - height) / 2)
           spacing: Style.space(5)
           Text {
-            text: modelData.status === "pending" ? "waiting" : parent.parent.live ? "now" : Format.ago(modelData.at, root.now).replace(" ago", "")
+            // "3m ago", as the rows say it: a bare "3m" read as a duration as easily as an age.
+            text: modelData.status === "pending" ? "waiting" : parent.parent.live ? "now" : Format.ago(modelData.at, root.now)
             textFormat: Text.PlainText
             color: root.colors.textFaint
             font.family: root.fontFamily
@@ -322,8 +327,10 @@ Column {
   Flow {
     visible: root.rest && (root.todo !== null || root.runs.length > 0 || (!root.paneMode && root.ctx !== null))
     width: root.width
-    spacing: Style.space(24)
-    readonly property real colWidth: width >= Style.space(720) ? (width - spacing) / 2 : width
+    // Side by side, a wide gutter; stacked, the same gap as every other section.
+    readonly property bool paired: width >= Style.space(720)
+    spacing: paired ? Style.space(24) : root.spacing
+    readonly property real colWidth: paired ? (width - spacing) / 2 : width
 
     // Plan: one segment per step (the step is the unit), the current step in the working ink.
     Column {
@@ -333,6 +340,7 @@ Column {
       Caption { label: "Plan"; count: -1 }
       Row {
         id: steps
+        readonly property bool whole: true
         width: parent.width
         height: Style.space(12)
         spacing: Style.space(3)
@@ -357,10 +365,21 @@ Column {
           }
         }
       }
-      BalancedText {
+      Note {
+        objectName: "planCount"
         width: parent.width
-        text: root.todo ? root.todo.done + " of " + root.todo.total + " steps done" + (root.todo.current ? "  ·  now: " + root.todo.current : "") : ""
-        color: root.colors.textFaint
+        text: root.todo ? root.todo.done + " of " + root.todo.total + " steps done" : ""
+      }
+      // The step in hand, on a line of its own in full ink: it is what the thread is doing now,
+      // and the one line of the plan worth reading at a glance.
+      Sentence {
+        objectName: "planNow"
+        visible: root.todo !== null && !!root.todo.current
+        width: parent.width
+        lead: "now: "
+        leadColor: root.colors.textFaint
+        text: root.todo && root.todo.current ? root.todo.current : ""
+        color: root.colors.text
         font.family: root.fontFamily
         font.pixelSize: Typo.caption
       }
@@ -382,6 +401,7 @@ Column {
       // If there are so many runs that the figures don't fit beside them, they go underneath.
       Item {
         id: runsRow
+        readonly property bool whole: true
         visible: parent.summary.chart
         width: parent.width
         readonly property real gap: Style.space(22)
@@ -398,7 +418,7 @@ Column {
             model: runsRow.parent.summary.chart ? runsRow.parent.summary.text.split("  ·  ") : []
             Note { required property string modelData; width: figures.width; text: modelData; color: root.colors.textDim }
           }
-          Note { width: figures.width; text: "one bar per run; its height is the run's length"; wrapMode: Text.Wrap }
+          Note { width: figures.width; text: "one bar per run; taller ran longer"; wrapMode: Text.Wrap }
         }
       Item {
         id: chart
@@ -492,6 +512,7 @@ Column {
       model: root.detail ? root.detail.subagents : []
       Item {
         required property var modelData
+        readonly property bool whole: true
         readonly property string st: modelData.status
         readonly property bool live: st === "running" || st === "pending" || st === "waiting"
         width: root.width
@@ -501,7 +522,7 @@ Column {
           y: Math.max(0, (Typo.caption * 1.4 - height) / 2)
           icon: parent.live ? "loader-circle" : parent.st === "completed" ? "circle-check" : parent.st === "failed" ? "circle-x" : "circle-dot"
           threadState: parent.live ? "working" : "idle"
-          color: parent.live ? root.colors.working : parent.st === "failed" ? root.colors.attention : root.colors.textFaint
+          color: parent.live ? root.colors.working : parent.st === "failed" ? (root.colors.attentionGlyph || root.colors.attention) : root.colors.textFaint
           size: Math.round(Typo.body * 1.0)
         }
         Text {
