@@ -50,7 +50,7 @@ Row {
           radius: Style.cornerRadius > 0 ? 1 : 0
           // Graduated steps, all solid: sizes up to the current one in ink, larger ones in the 3:1 edge
           // tone (an outline at this size reads as a missing-glyph box).
-          color: parent.on || barHover.hovered ? root.colors.text : root.colors.edge
+          color: barHover.hovered ? root.colors.text : parent.on ? root.colors.textDim : root.colors.edge
         }
         HoverHandler { id: barHover; cursorShape: Qt.PointingHandCursor }
         TapHandler { onTapped: root.sizeRequested(root.sizes[index]) }

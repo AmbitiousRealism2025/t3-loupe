@@ -22,6 +22,8 @@ Item {
   property bool selected: false
   // Whether all of this thread's subagents are listed under it (Enter), or only the live ones.
   property bool expanded: false
+  // How many of its subagents are listed under it right now (-1: not known).
+  property int listedChildren: -1
   property bool reduceMotion: false
   property string fontFamily: Style.font.family
   property string monoFamily: "monospace"
@@ -98,7 +100,18 @@ Item {
     Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
     // Rail: the state's colour on rows that need you, the ring's on any other selected row.
+    // On a selected row that needs you the rail keeps the left edge to itself: the ring's left
+    // side is covered in the row's own fill, so a failure's dashes sit on the row, not on a
+    // stripe of the ring's colour.
+    Rectangle {
+      objectName: "railBack"
+      visible: root.selected && root.needsYou
+      width: rail.width
+      height: parent.height
+      color: parent.color
+    }
     Rail {
+      id: rail
       visible: root.needsYou || root.selected
       height: parent.height
       color: root.needsYou ? root.glyphColor : root.colors.focus
@@ -165,7 +178,8 @@ Item {
           spacing: Style.space(3)
           Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: String(root.row.childCount || 0)
+            // "2/3" while only the live ones are listed, so the count matches the rows under it.
+            text: (root.listedChildren >= 0 && root.listedChildren < (root.row.childCount || 0) ? root.listedChildren + "/" : "") + String(root.row.childCount || 0)
             textFormat: Text.PlainText
             color: root.colors.textFaint
             font.family: root.fontFamily

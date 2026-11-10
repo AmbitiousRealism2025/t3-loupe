@@ -291,6 +291,7 @@ Panel {
         service: root.service
         opened: root.opened
         centered: true
+        gutter: floating.padding
         reduceMotion: root.reduceMotion
         onCloseRequested: root.close()
         onSwitchRequested: function(direction) { root.switchPanel(direction) }

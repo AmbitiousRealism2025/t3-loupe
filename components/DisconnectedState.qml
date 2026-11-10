@@ -46,7 +46,7 @@ Column {
       anchors.verticalCenter: parent.verticalCenter
       spacing: Style.space(3)
       Text {
-        text: "Not connected to T3"
+        text: "Not connected to T3 Code"
         textFormat: Text.PlainText
         color: root.colors.text
         font.family: root.fontFamily
@@ -56,7 +56,7 @@ Column {
       Text {
         width: root.width - Style.space(60)
         text: (root.allExpired
-          ? (root.environments.length === 1 ? "The pairing has expired" : "All " + root.environments.length + " pairings have expired")
+          ? (root.environments.length === 1 ? "The pairing has expired" : root.environments.length === 2 ? "Both pairings have expired" : "All " + root.environments.length + " pairings have expired")
           : "No paired machine is reachable") + ", so Loupe can't see any threads. Nothing is lost: threads keep running in T3."
         textFormat: Text.PlainText
         color: root.colors.textDim

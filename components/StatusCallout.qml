@@ -61,7 +61,7 @@ Rectangle {
       }
     }
 
-    BalancedText {
+    Sentence {
       visible: text !== ""
       width: parent.width
       text: root.callout ? root.callout.body : ""
@@ -99,10 +99,12 @@ Rectangle {
     // The step is done in T3, so the block ends with the key that brings T3 forward, labelled
     // for what it does ("open T3"): the sentence says what to do there, the key how to get there.
     // (A keycap in front of the sentence read as "o restores the folder".)
-    BalancedText {
+    Sentence {
+      objectName: "nextStep"
       visible: root.callout !== null && root.callout.next !== ""
       width: parent.width
-      text: root.callout ? "→ " + root.callout.next : ""
+      lead: "→ "
+      text: root.callout ? root.callout.next : ""
       color: root.colors.text
       font.family: root.fontFamily
       font.pixelSize: Typo.caption

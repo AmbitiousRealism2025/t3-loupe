@@ -5,18 +5,20 @@ import "../lib/Store.js" as Store
 
 // Provider usage limits beside their heading, as one grid: a row per provider, a column per kind
 // of window, the same columns for every row.
-//   LIMITS USED  Claude  5-hour ▭ 38%    weekly ▭ 61%   weekly · Fable ▭ 4%
-//                Codex   5-hour ▮ full   weekly ▭ 82%
-//                               resets in 47m
+//   LIMITS USED  Claude  5-hour ▭ 38%                     weekly ▭ 61%   weekly · Fable ▭ 4%
+//                Codex   5-hour ▮ full · resets in 47m    weekly ▭ 82%
 // The heading says which way the numbers count: they are the share of each limit used.
 // Each column holds one kind of window (its label, meter and value) and is as wide as its widest
 // entry on any row, so "weekly" starts at the same x for every provider and the meters line up. A
-// provider without that kind leaves the cell empty. A cell's value is short, a percentage or
-// "full", so no row's words push another row's windows apart. A spent or nearly spent window says
-// when it resets on a line of its own under its meter: that is what "full" means for you, and
-// there it belongs to its window without having to name it. If the band is too narrow for every
-// column, the last ones move to a second line of each provider's row, at the same column for all
-// (Store.usageLines). Ink meters; a spent window's is full.
+// provider without that kind leaves the cell empty. A spent or nearly spent window says when it
+// resets, right after its value: that is what "full" means for you, and there it belongs to its
+// window without having to name it. (It used to hang on a line of its own under the meter, which
+// made the band three lines for two providers.) The column is as wide as that needs, for every
+// row. In the dropdown, where three columns only just fit, the reset stays under its meter. If
+// the band is too narrow for every column, the last ones move to a second line of each
+// provider's row, at the same column for all (Store.usageLines).
+// The band is reference, so it is quiet: dim meters and figures, and full ink only for a window
+// at 90% or more, which is then the one thing in the footer that stands out.
 // Providers that report no usage are left out.
 Row {
   id: root
@@ -85,16 +87,19 @@ Row {
 
   spacing: itemGap
 
-  // One window: its kind, a meter as long as the limit, and how much of it is used. A spent
-  // window's meter is full and its words are full-weight ink. No colour: a limit is a wait, not
-  // a failure.
+  // One window: its kind, a meter as long as the limit, and how much of it is used. A window with
+  // room left is dim; one nearly or wholly spent is in full ink, its words full-weight when spent.
+  // No colour: a limit is a wait, not a failure.
   component UsageCell: Column {
     id: usageCell
     property var win: null
     property string label: ""
     readonly property bool spent: win !== null && win.usedPercent >= 100
+    readonly property bool near: win !== null && win.usedPercent >= 90
     // When a spent or nearly spent window resets; "" otherwise.
     readonly property string reset: Store.windowReset(win, root.now)
+    // Beside the value (the two-pane window), or under the meter (the dropdown).
+    readonly property bool resetInline: reset !== "" && !root.compact
     Row {
       id: firstLine
       height: root.rowTall
@@ -113,7 +118,7 @@ Row {
         anchors.verticalCenter: parent.verticalCenter
         width: body.meterWidth
         value: usageCell.win ? usageCell.win.usedPercent / 100 : 0
-        ink: root.colors.text
+        ink: root.colors.textFaint
         danger: root.colors.text
         track: root.colors.edge
       }
@@ -122,10 +127,29 @@ Row {
         anchors.verticalCenter: parent.verticalCenter
         text: usageCell.win ? Store.windowValue(usageCell.win) : ""
         textFormat: Text.PlainText
-        color: usageCell.win && usageCell.win.usedPercent >= 90 ? root.colors.text : root.colors.textDim
+        color: usageCell.near ? root.colors.text : root.colors.textDim
         font.family: root.fontFamily
         font.pixelSize: Typo.caption
         font.weight: usageCell.spent ? Font.DemiBold : Font.Normal
+      }
+      Text {
+        visible: usageCell.resetInline
+        anchors.verticalCenter: parent.verticalCenter
+        text: "·"
+        textFormat: Text.PlainText
+        color: root.colors.textFaint
+        font.family: root.fontFamily
+        font.pixelSize: Typo.caption
+      }
+      Text {
+        objectName: "usageResetInline"
+        visible: usageCell.resetInline
+        anchors.verticalCenter: parent.verticalCenter
+        text: usageCell.reset
+        textFormat: Text.PlainText
+        color: root.colors.text
+        font.family: root.fontFamily
+        font.pixelSize: Typo.caption
       }
     }
     // Under the meter, so it reads as this window's; where that would make the cell wider than
@@ -133,7 +157,7 @@ Row {
     // still doesn't widen the column. (In an Item as wide as the indent and the words together:
     // the cell's width, and so its column's, has to count the indent.)
     Item {
-      visible: usageCell.reset !== ""
+      visible: usageCell.reset !== "" && !usageCell.resetInline
       width: resetText.x + resetText.implicitWidth
       height: resetText.implicitHeight
       Text {
@@ -158,7 +182,7 @@ Row {
     topPadding: Math.max(0, Math.round((root.rowTall - lineProbe.implicitHeight) / 2))
     text: Store.USAGE_HEADING
     textFormat: Text.PlainText
-    color: root.colors.textDim
+    color: root.colors.textFaint
     font.family: root.fontFamily
     font.pixelSize: Typo.caption
     font.bold: true
@@ -232,7 +256,7 @@ Row {
                 anchors.verticalCenter: parent.verticalCenter
                 text: block.modelData.name
                 textFormat: Text.PlainText
-                color: root.colors.text
+                color: root.colors.textDim
                 font.family: root.fontFamily
                 font.pixelSize: Typo.caption
                 font.weight: Font.Medium
@@ -253,8 +277,10 @@ Row {
                     return false
                   }
                   width: block.width - lineColumn.x
-                  // One row tall, or two where one of this provider's windows here says when it resets.
+                  // One row tall, or two where one of this provider's windows here says when it
+                  // resets under its meter (the dropdown).
                   readonly property bool resets: {
+                    if (!root.compact) return false
                     for (var i = 0; i < modelData.length; i++) {
                       var c = block.modelData.cells[modelData[i].column]
                       if (c && Store.windowReset(c.window, root.now) !== "") return true

@@ -55,10 +55,13 @@ Item {
     }
   }
 
-  // What the line does and the key that does it, in the legend's words ("↵ unfold"), so it reads
-  // as something to open and not as a heading. The key is always there, dim until the cursor is
-  // on the line: j and k reach it like any row.
+  // What the line does and the key that does it, in the legend's words ("↵ unfold"), on the line
+  // the cursor (or the pointer) is on. Only there: shown on every fold line at once, it named Enter
+  // on rows Enter would not act on, beside a legend saying "↵ subagents" for the row it would.
+  // The chevron and the count say a line can be opened; j and k reach it like any row.
   Text {
+    objectName: "foldHint"
+    visible: root.selected || hover.hovered
     anchors.right: parent.right
     anchors.rightMargin: Style.space(10)
     anchors.verticalCenter: parent.verticalCenter

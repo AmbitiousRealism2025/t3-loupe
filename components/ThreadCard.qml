@@ -43,7 +43,9 @@ Item {
     if (!child) parts.push(row.project)
     if (row.branch) parts.push(row.branch)
     if (row.model) parts.push(Format.model(row.model))
-    return parts.join("  ·  ")
+    // One space either side of the dot, as in the detail pane: the wider gaps cost the line the
+    // end of its model name.
+    return parts.join(" · ")
   }
 
   implicitHeight: card.height + Style.space(child ? 2 : 4)
@@ -65,7 +67,16 @@ Item {
     border.color: root.colors.focus
     Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
+    // (As on the two-pane row: a selected needs-you card's rail sits on the card, not on the ring.)
+    Rectangle {
+      objectName: "railBack"
+      visible: root.selected && root.needsYou
+      width: rail.width
+      height: parent.height
+      color: parent.color
+    }
     Rail {
+      id: rail
       visible: root.needsYou || root.selected
       height: parent.height
       color: root.needsYou ? root.tone : root.colors.focus
