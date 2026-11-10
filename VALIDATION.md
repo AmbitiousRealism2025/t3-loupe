@@ -427,3 +427,19 @@ Contributed in #5. Checked before merging:
 **Not verified:**
 - The window's height change while moving between threads was seen only in stills.
 - Themes other than Matte Black and Catppuccin Latte: covered by the palette tests only.
+
+## Secondary text and tinted-surface contrast — v2.6.1 (2026-11-10)
+
+**How it was reviewed:**
+- **Panel:** eight judges on the same 15 screenshots, eight categories and frozen brief as 2.6.0: four lenses, each judged once by Fable 5.2 high and once by Opus 5.5 at max effort, fresh every round.
+- **Fix agent:** a new Fable 5.2 high session with no history of earlier rounds, given only the guardrails, Sean's standing decisions and the baseline judges' results. It was newly allowed to raise secondary text one step.
+- **Baseline and result:** v2.6.0 scored 7.69 on this panel; round 1 scored 7.72. Layout rose 6.75 to 7.12 and craft reached 8; light-theme colour slipped (7.38 to 7.25), which round 1b fixed. The climb stopped after round 1 under its stop rule (a round gaining under 0.15).
+- **Round 1b:** contrast only. Coloured text against its real tinted background is held to 4.5:1 and icons to 3:1, in every shipped theme.
+
+**Verified:**
+- `npm test`: 119 pass.
+- Live, in Omarchy with Matte Black and Catppuccin Latte: both commits ran in the installed plugin and were photographed from the demo feed at text size 2. The light-theme status words on tinted rows were checked in the round 1b shots.
+- `omarchy plugin validate` passes on a clean export. `git diff --check` is clean.
+
+**Not verified:**
+- Round 1b was not re-scored by the panel; the change was checked against palette figures, the tests and the screenshots.

@@ -2,9 +2,9 @@
 
 **See which [T3 Code](https://t3.codes) agent needs you, from your [Omarchy](https://omarchy.org) bar.** A live, read-only view of every T3 thread across your machines: what's waiting on you, what's working, and how close you are to your usage limits.
 
-![The two-pane window: threads grouped by status on the left, the selected thread's live detail on the right](https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/screens/2.6.0/two-pane.png)
+![The two-pane window: threads grouped by status on the left, the selected thread's live detail on the right](https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/screens/2.6.1/two-pane.png)
 
-![T3 Loupe in the bar](https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/screens/2.6.0/bar.png)
+![T3 Loupe in the bar](https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/screens/2.6.1/bar.png)
 
 ## Quick start
 
@@ -46,7 +46,7 @@ Remove the file, or set `"demo": false`, to go back to live data.
 
 | A pending approval, with the full command | The compact dropdown (press <code>f</code>) |
 |:---:|:---:|
-| ![Pending command approval with the full command text](https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/screens/2.6.0/two-pane-approval.png) | ![The compact dropdown under the bar](https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/screens/2.6.0/dropdown.png) |
+| ![Pending command approval with the full command text](https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/screens/2.6.1/two-pane-approval.png) | ![The compact dropdown under the bar](https://raw.githubusercontent.com/AmbitiousRealism2025/t3-loupe-media/main/screens/2.6.1/dropdown.png) |
 
 <sub>Screenshots: built-in demo feed, Omarchy's <b>Matte Black</b> theme. Loupe takes its colours from whatever theme is active.</sub>
 
