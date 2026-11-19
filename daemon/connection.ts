@@ -164,21 +164,31 @@ export class EnvironmentConnection {
       if (this.sessionExpiresAt !== null && this.sessionExpiresAt <= Date.now()) throw new Failure("expired");
       this.base = environmentBase(this.env);
       const descriptor = await this.verifyIdentity();
+      if (this.stopped) return;
       identityVerified = true;
       this.hostLabel = clean(descriptor.label, 40);
       this.serverVersion = clean(descriptor.serverVersion, 60);
       await this.checkSession();
+      if (this.stopped) return;
       const { ticket } = await requestJson(this.base, "/api/auth/websocket-ticket", { method: "POST", token: this.env.token, maxBytes: 16 * 1024 });
+      if (this.stopped) return;
       if (typeof ticket !== "string") throw new Failure("failed", "no ticket");
       const socket = await RpcSocket.connect(this.base, ticket);
+      if (this.stopped) {
+        socket.close();
+        return;
+      }
       this.attach(socket);
     } catch (error) {
+      if (this.stopped) return;
       this.socket = null;
       const code = failureCode(error);
       this.failures++;
       if (identityVerified && (code === "offline" || code === "failed")) {
         // Socket path down after the server proved its identity; keep data flowing over HTTP.
-        if (await this.pollOnce()) {
+        const polled = await this.pollOnce();
+        if (this.stopped) return;
+        if (polled) {
           this.setState("polling");
           this.startPolling();
           this.schedule(this.backoff());
@@ -296,17 +306,20 @@ export class EnvironmentConnection {
 
   private async pollOnce(): Promise<boolean> {
     try {
-      if (!this.base) return false;
+      if (this.stopped || !this.base) return false;
       // Re-check identity before every token-bearing poll: the server behind this address can
       // change between polls (a restart, or another process taking a vacant port).
       await this.verifyIdentity();
+      if (this.stopped) return false;
       const snapshot = await requestJson(this.base, "/api/orchestration/shell", { token: this.env.token });
+      if (this.stopped) return false;
       this.store.loadHttpSnapshot(snapshot);
       this.store.synchronized = true;
       this.lastLiveAt = Date.now();
       this.refresh();
       return true;
     } catch (error) {
+      if (this.stopped) return false;
       const code = failureCode(error);
       if (code === "authentication_required" || code === "environment_changed" || code === "listener_untrusted") {
         this.stopPolling();
