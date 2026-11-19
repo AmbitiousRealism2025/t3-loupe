@@ -9,6 +9,28 @@ const r = (id, state, extra = {}) => ({ key: "e:" + id, envId: "e", id, parentId
 const ids = (list) => Array.from(list, (x) => (x.kind === "idle-line" ? `[idle ${x.count}${x.open ? " open" : ""}]` : x.kind === "section" ? `§${x.label} ${x.count}` : x.id));
 const rowIds = (list) => Array.from(list).filter((x) => !x.kind).map((x) => x.id);
 
+test("finished parents with approval-waiting children appear in Active and its counts", () => {
+  for (const state of ["idle", "review", "working", "stopped"]) {
+    const rows = [r("parent", state), r("child", "input", { parentId: "parent", pendingKind: "command" }),
+      r("child2", "plan", { parentId: "parent" })];
+    assert.deepEqual(rowIds(Store.visibleRows(rows, "attention", "", {})), ["parent", "child", "child2"]);
+    assert.deepEqual(ids(Store.visibleRows(rows, "active", "", {})), ["§Needs you 1", "parent", "child", "child2"]);
+    const t = Store.tally(rows);
+    assert.equal(t.needs, 1);
+    assert.equal(t.active, 1);
+    assert.equal(t.working + t.done + t.stopped + t.other, 0);
+    assert.equal(Store.filterCount(rows, "attention"), 1);
+    assert.equal(Store.filterCount(rows, "active"), 1);
+    assert.equal(Store.filterCount(rows, "done"), 0);
+    assert.equal(Store.needKinds(rows).reduce((sum, k) => sum + k.count, 0), 1);
+    assert.equal(Store.ringSegments(rows).find((s) => s.role === "ask").count, 1);
+  }
+  const unrelated = [r("parent", "idle"), r("child", "input", { parentId: "parent", envId: "other", key: "other:child" })];
+  assert.deepEqual(rowIds(Store.visibleRows(unrelated, "active", "", {})), []);
+  assert.equal(Store.tally(unrelated).needs, 0);
+  assert.equal(Store.tally([]).active, 0);
+});
+
 test("inbox shows only what needs you; active adds what is in progress; children follow parents", () => {
   const rows = [r("a", "input"), r("b", "working"), r("c", "review"), r("k", "working", { parentId: "b" }), r("z", "idle", { settled: true })];
   assert.deepEqual(ids(Store.visibleRows(rows, "attention", "", {})), ["a"]);
@@ -464,7 +486,7 @@ test("what needs you is broken down by kind, in the list's order, and adds up to
   const rows = [r("f1", "failed", { rawStatus: "failed" }), r("in1", "input"), r("pl", "plan"), r("in2", "input"), r("f2", "failed", { rawStatus: "failed" }),
     r("f3", "failed", { rawStatus: "failed" }), r("w", "working", { rawStatus: "running" }), r("kid", "failed", { parentId: "w", rawStatus: "failed" }), r("d", "review")];
   const kinds = Array.from(Store.needKinds(rows), (k) => ({ ...k }));
-  assert.deepEqual(kinds.map((k) => k.words), ["2 to answer", "1 plan", "3 failed"]);
+  assert.deepEqual(kinds.map((k) => k.words), ["2 to answer", "1 plan", "4 failed"]);
   assert.deepEqual(kinds.map((k) => k.role), ["ask", "warning", "attention"], "each in the colour its rows carry");
   assert.deepEqual(kinds.map((k) => k.dashed), [false, false, true], "and the rail's shape: dashed for a failure");
   assert.equal(kinds.reduce((n, k) => n + k.count, 0), Store.tally(rows).needs, "the kinds add up to the header's count");
