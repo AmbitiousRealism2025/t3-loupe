@@ -392,6 +392,9 @@ test("an SSH forward written with -L joined to its spec or to other flags is fou
   assert.equal(tunnelUrl(["ssh", "box", "-L13773:127.0.0.1:3773"], "box"), "http://127.0.0.1:13773");
   assert.equal(tunnelUrl(["ssh", "box", "echo", "-L13773:127.0.0.1:3773"], "box"), null);
   assert.equal(tunnelUrl(["ssh", "-oLocalForward=13773", "box"], "box"), null);
+  assert.equal(tunnelUrl(["ssh", "-J", "box", "-L13773:127.0.0.1:3773", "other"], "box"), null);
+  assert.equal(tunnelUrl(["ssh", "-Jbox", "-L", "13773:127.0.0.1:3773", "other"], "box"), null);
+  assert.equal(tunnelUrl(["ssh", "-J", "jump", "-L13773:127.0.0.1:3773", "box"], "box"), "http://127.0.0.1:13773");
   assert.equal(tunnelUrl(["ssh", "-L13773:10.0.0.2:3773", "box"], "box"), null);
 });
 

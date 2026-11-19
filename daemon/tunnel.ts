@@ -9,32 +9,36 @@ const LOOPBACK = new Set(["127.0.0.1", "localhost"]);
 const SSH_ARG_OPTIONS = new Set("BbcDEeFIiJLlmOoPpQRSWw");
 
 /**
- * The `-L` specs in an ssh command line, read the way ssh parses options, so `-L13773:...` and `-NfL ...` count.
+ * The destination and `-L` specs of an ssh command line, read the way ssh parses options, so
+ * `-L13773:...`, `-NfL ...` and option values such as `-J jump` are told apart from the destination.
  * Options may also follow the destination; the next plain word starts the remote command.
  */
-function* localForwards(args: string[]): Generator<string> {
-  let sawDestination = false;
+function parseSsh(args: string[]): { destination: string | null; forwards: string[] } {
+  let destination: string | null = null;
+  const forwards: string[] = [];
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
-    if (arg === "--") return;
+    if (arg === "--") break;
     if (!arg.startsWith("-") || arg.length < 2) {
-      if (sawDestination) return;
-      sawDestination = true;
+      if (destination !== null) break;
+      destination = arg;
       continue;
     }
     for (let j = 1; j < arg.length; j++) {
       if (!SSH_ARG_OPTIONS.has(arg[j])) continue;
       const value = j + 1 < arg.length ? arg.slice(j + 1) : args[++i];
-      if (arg[j] === "L" && value !== undefined) yield value;
+      if (arg[j] === "L" && value !== undefined) forwards.push(value);
       break;
     }
   }
+  return { destination, forwards };
 }
 
 /** Select only a forward that belongs to the configured SSH target. */
 export function tunnelUrl(args: string[], host: string, remotePort = 3773): string | null {
-  if (!args.some((a) => a === host || a.endsWith("@" + host))) return null;
-  for (const spec of localForwards(args)) {
+  const { destination, forwards } = parseSsh(args);
+  if (destination !== host && !destination?.endsWith("@" + host)) return null;
+  for (const spec of forwards) {
     const parts = spec.split(":");
     let localPort: string, remoteHost: string, port: string;
     if (parts.length === 3) {
