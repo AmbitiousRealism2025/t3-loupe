@@ -18,7 +18,10 @@ function parseSsh(args: string[]): { destination: string | null; forwards: strin
   const forwards: string[] = [];
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
-    if (arg === "--") break;
+    if (arg === "--") {
+      destination ??= args[i + 1] ?? null;
+      break;
+    }
     if (!arg.startsWith("-") || arg.length < 2) {
       if (destination !== null) break;
       destination = arg;
