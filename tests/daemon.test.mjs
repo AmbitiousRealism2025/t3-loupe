@@ -286,6 +286,22 @@ test("thread watch: activity trail, pending command text, context, sequence dedu
   assert.equal(d.pending.length, 0);
 });
 
+test("thread watch: timeline cap retains oldest pending approval and newest items", () => {
+  const w = new ThreadWatch();
+  w.apply({ kind: "snapshot", snapshotSequence: 0, projection: {
+    turnItems: [{ id: "approval", ordinal: 0, type: "approval_request", requestId: "r1", prompt: "Approve?" }],
+    runtimeRequests: [{ id: "r1", kind: "command", status: "pending" }],
+  } });
+  for (let i = 1; i <= 1000; i++) {
+    w.apply({ kind: "event", sequence: i, event: { type: "turn-item.updated", payload: {
+      id: "item-" + i, ordinal: i, type: "command_execution", status: "running", input: "echo test",
+    } } });
+  }
+  assert.equal(w.items.size, 40);
+  assert.deepEqual([...w.items.keys()], ["approval", ...Array.from({ length: 39 }, (_, i) => "item-" + (962 + i))]);
+  assert.equal(w.detail().pending[0].prompt, "Approve?");
+});
+
 test("thread watch: pending requests are capped and counted, and every record kind is bounded", () => {
   const w = new ThreadWatch();
   const requests = Array.from({ length: 50 }, (_, i) => ({ id: "r" + i, kind: "command", status: "pending", createdAt: iso(1000) }));

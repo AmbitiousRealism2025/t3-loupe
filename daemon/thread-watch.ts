@@ -156,10 +156,13 @@ export class ThreadWatch {
     const ordinal = typeof raw.ordinal === "number" ? raw.ordinal : (this.items.get(raw.id)?.ordinal ?? Number.MAX_SAFE_INTEGER);
     this.items.set(raw.id, { ordinal, raw: slim });
     if (this.items.size > KEEP_ITEMS) {
-      const oldest = [...this.items.entries()].sort((a, b) => a[1].ordinal - b[1].ordinal)[0];
       // Never evict the item a pending request points at.
       const pendingIds = new Set([...this.requests.values()].filter((r) => r.status === "pending").map((r) => r.id));
-      if (!pendingIds.has(oldest[1].raw.requestId)) this.items.delete(oldest[0]);
+      const oldestFirst = [...this.items.entries()].sort((a, b) => a[1].ordinal - b[1].ordinal);
+      for (const [id, item] of oldestFirst) {
+        if (this.items.size <= KEEP_ITEMS) break;
+        if (!pendingIds.has(item.raw.requestId)) this.items.delete(id);
+      }
     }
   }
 
