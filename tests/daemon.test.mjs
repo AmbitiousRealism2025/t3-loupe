@@ -383,6 +383,18 @@ test("tunnel discovery only accepts loopback forwards to the configured host", (
   assert.equal(tunnelUrl(["ssh", "-L", "46363:10.0.0.2:3773", "box"], "box"), null);
 });
 
+test("an SSH forward written with -L joined to its spec or to other flags is found", () => {
+  assert.equal(tunnelUrl(["ssh", "-N", "-L13773:127.0.0.1:3773", "box"], "box"), "http://127.0.0.1:13773");
+  assert.equal(tunnelUrl(["ssh", "-NfL", "13773:127.0.0.1:3773", "box"], "box"), "http://127.0.0.1:13773");
+  assert.equal(tunnelUrl(["ssh", "-NfL13773:localhost:3773", "box"], "box"), "http://127.0.0.1:13773");
+  assert.equal(tunnelUrl(["ssh", "-L127.0.0.1:13773:127.0.0.1:3773", "box"], "box"), "http://127.0.0.1:13773");
+  assert.equal(tunnelUrl(["ssh", "-p2222", "-L13773:127.0.0.1:3773", "box"], "box"), "http://127.0.0.1:13773");
+  assert.equal(tunnelUrl(["ssh", "box", "-L13773:127.0.0.1:3773"], "box"), "http://127.0.0.1:13773");
+  assert.equal(tunnelUrl(["ssh", "box", "echo", "-L13773:127.0.0.1:3773"], "box"), null);
+  assert.equal(tunnelUrl(["ssh", "-oLocalForward=13773", "box"], "box"), null);
+  assert.equal(tunnelUrl(["ssh", "-L13773:10.0.0.2:3773", "box"], "box"), null);
+});
+
 test("a machine paired over SSH at an HTTPS address is reached there, not through a forward", () => {
   const emptyProc = mkdtempSync(join(tmpdir(), "t3-loupe-proc-"));
   assert.equal(usesTunnel({ url: "http://127.0.0.1:3773" }), false);

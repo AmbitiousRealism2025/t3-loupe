@@ -5,12 +5,37 @@ import { Failure } from "./util.ts";
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost"]);
 
+// ssh(1) options that take an argument, which may be joined (`-p22`) or the next word (`-p 22`).
+const SSH_ARG_OPTIONS = new Set("BbcDEeFIiJLlmOoPpQRSWw");
+
+/**
+ * The `-L` specs in an ssh command line, read the way ssh parses options, so `-L13773:...` and `-NfL ...` count.
+ * Options may also follow the destination; the next plain word starts the remote command.
+ */
+function* localForwards(args: string[]): Generator<string> {
+  let sawDestination = false;
+  for (let i = 1; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--") return;
+    if (!arg.startsWith("-") || arg.length < 2) {
+      if (sawDestination) return;
+      sawDestination = true;
+      continue;
+    }
+    for (let j = 1; j < arg.length; j++) {
+      if (!SSH_ARG_OPTIONS.has(arg[j])) continue;
+      const value = j + 1 < arg.length ? arg.slice(j + 1) : args[++i];
+      if (arg[j] === "L" && value !== undefined) yield value;
+      break;
+    }
+  }
+}
+
 /** Select only a forward that belongs to the configured SSH target. */
 export function tunnelUrl(args: string[], host: string, remotePort = 3773): string | null {
   if (!args.some((a) => a === host || a.endsWith("@" + host))) return null;
-  for (let i = 0; i < args.length - 1; i++) {
-    if (args[i] !== "-L") continue;
-    const parts = args[i + 1].split(":");
+  for (const spec of localForwards(args)) {
+    const parts = spec.split(":");
     let localPort: string, remoteHost: string, port: string;
     if (parts.length === 3) {
       [localPort, remoteHost, port] = parts;
