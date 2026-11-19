@@ -31,6 +31,13 @@ test("finished parents with approval-waiting children appear in Active and its c
   assert.equal(Store.tally([]).active, 0);
 });
 
+test("Active groups inherited attention before working with one heading per section", () => {
+  const rows = [r("working", "working"), r("parent", "idle"), r("child", "input", { parentId: "parent" }),
+    r("answer", "input")];
+  assert.deepEqual(ids(Store.visibleRows(rows, "active", "", {})),
+    ["§Needs you 2", "parent", "child", "answer", "§Working 1", "working"]);
+});
+
 test("inbox shows only what needs you; active adds what is in progress; children follow parents", () => {
   const rows = [r("a", "input"), r("b", "working"), r("c", "review"), r("k", "working", { parentId: "b" }), r("z", "idle", { settled: true })];
   assert.deepEqual(ids(Store.visibleRows(rows, "attention", "", {})), ["a"]);
