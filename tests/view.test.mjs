@@ -31,6 +31,21 @@ test("finished parents with approval-waiting children appear in Active and its c
   assert.equal(Store.tally([]).active, 0);
 });
 
+test("a settled parent does not inherit its subagents' attention", () => {
+  for (const state of ["idle", "stopped", "review"]) {
+    for (const kid of ["failed", "input", "plan"]) {
+      const rows = [r("parent", state, { settled: true }), r("child", kid, { parentId: "parent" })];
+      assert.deepEqual(rowIds(Store.visibleRows(rows, "attention", "", {})), [], `${state} + ${kid}: not in Needs you`);
+      assert.deepEqual(rowIds(Store.visibleRows(rows, "active", "", {})), [], `${state} + ${kid}: not in Active`);
+      const t = Store.tally(rows);
+      assert.equal(t.needs, 0, `${state} + ${kid}: the badge stays at zero`);
+      assert.equal(Store.filterCount(rows, "attention"), 0);
+      assert.equal(Store.needKinds(rows).length, 0);
+      assert.equal(Store.ringSegments(rows).find((s) => s.role === "attention")?.count ?? 0, 0);
+    }
+  }
+});
+
 test("Active groups inherited attention before working with one heading per section", () => {
   const rows = [r("working", "working"), r("parent", "idle"), r("child", "input", { parentId: "parent" }),
     r("answer", "input")];
