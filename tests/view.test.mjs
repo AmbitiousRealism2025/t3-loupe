@@ -213,6 +213,20 @@ test("disconnected machines name the step that brings them back", () => {
   assert.equal(Store.connection([]).none, false);
 });
 
+test("future timestamps read as zero elapsed in rows and details", () => {
+  const now = Date.UTC(2026, 10, 8, 12);
+  for (const [state, field, word] of [["working", "activeSince", "running"], ["queued", "activeSince", "queued"], ["input", "pendingSince", "waiting"]]) {
+    const row = r("t", state, { [field]: now + 60_000 });
+    assert.equal(Format.rowTime(row, now, true), word + " <1s");
+    assert.equal(Format.elapsed(row, now, true), "<1s");
+  }
+  for (const format of [Format.duration, Format.span]) {
+    assert.equal(format(-60_000), "<1s");
+    assert.equal(format(0), "<1s");
+    for (const invalid of [null, undefined, NaN, Infinity]) assert.equal(format(invalid), "");
+  }
+});
+
 test("sub-second durations read as <1s, not 0s", () => {
   assert.equal(Format.duration(400), "<1s");
   assert.equal(Format.duration(0), "<1s");
