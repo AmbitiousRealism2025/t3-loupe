@@ -593,7 +593,7 @@ TestCase {
       compare(p.filter, "active")
       // A quiet subagent under a collapsed parent the search matches: it is unfolded, and the search stays.
       svc.rows = svc.rows.concat([row({ key: "e:g", id: "g", title: "GAMMA audit", state: "review", completedAt: now - 60000, childCount: 1 }),
-                                  row({ key: "e:h", id: "h", parentId: "g", title: "GAMMA survey", state: "idle", completedAt: now - 60000 })])
+                                  row({ key: "e:h", id: "h", parentId: "g", title: "subagent survey", state: "idle", completedAt: now - 60000 })])
       p.setFilter("all")
       p.query = "gamma"
       tryVerify(function() { return p.visible_.length > 0 && p.visible_.every(function(x) { return x.key !== "e:h" }) })
