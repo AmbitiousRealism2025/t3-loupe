@@ -312,6 +312,7 @@ TestCase {
       property var counts: ({ active: 0, busy: 0, attention: 0, input: 0, review: 0 })
       property bool known: true
       property string health: "ready"
+      property double lastReceived: tc.now - 120000
       property string configError: ""
       property double now: tc.now
       property var details: ({})
@@ -320,7 +321,9 @@ TestCase {
       property int textSizeStep: 0
       readonly property string pluginDir: "/nonexistent"
       property var palette: tc.colors
-      readonly property var theme: ({ popup: palette })
+      readonly property var theme: ({ popup: palette, bar: palette })
+      function registerWidget(widget) {}
+      function unregisterWidget(widget) {}
       property var requested: []
       // What the panel sent to the collector, and the collector's word on how a copy ended.
       property var sent: []
@@ -335,6 +338,89 @@ TestCase {
     }
   }
   Component { id: panelC; Plugin.ThreadsPanel { width: 860; height: 760; centered: true } }
+  Component { id: barC; Plugin.BarWidget { width: implicitWidth; height: implicitHeight } }
+
+  function silentService() {
+    var svc = createTemporaryObject(serviceC, tc, { health: "stale" })
+    svc.environments = [liveEnv("e", "laptop")]
+    svc.counts = { active: 1, busy: 1, attention: 1, input: 1, review: 0 }
+    svc.rows = [row({ state: "input", pendingKind: "command", rawStatus: "running" })]
+    return svc
+  }
+
+  function test_silentPanelLineAndRecovery() {
+    var svc = silentService()
+    var p = createTemporaryObject(panelC, tc, { service: svc })
+    verify(has(p, /^COLLECTOR SILENT · LAST HEARD 2M AGO$/), texts(p).join(" | "))
+    var line = textItem(p, null, /COLLECTOR SILENT/)
+    verify(line.text.indexOf(p.colors.attentionInk) >= 0, "alarm tinted")
+    svc.health = "ready"
+    verify(!has(p, /COLLECTOR SILENT/))
+    verify(has(p, /NEEDS YOU/), texts(p).join(" | "))
+  }
+
+  function test_silentPanelHidesPillAndRecovery() {
+    var svc = silentService()
+    var p = createTemporaryObject(panelC, tc, { service: svc })
+    var hr = named(p, "headRing")[0]
+    compare(named(p, "needPill")[0].visible, false)
+    compare(hr.offline, true)
+    compare(hr.total, 0)
+    compare(hr.spinning, false)
+    svc.health = "ready"
+    compare(named(p, "needPill")[0].visible, true)
+    compare(hr.offline, false)
+    compare(hr.total, 1)
+    compare(hr.spinning, true)
+  }
+
+  function test_silentBarSummaryAndRecovery() {
+    var svc = silentService()
+    var b = createTemporaryObject(barC, tc, { bar: { vertical: false, barSize: 26, shell: { serviceFor: function() { return svc } } } })
+    var summary = b.summary
+    svc.health = "ready"
+    compare(b.summary, "1 thread needs you · 0 working · 0 done")
+    b.destroy(); wait(0)
+    compare(summary, "T3 Loupe: collector silent")
+  }
+
+  function test_silentBarRingAndRecovery() {
+    var svc = silentService()
+    var b = createTemporaryObject(barC, tc, { bar: { vertical: false, barSize: 26, shell: { serviceFor: function() { return svc } } } })
+    function ring(item) {
+      if (item.offline !== undefined && item.segments !== undefined) return item
+      var kids = item.children || []
+      for (var i = 0; i < kids.length; i++) { var found = ring(kids[i]); if (found) return found }
+      return null
+    }
+    var r = ring(b)
+    var badge = named(b, "barBadge")[0]
+    var badgeWords = named(b, "barBadgeWords")[0]
+    verify(r !== null)
+    var offline = r.offline
+    var total = r.total
+    var spinning = r.spinning
+    var badgeVisible = badge.visible
+    var wordsVisible = badgeWords.visible
+    var countValue = b.countValue
+    var ringText = b.ringText
+    svc.health = "ready"
+    compare(r.offline, false)
+    compare(r.total, 1)
+    compare(r.spinning, true)
+    compare(badge.visible, true)
+    compare(badgeWords.visible, true)
+    compare(b.countValue, "1")
+    compare(b.ringText, "")
+    b.destroy(); wait(0)
+    compare(offline, true)
+    compare(total, 0, "last-good arcs must not cover the dashed offline track")
+    compare(spinning, false, "dashed offline ring must not spin")
+    compare(badgeVisible, false, "bar must hide stale needs-you badge while silent")
+    compare(wordsVisible, false, "bar must hide stale needs-you words while silent")
+    compare(countValue, "", "ring-count must hide stale count while silent")
+    compare(ringText, "—")
+  }
 
   function liveEnv(id, label) { return { id: id, label: label, sshHost: "", state: "live", stale: false, url: "", sessionExpiresAt: now + 20 * 86400000, providers: [] } }
 
