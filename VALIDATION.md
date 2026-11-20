@@ -143,6 +143,7 @@ Validated on 2026-10-12, on this setup:
 - No QML warnings came from this plugin.
 
 **Not verified:**
+- How the silent state looks on the bar and in the panel, live: T3 Loupe isn't in this machine's bar layout, so `open` answers `no widget`. Covered by the QML tests for the bar summary, the panel line, the hidden pill and recovery.
 - Multiple monitors.
 - The centered window on the main bar rather than the Notch Strip.
 - Mouse clicks: list clicks and `j`/`k` share a handler, but no click was physically made.
@@ -443,3 +444,18 @@ Contributed in #5. Checked before merging:
 
 **Not verified:**
 - Round 1b was not re-scored by the panel; the change was checked against palette figures, the tests and the screenshots.
+
+## Bug-fix batch and bounded timeline — v2.6.2 (2026-11-19)
+
+**What's in it:** eleven bug-fix PRs (#12 to #22), reviewed and merged by Muad'Dib, plus one fix found during release review. The fix closes the conditional Medium finding on marketplace request #14404 at 6bcec03: items that repeat a pending request's id kept the timeline from evicting. Only the first approval and the first question per pending request are protected now, and the timeline has a hard ceiling of 168 items.
+
+**Verified:**
+- `npm test`: 138 pass on Omarchy 4.5.0-3, aarch64, Qt 6.12 `qmltestrunner`. That includes `BarWidget.qml` against the installed Omarchy 4.5 `Panel.qml` and `WidgetButton.qml`.
+- The two new timeline tests fail on 2.6.1's eviction code and pass on 2.6.2. A probe against 0d794dd held 5,001 items; 2.6.2 holds 40.
+- Live, in the installed plugin, after `omarchy restart shell`: the collector reached `live` on both paired machines (macbookprom1max, kamrui-remote). No QML warnings came from the plugin's files.
+- Collector silent, live: with the collector paused (`SIGSTOP`), the shell's `status` IPC read `ready` at 61 s and `stale` from 76 s; 5 s after `SIGCONT` it read `ready` again, with no restart.
+- `omarchy plugin validate` and the strict security and publish validator pass on a clean export. `git diff --check` is clean.
+
+**Not verified:**
+- A vertical bar, live: covered by `tests/bar-widget.test.mjs` and the QML bar tests against Omarchy 4.5's `WidgetButton.qml`.
+- Rate-limit reset reclassification and notification focus under a search, on live data: unit and QML tests only.

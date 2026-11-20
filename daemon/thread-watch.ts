@@ -11,6 +11,8 @@ const SHOW_SUBAGENTS = 12;
 const SHOW_PENDING = 3;
 // Records kept per kind. Real threads hold a handful; this bounds what a misbehaving server can add.
 const KEEP_RECORDS = 64;
+// Turn items held at most, counting the ones kept for pending requests (see putItem).
+const MAX_ITEMS = KEEP_ITEMS + 2 * KEEP_RECORDS;
 
 const idOf = (value: unknown): string => (validId(value) ? value : "");
 
@@ -156,12 +158,29 @@ export class ThreadWatch {
     const ordinal = typeof raw.ordinal === "number" ? raw.ordinal : (this.items.get(raw.id)?.ordinal ?? Number.MAX_SAFE_INTEGER);
     this.items.set(raw.id, { ordinal, raw: slim });
     if (this.items.size > KEEP_ITEMS) {
-      // Never evict the item a pending request points at.
-      const pendingIds = new Set([...this.requests.values()].filter((r) => r.status === "pending").map((r) => r.id));
       const oldestFirst = [...this.items.entries()].sort((a, b) => a[1].ordinal - b[1].ordinal);
+      // Never evict the item detail() reads a pending request's text from: the first approval and
+      // the first question for each pending request. Any other item naming that request is
+      // ordinary history, so at most 2 × KEEP_RECORDS items are ever protected.
+      const pendingIds = new Set([...this.requests.values()].filter((r) => r.status === "pending").map((r) => r.id));
+      const protectedIds = new Set<string>();
+      const seen = new Set<string>();
       for (const [id, item] of oldestFirst) {
+        const { requestId, type } = item.raw;
+        if (!pendingIds.has(requestId) || (type !== "approval_request" && type !== "user_input_request")) continue;
+        const slot = type + "\u0000" + requestId;
+        if (seen.has(slot)) continue;
+        seen.add(slot);
+        protectedIds.add(id);
+      }
+      for (const [id] of oldestFirst) {
         if (this.items.size <= KEEP_ITEMS) break;
-        if (!pendingIds.has(item.raw.requestId)) this.items.delete(id);
+        if (!protectedIds.has(id)) this.items.delete(id);
+      }
+      // Hard ceiling, whatever is protected: drop the oldest until the map fits.
+      for (const [id] of oldestFirst) {
+        if (this.items.size <= MAX_ITEMS) break;
+        this.items.delete(id);
       }
     }
   }

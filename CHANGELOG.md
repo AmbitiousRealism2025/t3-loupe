@@ -2,6 +2,25 @@
 
 What changed in each version. [`VALIDATION.md`](VALIDATION.md) records how each one was verified.
 
+## 2.6.2 — 2026-11-19
+
+Bug fixes, including a hard limit on the per-thread timeline that closes the remaining marketplace review finding. No new network, process, file, clipboard or text-input access.
+
+- **The thread timeline is bounded whatever the server sends.** It holds 40 items. For each pending request it also keeps the first approval and the first question, the items the detail reads that request's text from, and nothing else. Items that only repeat a pending request's id no longer escape eviction, and the timeline never holds more than 168 items (40 plus two for each of at most 64 pending requests).
+- **Rate-limited threads move to Needs you when their quota resets,** even if T3 sends nothing at that moment.
+- **The bar and panel say when the collector has gone silent:** `T3 Loupe: collector silent` in the bar, `COLLECTOR SILENT · LAST HEARD …` in the panel, and a dashed ring with no counts until it recovers on its own.
+- **The bar widget stacks on a vertical bar.** It read its orientation from a property Omarchy's bar doesn't set.
+- **Search:**
+  - A search shows matching subagents under collapsed threads, without unfolding them.
+  - A search that leaves nothing selected clears the detail pane and the `c`/`p` target.
+  - Focusing a notified thread works while a search hides it: the search is cleared only if it hides the thread everywhere.
+- **Subagents:** their approvals show in the Active view, and a settled parent stays out of Needs you.
+- **Smaller fixes:**
+  - A connection stopped mid-connect closes its socket.
+  - SSH tunnels written with a joined `-L` (`-L13773:…`, `-NfL …`) are detected.
+  - A timestamp slightly in the future reads `<1s` instead of a blank.
+- New tests for each fix (138 pass).
+
 ## 2.6.1 — 2026-11-10
 
 Larger secondary text, a header that says what needs you, and stronger contrast on tinted rows in light themes. From a review round judged by Fable 5.2 and Opus 5.5.

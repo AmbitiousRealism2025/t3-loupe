@@ -302,6 +302,48 @@ test("thread watch: timeline cap retains oldest pending approval and newest item
   assert.equal(w.detail().pending[0].prompt, "Approve?");
 });
 
+test("thread watch: items that all name one pending request cannot grow the timeline", () => {
+  const w = new ThreadWatch();
+  w.apply({ kind: "snapshot", snapshotSequence: 0, projection: {
+    turnItems: [{ id: "approval", ordinal: 0, type: "approval_request", requestId: "r1", prompt: "Approve?" }],
+    runtimeRequests: [{ id: "r1", kind: "command", status: "pending" }],
+  } });
+  // A misbehaving server repeats the pending request id, and the approval type, on every new item.
+  for (let i = 1; i <= 5000; i++) {
+    w.apply({ kind: "event", sequence: i, event: { type: "turn-item.updated", payload: {
+      id: "item-" + i, ordinal: i, type: i % 2 ? "approval_request" : "command_execution", status: "running",
+      requestId: "r1", prompt: "flood " + i,
+    } } });
+  }
+  assert.equal(w.items.size, 40);
+  assert.ok(w.items.has("approval"), "the first approval for the pending request is kept");
+  assert.equal(w.detail().pending[0].prompt, "Approve?");
+});
+
+test("thread watch: the timeline has a hard ceiling with every pending request protected", () => {
+  const w = new ThreadWatch();
+  const requests = Array.from({ length: 64 }, (_, i) => ({ id: "r" + i, kind: "command", status: "pending" }));
+  w.apply({ kind: "snapshot", snapshotSequence: 0, projection: { turnItems: [], runtimeRequests: requests } });
+  let seq = 0;
+  for (let i = 0; i < 64; i++) {
+    for (const type of ["approval_request", "user_input_request"]) {
+      w.apply({ kind: "event", sequence: ++seq, event: { type: "turn-item.updated", payload: {
+        id: type + "-" + i, ordinal: seq, type, requestId: "r" + i, prompt: "ask " + i,
+      } } });
+    }
+  }
+  for (let i = 0; i < 5000; i++) {
+    w.apply({ kind: "event", sequence: ++seq, event: { type: "turn-item.updated", payload: {
+      id: "flood-" + i, ordinal: seq, type: "approval_request", requestId: "r" + (i % 64), prompt: "flood",
+    } } });
+  }
+  assert.ok(w.items.size <= 40 + 2 * 64, "held " + w.items.size);
+  for (let i = 0; i < 64; i++) {
+    assert.ok(w.items.has("approval_request-" + i) && w.items.has("user_input_request-" + i), "kept the asks for r" + i);
+  }
+  assert.equal(w.detail().pending[0].prompt, "ask 0");
+});
+
 test("thread watch: pending requests are capped and counted, and every record kind is bounded", () => {
   const w = new ThreadWatch();
   const requests = Array.from({ length: 50 }, (_, i) => ({ id: "r" + i, kind: "command", status: "pending", createdAt: iso(1000) }));
