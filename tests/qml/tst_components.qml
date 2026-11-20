@@ -1025,6 +1025,37 @@ TestCase {
     verify(!has(p, /copied/))
   }
 
+  function test_centeredEmptySearchClearsDetailAndCopyTarget() {
+    var svc = createTemporaryObject(serviceC, tc)
+    svc.environments = [liveEnv("e", "laptop")]
+    var title = "Deploy the build"
+    svc.rows = [row({ key: "e:a", id: "a", title: title, state: "working", rawStatus: "running", activeSince: now - 60000 })]
+    svc.details = { "e:a": { activity: [], pending: [], runs: [], context: null, subagents: [], todo: null } }
+    var p = createTemporaryObject(panelC, tc, { service: svc })
+    p.opened = true
+    tryCompare(p, "selectedKey", "e:a")
+    verify(has(p.detailItem, /^Deploy the build$/))
+
+    p.keyCatcher.textKey("/")
+    for (var ch of "nomatch") keyClick(ch)
+    keyClick(Qt.Key_Return)
+    compare(p.query, "nomatch")
+    verify(has(p, /^No threads match “nomatch”$/))
+    compare(p.cursor, -1)
+
+    p.keyCatcher.textKey("c")
+    compare(svc.sent.length, 0, "unexpected commands: " + JSON.stringify(svc.sent))
+    compare(p.selectedKey, "")
+    verify(!has(p.detailItem, /^Deploy the build$/))
+    verify(has(p.detailItem, /^Select a thread to see what it's doing$/))
+
+    p.keyCatcher.closeRequested()
+    p.keyCatcher.moveRequested(0, 1)
+    tryCompare(p, "selectedKey", "e:a")
+    p.keyCatcher.textKey("c")
+    compare(svc.sent, [{ cmd: "copy", text: title }])
+  }
+
   function test_rowReasonSurvivesAFontChangeAfterCreation() {
     var r = row({ state: "failed", rawStatus: "failed", errorClass: "provider_error", completedAt: now - 60000, project: "a-long-project-name",
       error: '401: {"code":"1000","message":"Authentication Failed"}' })
