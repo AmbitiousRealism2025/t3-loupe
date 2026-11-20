@@ -126,7 +126,11 @@ Item {
   }
   // moved: the cursor itself moved, so refresh the detail even for the same thread.
   function syncSelection(moved) {
-    if (cursor < 0 || cursor >= visible_.length) { cursorKey = ""; return }
+    if (cursor < 0 || cursor >= visible_.length) {
+      cursorKey = ""
+      selectedKey = ""
+      return
+    }
     var item = visible_[cursor]
     cursorKey = item.key
     if (!centered || item.kind === "idle-line" || item.kind === "section" || (!moved && selectedKey === item.key)) return
@@ -202,12 +206,17 @@ Item {
     folds[Store.idleLineKey(root_, "active")] = true
     folds[Store.idleLineKey(root_, "all")] = true
     idleOpen = folds
-    if (Store.visibleRows(rows, filter, query, expanded, idleOpen).indexOf(row) < 0) { filter = "all"; filterChosen = true }
     var next = {}
     for (var k in expanded) next[k] = expanded[k]
     next[row.parentId ? row.envId + ":" + row.parentId : key] = true
     next[key] = true
     expanded = next
+    function hidden(f, q) { return Store.visibleRows(rows, f, q, expanded, idleOpen).indexOf(row) < 0 }
+    if (hidden(filter, query)) {
+      // A search that hides it in every view is dropped, as Esc would; then All if this view still does.
+      if (query && hidden("all", query)) query = ""
+      if (hidden(filter, query)) { filter = "all"; filterChosen = true }
+    }
     if (service) service.requestDetail(row.envId, row.id)
     Qt.callLater(function() {
       for (var i = 0; i < visible_.length; i++) if (visible_[i].key === key) { cursor = i; ensureVisible(i) }
