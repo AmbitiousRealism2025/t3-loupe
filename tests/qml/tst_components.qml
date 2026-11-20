@@ -565,6 +565,45 @@ TestCase {
     verify(has(p, /Restore the folder at that path/))
   }
 
+  // A notification or IPC focus lands on its thread even while a search hides it: the search is
+  // dropped, as Esc would, and the view falls back to All only if the target is still not in it.
+  function test_focusKeyShowsAThreadTheSearchHides() {
+    var comps = [panelC, dropdownC]
+    for (var c = 0; c < comps.length; c++) {
+      var svc = createTemporaryObject(serviceC, tc)
+      svc.environments = [liveEnv("e", "laptop")]
+      svc.rows = [row({ key: "e:a", id: "a", title: "ALPHA deploy build", state: "working", rawStatus: "running", activeSince: now - 60000 }),
+                  row({ key: "e:b", id: "b", title: "BETA release notes", state: "working", rawStatus: "running", activeSince: now - 60000 })]
+      var p = createTemporaryObject(comps[c], tc, { service: svc })
+      p.opened = true
+      p.setFilter("all")
+      p.query = "alpha"
+      tryVerify(function() { return p.visible_.length === 1 && p.visible_[0].key === "e:a" })
+      p.focusKey("e:b")
+      tryCompare(p, "cursorKey", "e:b")
+      compare(p.query, "", "the search that hid it is dropped")
+      compare(p.filter, "all")
+      if (p.centered) tryCompare(p, "selectedKey", "e:b")
+      // A search the target still matches stays, and so does the view that shows it.
+      p.query = "beta"
+      p.setFilter("active")
+      p.focusKey("e:b")
+      tryCompare(p, "cursorKey", "e:b")
+      compare(p.query, "beta")
+      compare(p.filter, "active")
+      // A quiet subagent under a collapsed parent the search matches: it is unfolded, and the search stays.
+      svc.rows = svc.rows.concat([row({ key: "e:g", id: "g", title: "GAMMA audit", state: "review", completedAt: now - 60000, childCount: 1 }),
+                                  row({ key: "e:h", id: "h", parentId: "g", title: "subagent survey", state: "idle", completedAt: now - 60000 })])
+      p.setFilter("all")
+      p.query = "gamma"
+      tryVerify(function() { return p.visible_.length > 0 && p.visible_.every(function(x) { return x.key !== "e:h" }) })
+      p.focusKey("e:h")
+      tryCompare(p, "cursorKey", "e:h")
+      compare(p.query, "gamma")
+      compare(p.filter, "all")
+    }
+  }
+
   function test_planBarDrawsEveryStep() {
     var r = row({ state: "working", rawStatus: "running", activeSince: now - 60000 })
     var runs = [{ ordinal: 1, status: "completed", startedAt: now - 3600000, completedAt: now - 3000000, durationMs: 600000 },
