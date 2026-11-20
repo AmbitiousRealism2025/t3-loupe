@@ -86,6 +86,23 @@ test("search matches title, project and model", () => {
   assert.deepEqual(Array.from(Store.visibleRows(rows, "all", "opus", {}), (x) => x.id), ["alpha"]);
 });
 
+test("search reveals matching finished subagents without changing collapse state", () => {
+  const rows = [r("parent", "review"), r("needle", "idle", { parentId: "parent" }),
+    r("sibling", "idle", { parentId: "parent" })];
+  const expanded = { "e:parent": false };
+  for (const filter of ["all", "done"]) {
+    assert.deepEqual(rowIds(Store.visibleRows(rows, filter, "NEEDLE", expanded)), ["parent", "needle"]);
+    assert.deepEqual(rowIds(Store.visibleRows(rows, filter, "absent", expanded)), []);
+    assert.deepEqual(rowIds(Store.visibleRows(rows, filter, "", expanded)), ["parent"]);
+  }
+  assert.deepEqual(expanded, { "e:parent": false });
+  assert.deepEqual(rowIds(Store.visibleRows([], "all", "needle", expanded)), []);
+  rows[0].settled = true;
+  rows.push(r("ask", "input", { parentId: "parent", title: "needle" }));
+  for (const filter of ["attention", "active"])
+    assert.deepEqual(rowIds(Store.visibleRows(rows, filter, "needle", expanded)), []);
+});
+
 test("labels and icons for pending requests", () => {
   assert.equal(Store.stateLabel(r("a", "input", { pendingKind: "command" })), "Run command?");
   assert.equal(Store.stateIcon(r("a", "input", { pendingKind: "user_input" })), "message-circle-question");
