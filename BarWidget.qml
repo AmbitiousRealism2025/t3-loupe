@@ -76,15 +76,16 @@ Panel {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
+  readonly property bool stale: service ? service.health === "stale" : false
   readonly property color ink: button.foreground
   // The ring shows activity, not a number: the one number in the bar is the needs-you badge, so a
   // glance never has to tell two counts apart. "ring-count" puts the active count beside the ring.
-  readonly property string ringText: !service ? "" : !paired ? "+" : !known ? "—" : ""
-  readonly property string countValue: !service || !paired || !known ? "" : String(tally.active)
+  readonly property string ringText: !service ? "" : stale ? "—" : !paired ? "+" : !known ? "—" : ""
+  readonly property string countValue: !service || stale || !paired || !known ? "" : String(tally.active)
   readonly property bool showRingCount: display !== "ring-count"
   // What the widget says, in words: its tooltip and its accessible name.
   readonly property string summary: !service ? "T3 Loupe: service not running"
-    : service.health === "stale" ? "T3 Loupe: collector silent"
+    : stale ? "T3 Loupe: collector silent"
     : !paired ? "T3 Loupe: no paired environments"
     : !known ? "T3 Loupe: not connected to T3"
     : (tally.needs ? tally.needs + (tally.needs === 1 ? " thread needs" : " threads need") + " you" : "Nothing needs you")
@@ -99,7 +100,7 @@ Panel {
     hasVisualContent: true
     fixedWidth: button.vertical ? -1 : glyphRow.implicitWidth + scaledHorizontalMargin * 2
     fixedHeight: button.vertical ? glyphRow.implicitHeight + scaledVerticalPadding * 2 : -1
-    active: root.tally.needs > 0
+    active: !root.stale && root.tally.needs > 0
     tooltipText: root.summary
     Accessible.role: Accessible.Button
     Accessible.name: root.summary
@@ -160,14 +161,14 @@ Panel {
         thickness: Math.max(3, Math.round(diameter / 5))
         // Ink like its bar neighbours; what needs you in the colour of its kind, as in the panel.
         // Every arc, and the track when shown, is a 3:1 mark against the bar.
-        segments: root.service && root.service.health !== "stale" ? Store.ringSegments(root.service.rows) : []
+        segments: root.service && !root.stale ? Store.ringSegments(root.service.rows) : []
         colors: root.theme ? ({
           attention: root.theme.bar.attention, ask: root.theme.bar.ask, warning: root.theme.bar.warning,
           ink: root.ink, rest: root.theme.bar.edge, track: root.theme.bar.edge
         }) : ({ ink: root.ink, rest: root.ink, track: root.ink })
-        spinning: root.counts.busy > 0
+        spinning: !root.stale && root.counts.busy > 0
         reduceMotion: root.reduceMotion
-        offline: root.service !== null && (root.service.health === "stale" || (root.paired && !root.known))
+        offline: root.service !== null && (root.stale || (root.paired && !root.known))
         centerText: root.ringText
         textColor: root.ink
         fontFamily: button.fontFamily
@@ -191,7 +192,8 @@ Panel {
       // Attention badge: how many threads are waiting on you.
       Rectangle {
         id: badge
-        visible: root.tally.needs > 0
+        objectName: "barBadge"
+        visible: !root.stale && root.tally.needs > 0
         x: button.vertical ? (glyphRow.width - width) / 2 : glyphRow.offset(badge)
         y: button.vertical ? glyphRow.offset(badge) : (glyphRow.height - height) / 2
         height: Math.round(ring.diameter * 0.78)
@@ -222,6 +224,7 @@ Panel {
       // wider just when it is asking for a look.
       Text {
         id: badgeWords
+        objectName: "barBadgeWords"
         visible: badge.visible && root.display === "label" && !button.vertical
         x: glyphRow.offset(badgeWords)
         anchors.verticalCenter: parent.verticalCenter

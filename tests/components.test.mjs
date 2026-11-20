@@ -62,6 +62,7 @@ QtObject {
     property int display: 22
   }
   readonly property QtObject spacing: QtObject { property int controlHeight: 24; property int popupPadding: 12 }
+  readonly property QtObject bar: QtObject { property int sizeHorizontal: 26; property int sizeVertical: 28 }
   function space(px) { return Math.max(1, Math.round(px)) }
   function hoverFillFor(f, a) { return Qt.rgba(f.r, f.g, f.b, 0.08) }
   function selectedFillFor(f, a) { return Qt.rgba(f.r, f.g, f.b, 0.18) }
@@ -133,8 +134,6 @@ Item {
   property string moduleName: ""
   property bool manageIpc: false
   property var bar: null
-  property bool vertical: false
-  property int barSize: 32
   property bool opened: false
   function setting(key, fallback) { return fallback }
   function open() { opened = true }
@@ -144,6 +143,7 @@ Item {
 }
 `,
   "WidgetButton.qml": `import QtQuick
+import qs.Commons
 Item {
   property var bar: null
   property string text: ""
@@ -158,8 +158,10 @@ Item {
   property int fontSize: 12
   property int scaledHorizontalMargin: 6
   property int scaledVerticalPadding: 4
+  readonly property bool vertical: bar ? bar.vertical : false
+  readonly property int barSize: bar ? bar.barSize : Style.bar.sizeHorizontal
   implicitWidth: fixedWidth
-  implicitHeight: 32
+  implicitHeight: barSize
   signal pressed(int mouseButton)
 }
 `,
@@ -185,8 +187,11 @@ test("components: status callout, disconnected state, detail and row render the 
     for (const file of readdirSync(join(root, "lib"))) copyFileSync(join(root, "lib", file), join(tmp, "lib", file));
     copyFileSync(join(root, "ThreadsPanel.qml"), join(tmp, "ThreadsPanel.qml"));
     copyFileSync(join(root, "BarWidget.qml"), join(tmp, "BarWidget.qml"));
-    for (const [name, text] of Object.entries(HOST)) writeFileSync(join(tmp, "qs/Ui", name), text);
-    UI.qmldir += "Panel 1.0 Panel.qml\nWidgetButton 1.0 WidgetButton.qml\nKeyboardPanel 1.0 KeyboardPanel.qml\n";
+    const ui = {
+      ...UI,
+      ...HOST,
+      qmldir: UI.qmldir + "Panel 1.0 Panel.qml\nWidgetButton 1.0 WidgetButton.qml\nKeyboardPanel 1.0 KeyboardPanel.qml\n",
+    };
     for (const dir of ["Quickshell", "Quickshell/Io"]) mkdirSync(join(tmp, dir), { recursive: true });
     writeFileSync(join(tmp, "Quickshell/qmldir"), "module Quickshell\nsingleton QsWindow 1.0 QsWindow.qml\n");
     writeFileSync(join(tmp, "Quickshell/QsWindow.qml"), "pragma Singleton\nimport QtQuick\nQtObject { property var window: null }\n");
@@ -204,7 +209,7 @@ Item {
 `);
     copyFileSync(join(root, "tests/qml/tst_components.qml"), join(tmp, "tests/qml/tst_components.qml"));
     for (const [name, text] of Object.entries(COMMONS)) writeFileSync(join(tmp, "qs/Commons", name), text);
-    for (const [name, text] of Object.entries(UI)) writeFileSync(join(tmp, "qs/Ui", name), text);
+    for (const [name, text] of Object.entries(ui)) writeFileSync(join(tmp, "qs/Ui", name), text);
     const result = spawnSync(runner, ["-import", tmp, "-input", join(tmp, "tests/qml")], {
       env: { ...process.env, QT_QPA_PLATFORM: "offscreen", QML_DISABLE_DISK_CACHE: "1" },
       encoding: "utf8",
@@ -214,7 +219,7 @@ Item {
     assert.match(result.stdout, /Totals: \d+ passed, 0 failed/);
     assert.doesNotMatch(result.stdout + result.stderr, /TypeError|ReferenceError|is not a type|unavailable/);
     // Any QML warning from the plugin's own files (bad anchors, broken bindings) fails the test.
-    assert.doesNotMatch(result.stdout + result.stderr, /QWARN[^\n]*\/(components\/\w+|ThreadsPanel)\.qml/);
+    assert.doesNotMatch(result.stdout + result.stderr, /QWARN[^\n]*\/(components\/\w+|ThreadsPanel|BarWidget)\.qml/);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }

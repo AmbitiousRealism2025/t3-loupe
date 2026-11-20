@@ -444,15 +444,17 @@ Item {
 
         ActivityRing {
           id: headRing
+          objectName: "headRing"
           anchors.verticalCenter: parent.verticalCenter
           diameter: Math.round(Typo.display * 1.3)
           thickness: Math.max(3, Math.round(diameter / 9))
-          segments: root.ringSegs
+          readonly property bool stale: !!root.service && root.service.health === "stale"
+          segments: stale ? [] : root.ringSegs
           colors: root.ringColors
-          spinning: root.service && root.service.counts.busy > 0
+          spinning: root.service && !stale && root.service.counts.busy > 0
           reduceMotion: root.reduceMotion
-          offline: root.service && !root.service.known
-          centerText: root.service && root.service.known ? "" : "—"
+          offline: root.service && (!root.service.known || stale)
+          centerText: root.service && root.service.known && !stale ? "" : "—"
           textColor: root.colors.text
           fontFamily: root.fontFamily
           fontSize: Typo.bodySmall
@@ -545,7 +547,10 @@ Item {
                 var alarm = root.colors.attentionInk
                 if (!root.service) return "SERVICE NOT LOADED"
                 if (root.service.health === "down") return tint(alarm, "COLLECTOR STOPPED · RESTARTING")
-                if (root.service.health === "stale") return tint(alarm, "COLLECTOR SILENT · LAST HEARD " + Format.ago(root.service.lastReceived, root.now).toUpperCase())
+                if (root.service.health === "stale") {
+                  var ago = Format.ago(root.service.lastReceived, root.now)
+                  return tint(alarm, ago ? "COLLECTOR SILENT · LAST HEARD " + ago.toUpperCase() : "COLLECTOR SILENT")
+                }
                 if (root.service.configError) return tint(alarm, "PAIRINGS UNREADABLE · " + root.service.configError.toUpperCase())
                 if (!root.environments.length) return "NO T3 MACHINES PAIRED"
                 var sep = "&nbsp;&nbsp;·&nbsp;&nbsp;"
