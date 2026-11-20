@@ -14,7 +14,7 @@ const root = new URL("../", import.meta.url).pathname;
 const shell = [process.env.OMARCHY_SHELL, "/usr/share/omarchy/shell"].find((dir) => dir && existsSync(join(dir, "Ui/Panel.qml")));
 
 const COMMONS = {
-  "qmldir": "module qs.Commons\nsingleton Color 1.0 Color.qml\nsingleton Style 1.0 Style.qml\nsingleton Typo 1.0 Typo.qml\nsingleton Border 1.0 Border.qml\n",
+  "qmldir": "module qs.Commons\nsingleton Color 1.0 Color.qml\nsingleton Style 1.0 Style.qml\nsingleton Typo 1.0 Typo.qml\nsingleton Border 1.0 Border.qml\nShellIpc 1.0 ShellIpc.qml\n",
   "Color.qml": `pragma Singleton
 import QtQuick
 QtObject {
@@ -27,15 +27,18 @@ QtObject {
 import QtQuick
 QtObject {
   property int cornerRadius: 0
+  property var easeOut: [0.22, 1, 0.36, 1, 1, 1]
   readonly property QtObject font: QtObject { property string family: "monospace"; property int body: 12 }
   readonly property QtObject spacing: QtObject { property int popupPadding: 12 }
-  readonly property QtObject bar: QtObject { property int sizeHorizontal: 26; property int sizeVertical: 28; property int iconSlot: 27 }
+  readonly property QtObject bar: QtObject { property int sizeHorizontal: 26; property int sizeVertical: 28; property int iconSlot: 27; property int iconCanvas: 20; property int iconSize: 14 }
+  function duration(ms) { return ms }
   function spaceReal(px) { return px }
   function space(px) { return Math.max(1, Math.round(px)) }
 }
 `,
   "Typo.qml": "pragma Singleton\nimport QtQuick\nQtObject { property int bump: 0 }\n",
   "Border.qml": "pragma Singleton\nimport QtQuick\nQtObject { function top(spec) { return 0 } }\n",
+  "ShellIpc.qml": "import QtQuick\nQtObject { property bool enabled: false; property string target: \"\" }\n",
 };
 const UI_STUBS = {
   "PanelController.qml": `import QtQuick
@@ -111,6 +114,19 @@ Item {
   function fittedContentHeight(h, max) { return h }
 }
 `,
+  "OpticalGlyph.qml": `import QtQuick
+Item {
+  property string text: ""
+  property string fontFamily: ""
+  property real fontSize: 12
+  property real paintedSize: 0
+  property color color: "#bebebe"
+  property real paintedWidth: 0
+  property real paintedHeight: 0
+  property real paintedCenterX: 0
+  property real paintedCenterY: 0
+}
+`,
 };
 const QUICKSHELL = {
   "Quickshell/qmldir": "module Quickshell\nsingleton QsWindow 1.0 QsWindow.qml\n",
@@ -159,7 +175,7 @@ test("BarWidget: lays out along the bar, stacked on a vertical bar", { skip: run
     const ui = { ...UI_EXTRA, ...UI_STUBS };
     if (shell) for (const name of Object.keys(UI_STUBS)) delete ui[name];
     if (shell) for (const name of Object.keys(UI_STUBS)) copyFileSync(join(shell, "Ui", name), join(tmp, "qs/Ui", name));
-    ui.qmldir = "module qs.Ui\nPanel 1.0 Panel.qml\nPanelController 1.0 PanelController.qml\nWidgetButton 1.0 WidgetButton.qml\nKeyboardPanel 1.0 KeyboardPanel.qml\n";
+    ui.qmldir = "module qs.Ui\nPanel 1.0 Panel.qml\nPanelController 1.0 PanelController.qml\nWidgetButton 1.0 WidgetButton.qml\nKeyboardPanel 1.0 KeyboardPanel.qml\nOpticalGlyph 1.0 OpticalGlyph.qml\n";
     for (const [name, text] of Object.entries(COMMONS)) writeFileSync(join(tmp, "qs/Commons", name), text);
     for (const [name, text] of Object.entries(ui)) writeFileSync(join(tmp, "qs/Ui", name), text);
     for (const [name, text] of Object.entries({ ...QUICKSHELL, ...PLUGIN_STUBS })) writeFileSync(join(tmp, name), text);
