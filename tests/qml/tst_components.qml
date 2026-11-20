@@ -312,6 +312,7 @@ TestCase {
       property var counts: ({ active: 0, busy: 0, attention: 0, input: 0, review: 0 })
       property bool known: true
       property string health: "ready"
+      property double lastReceived: tc.now - 120000
       property string configError: ""
       property double now: tc.now
       property var details: ({})
@@ -320,7 +321,9 @@ TestCase {
       property int textSizeStep: 0
       readonly property string pluginDir: "/nonexistent"
       property var palette: tc.colors
-      readonly property var theme: ({ popup: palette })
+      readonly property var theme: ({ popup: palette, bar: palette })
+      function registerWidget(widget) {}
+      function unregisterWidget(widget) {}
       property var requested: []
       // What the panel sent to the collector, and the collector's word on how a copy ended.
       property var sent: []
@@ -335,6 +338,64 @@ TestCase {
     }
   }
   Component { id: panelC; Plugin.ThreadsPanel { width: 860; height: 760; centered: true } }
+  Component { id: barC; Plugin.BarWidget { width: implicitWidth; height: implicitHeight } }
+
+  function silentService() {
+    var svc = createTemporaryObject(serviceC, tc, { health: "stale" })
+    svc.environments = [liveEnv("e", "laptop")]
+    svc.rows = [row({ state: "input", pendingKind: "command", rawStatus: "running" })]
+    return svc
+  }
+
+  function test_silentPanelLineAndRecovery() {
+    var svc = silentService()
+    var p = createTemporaryObject(panelC, tc, { service: svc })
+    verify(has(p, /^COLLECTOR SILENT · LAST HEARD 2M AGO$/), texts(p).join(" | "))
+    var line = textItem(p, null, /COLLECTOR SILENT/)
+    verify(line.text.indexOf(p.colors.attentionInk) >= 0, "alarm tinted")
+    svc.health = "ready"
+    verify(!has(p, /COLLECTOR SILENT/))
+    verify(has(p, /NEEDS YOU/), texts(p).join(" | "))
+  }
+
+  function test_silentPanelHidesPillAndRecovery() {
+    var svc = silentService()
+    var p = createTemporaryObject(panelC, tc, { service: svc })
+    compare(named(p, "needPill")[0].visible, false)
+    svc.health = "ready"
+    compare(named(p, "needPill")[0].visible, true)
+  }
+
+  function test_silentBarSummaryAndRecovery() {
+    var svc = silentService()
+    var b = createTemporaryObject(barC, tc, { bar: { shell: { serviceFor: function() { return svc } } } })
+    var summary = b.summary
+    svc.health = "ready"
+    compare(b.summary, "1 thread needs you · 0 working · 0 done")
+    b.destroy(); wait(0)
+    compare(summary, "T3 Loupe: collector silent")
+  }
+
+  function test_silentBarRingAndRecovery() {
+    var svc = silentService()
+    var b = createTemporaryObject(barC, tc, { bar: { shell: { serviceFor: function() { return svc } } } })
+    function ring(item) {
+      if (item.offline !== undefined && item.segments !== undefined) return item
+      var kids = item.children || []
+      for (var i = 0; i < kids.length; i++) { var found = ring(kids[i]); if (found) return found }
+      return null
+    }
+    var r = ring(b)
+    verify(r !== null)
+    var offline = r.offline
+    var total = r.total
+    svc.health = "ready"
+    compare(r.offline, false)
+    compare(r.total, 1)
+    b.destroy(); wait(0)
+    compare(offline, true)
+    compare(total, 0, "last-good arcs must not cover the dashed offline track")
+  }
 
   function liveEnv(id, label) { return { id: id, label: label, sshHost: "", state: "live", stale: false, url: "", sessionExpiresAt: now + 20 * 86400000, providers: [] } }
 

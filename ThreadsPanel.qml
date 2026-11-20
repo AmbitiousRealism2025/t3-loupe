@@ -508,7 +508,7 @@ Item {
               width: Math.min(parent.width, textX + counts.implicitWidth)
               height: Math.max(counts.implicitHeight, needPill.visible ? needPill.height : 0)
               // The ordinary line (not an error or a not-connected notice) with something waiting.
-              readonly property bool pilled: !!root.service && root.service.health !== "down" && !root.service.configError
+              readonly property bool pilled: !!root.service && root.service.health !== "down" && root.service.health !== "stale" && !root.service.configError
                 && root.environments.length > 0 && !root.disconnected && root.tally.needs > 0
               readonly property real textX: pilled ? needPill.width + Style.space(7) : 0
               Rectangle {
@@ -536,6 +536,7 @@ Item {
                 var alarm = root.colors.attentionInk
                 if (!root.service) return "SERVICE NOT LOADED"
                 if (root.service.health === "down") return tint(alarm, "COLLECTOR STOPPED · RESTARTING")
+                if (root.service.health === "stale") return tint(alarm, "COLLECTOR SILENT · LAST HEARD " + Format.ago(root.service.lastReceived, root.now).toUpperCase())
                 if (root.service.configError) return tint(alarm, "PAIRINGS UNREADABLE · " + root.service.configError.toUpperCase())
                 if (!root.environments.length) return "NO T3 MACHINES PAIRED"
                 var sep = "&nbsp;&nbsp;·&nbsp;&nbsp;"

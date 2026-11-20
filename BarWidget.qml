@@ -84,6 +84,7 @@ Panel {
   readonly property bool showRingCount: display !== "ring-count"
   // What the widget says, in words: its tooltip and its accessible name.
   readonly property string summary: !service ? "T3 Loupe: service not running"
+    : service.health === "stale" ? "T3 Loupe: collector silent"
     : !paired ? "T3 Loupe: no paired environments"
     : !known ? "T3 Loupe: not connected to T3"
     : (tally.needs ? tally.needs + (tally.needs === 1 ? " thread needs" : " threads need") + " you" : "Nothing needs you")
@@ -160,14 +161,14 @@ Panel {
         thickness: Math.max(3, Math.round(diameter / 5))
         // Ink like its bar neighbours; what needs you in the colour of its kind, as in the panel.
         // Every arc, and the track when shown, is a 3:1 mark against the bar.
-        segments: root.service ? Store.ringSegments(root.service.rows) : []
+        segments: root.service && root.service.health !== "stale" ? Store.ringSegments(root.service.rows) : []
         colors: root.theme ? ({
           attention: root.theme.bar.attention, ask: root.theme.bar.ask, warning: root.theme.bar.warning,
           ink: root.ink, rest: root.theme.bar.edge, track: root.theme.bar.edge
         }) : ({ ink: root.ink, rest: root.ink, track: root.ink })
         spinning: root.counts.busy > 0
         reduceMotion: root.reduceMotion
-        offline: root.service !== null && root.paired && !root.known
+        offline: root.service !== null && (root.service.health === "stale" || (root.paired && !root.known))
         centerText: root.ringText
         textColor: root.ink
         fontFamily: button.fontFamily
