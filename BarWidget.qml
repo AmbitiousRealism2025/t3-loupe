@@ -96,8 +96,8 @@ Panel {
     text: " "
     labelVisible: false
     hasVisualContent: true
-    fixedWidth: root.vertical ? -1 : glyphRow.implicitWidth + scaledHorizontalMargin * 2
-    fixedHeight: root.vertical ? glyphRow.implicitHeight + scaledVerticalPadding * 2 : -1
+    fixedWidth: button.vertical ? -1 : glyphRow.implicitWidth + scaledHorizontalMargin * 2
+    fixedHeight: button.vertical ? glyphRow.implicitHeight + scaledVerticalPadding * 2 : -1
     active: root.tally.needs > 0
     tooltipText: root.summary
     Accessible.role: Accessible.Button
@@ -114,13 +114,13 @@ Panel {
       readonly property real gap: Style.space(5)
       readonly property var parts: [label, ring, countText, badge, badgeWords].filter(function(p) { return p.visible })
       implicitWidth: {
-        if (root.vertical) return Math.max.apply(null, parts.map(function(p) { return p.width }))
+        if (button.vertical) return Math.max.apply(null, parts.map(function(p) { return p.width }))
         var w = 0
         for (var i = 0; i < parts.length; i++) w += parts[i].width + (i ? gap : 0)
         return w
       }
       implicitHeight: {
-        if (!root.vertical) return Math.max.apply(null, parts.map(function(p) { return p.height }))
+        if (!button.vertical) return Math.max.apply(null, parts.map(function(p) { return p.height }))
         var h = 0
         for (var i = 0; i < parts.length; i++) h += parts[i].height + (i ? gap : 0)
         return h
@@ -132,7 +132,7 @@ Panel {
         var pos = 0
         for (var i = 0; i < parts.length; i++) {
           if (parts[i] === item) return pos
-          pos += (root.vertical ? parts[i].height : parts[i].width) + gap
+          pos += (button.vertical ? parts[i].height : parts[i].width) + gap
         }
         return 0
       }
@@ -140,7 +140,7 @@ Panel {
       // Name to the left of the ring; part of the same button, so it opens the panel too.
       Text {
         id: label
-        visible: root.display === "label" && !root.vertical
+        visible: root.display === "label" && !button.vertical
         x: glyphRow.offset(label)
         anchors.verticalCenter: parent.verticalCenter
         text: "T3 Loupe"
@@ -153,10 +153,9 @@ Panel {
 
       ActivityRing {
         id: ring
-        x: root.vertical ? (glyphRow.width - width) / 2 : glyphRow.offset(ring)
-        y: root.vertical ? glyphRow.offset(ring) : (glyphRow.height - height) / 2
-        readonly property real barSize: Number(root.barSize) || Style.bar.sizeHorizontal
-        diameter: Math.max(12, Math.min(barSize - Style.space(8), Style.space(19)))
+        x: button.vertical ? (glyphRow.width - width) / 2 : glyphRow.offset(ring)
+        y: button.vertical ? glyphRow.offset(ring) : (glyphRow.height - height) / 2
+        diameter: Math.max(12, Math.min(button.barSize - Style.space(8), Style.space(19)))
         thickness: Math.max(3, Math.round(diameter / 5))
         // Ink like its bar neighbours; what needs you in the colour of its kind, as in the panel.
         // Every arc, and the track when shown, is a 3:1 mark against the bar.
@@ -176,7 +175,7 @@ Panel {
 
       Text {
         id: countText
-        visible: !root.showRingCount && !root.vertical && root.countValue !== ""
+        visible: !root.showRingCount && !button.vertical && root.countValue !== ""
         x: glyphRow.offset(countText)
         anchors.verticalCenter: parent.verticalCenter
         text: root.countValue
@@ -192,8 +191,8 @@ Panel {
       Rectangle {
         id: badge
         visible: root.tally.needs > 0
-        x: root.vertical ? (glyphRow.width - width) / 2 : glyphRow.offset(badge)
-        y: root.vertical ? glyphRow.offset(badge) : (glyphRow.height - height) / 2
+        x: button.vertical ? (glyphRow.width - width) / 2 : glyphRow.offset(badge)
+        y: button.vertical ? glyphRow.offset(badge) : (glyphRow.height - height) / 2
         height: Math.round(ring.diameter * 0.78)
         width: Math.max(height, badgeText.implicitWidth + Style.space(9))
         // Filled pill while anything needs you: the one number in the bar that asks for a look. It is
@@ -222,7 +221,7 @@ Panel {
       // wider just when it is asking for a look.
       Text {
         id: badgeWords
-        visible: badge.visible && root.display === "label" && !root.vertical
+        visible: badge.visible && root.display === "label" && !button.vertical
         x: glyphRow.offset(badgeWords)
         anchors.verticalCenter: parent.verticalCenter
         text: root.tally.needs === 1 ? "needs you" : "need you"
