@@ -126,7 +126,11 @@ Item {
   }
   // moved: the cursor itself moved, so refresh the detail even for the same thread.
   function syncSelection(moved) {
-    if (cursor < 0 || cursor >= visible_.length) { cursorKey = ""; return }
+    if (cursor < 0 || cursor >= visible_.length) {
+      cursorKey = ""
+      selectedKey = ""
+      return
+    }
     var item = visible_[cursor]
     cursorKey = item.key
     if (!centered || item.kind === "idle-line" || item.kind === "section" || (!moved && selectedKey === item.key)) return
