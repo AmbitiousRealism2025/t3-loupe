@@ -492,6 +492,40 @@ test("connection: snapshot → live, acks every chunk, applies deltas, resumes a
   }
 });
 
+test("connection: quota reset refreshes quiet rows and emits an update", (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: Date.now() });
+  const conn = new EnvironmentConnection({ environmentId: "env-1", label: "Fake", url: "http://127.0.0.1", token: "tok" });
+  let changes = 0;
+  conn.onChange = () => changes++;
+  const load = (threads) => {
+    conn.store.loadHttpSnapshot({ schemaVersion: 2, snapshotSequence: 10, projects: [], threads });
+    conn.refresh();
+  };
+  try {
+    load([thread("limited", { status: "failed", lastErrorClass: "usage_limit", usageLimitResetAt: new Date(Date.now() + 1000).toISOString() })]);
+    assert.equal(conn.view().rows[0].state, "limited");
+    const before = changes;
+    t.mock.timers.tick(1000);
+    assert.equal(changes, before + 1, "reset emits without shell traffic or a heartbeat");
+    assert.equal(conn.view().rows[0].state, "failed");
+    assert.equal(conn.view().counts.attention, 1);
+    t.mock.timers.tick(1000);
+    assert.equal(changes, before + 1, "expired resets do not loop");
+    load([]);
+    t.mock.timers.tick(1000);
+    assert.deepEqual(conn.view().rows, []);
+    load([thread("unknown", { status: "failed", lastErrorClass: "usage_limit", usageLimitResetAt: "invalid" })]);
+    assert.equal(conn.view().rows[0].state, "failed");
+    load([thread("stopped", { status: "failed", lastErrorClass: "usage_limit", usageLimitResetAt: new Date(Date.now() + 1000).toISOString() })]);
+    conn.stop();
+    const stopped = changes;
+    t.mock.timers.tick(1000);
+    assert.equal(changes, stopped, "stop cancels the pending reset");
+  } finally {
+    conn.stop();
+  }
+});
+
 test("connection: wrong environment identity is refused", async () => {
   const fake = new FakeT3({ environmentId: "someone-else" });
   const url = await fake.listen();

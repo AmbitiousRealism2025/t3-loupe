@@ -72,6 +72,7 @@ export class EnvironmentConnection {
   private failures = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private pollTimer: ReturnType<typeof setInterval> | undefined;
+  private resetTimer: ReturnType<typeof setTimeout> | undefined;
   private retryAt: number | null = null;
   private stopped = false;
   private connecting = false;
@@ -114,6 +115,7 @@ export class EnvironmentConnection {
     clearInterval(this.expiryTimer);
     clearTimeout(this.timer);
     clearInterval(this.pollTimer);
+    clearTimeout(this.resetTimer);
     this.socket?.close();
   }
 
@@ -339,6 +341,12 @@ export class EnvironmentConnection {
     for (const n of this.detector.diff(rows, this.env.label, this.store.synchronized)) this.onNotice(n);
     this.rows = rows;
     this.hasData = true;
+    clearTimeout(this.resetTimer);
+    const resets = rows.filter((r) => r.state === "limited" && r.usageResetAt !== null).map((r) => r.usageResetAt!);
+    if (!this.stopped && resets.length) {
+      const delay = Math.max(1, Math.min(...resets) - Date.now());
+      this.resetTimer = setTimeout(() => this.refresh(), Math.min(delay, 2_147_483_647));
+    }
     this.reconcileWatches();
     this.onChange();
   }
