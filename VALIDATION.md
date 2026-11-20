@@ -447,7 +447,7 @@ Contributed in #5. Checked before merging:
 
 ## Bug-fix batch and bounded timeline — v2.6.2 (2026-11-19)
 
-**What's in it:** eleven bug-fix PRs (#12 to #22), reviewed and merged by Muad'Dib, plus one fix found during release review. The fix closes the conditional Medium finding on marketplace request #14404 at 6bcec03: items that repeat a pending request's id kept the timeline from evicting. Only the first approval and the first question per pending request are protected now, and the timeline has a hard ceiling of 168 items.
+**What's in it:** eleven bug-fix PRs from the Software Factory (#12 to #22; Paul reviewed and merged #12 to #16) that Muad'Dib handed over for release, plus one fix found during release review. The fix closes the conditional Medium finding on marketplace request #14404 at 6bcec03: items that repeat a pending request's id kept the timeline from evicting. Only the first approval and the first question per pending request are protected now, and the timeline has a hard ceiling of 168 items.
 
 **Verified:**
 - `npm test`: 138 pass on Omarchy 4.5.0-3, aarch64, Qt 6.12 `qmltestrunner`. That includes `BarWidget.qml` against the installed Omarchy 4.5 `Panel.qml` and `WidgetButton.qml`.
